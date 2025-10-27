@@ -1,0 +1,11 @@
+--- a/warp_proc.c
++++ b/warp_proc.c
+@@ -21,7 +21,7 @@
+ #include "wed.h"
+ #include "warp.h"
+ #include "warp_hw.h"
+-#include <stdarg.h>
++#include <linux/stdarg.h>
+ #include "mcu/warp_woif.h"
+ #include "mcu/warp_wo.h"
+ #include "warp_meminfo_list.h"

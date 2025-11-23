@@ -23,6 +23,15 @@ function mtwifi_utils.trim(s)
     if s then return (s:gsub("^%s*(.-)%s*$", "%1")) end
 end
 
+function mtwifi_utils.get_sorted_if_keys(interfaces)
+    local keys = {}
+    for k in pairs(interfaces or {}) do
+        table.insert(keys, k)
+    end
+    table.sort(keys)
+    return keys
+end
+
 function mtwifi_utils.exists(path)
     local fp = io.open(path, "rb")
     if fp then fp:close() end

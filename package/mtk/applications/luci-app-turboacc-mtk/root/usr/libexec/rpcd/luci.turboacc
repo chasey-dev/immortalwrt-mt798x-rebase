@@ -26,6 +26,7 @@ local methods = {
 				hasMEDIATEKHNAT   = fs.access("/lib/modules/" .. boardinfo.kernel .. "/mtkhnat.ko"),
 				hasGMAC2          = fs.access("/sys/class/net/eth1"),
 				hasXTFULLCONENAT  = fs.access("/lib/modules/" .. boardinfo.kernel .. "/xt_FULLCONENAT.ko"),
+				hasNFTFULLCONE    = fs.access("/lib/modules/" .. boardinfo.kernel .. "/nft_fullcone.ko"),
 				hasTCPCCA         = readfile("/proc/sys/net/ipv4/tcp_available_congestion_control")
 			}
 			print(json.stringify(features))
@@ -34,20 +35,20 @@ local methods = {
 	getFastPathStat = {
 		call = function()
 			local fptype
-			if fs.access("/sys/module/xt_FLOWOFFLOAD/refcnt") and
-			(readfile("/sys/module/xt_FLOWOFFLOAD/refcnt") or "0") ~= "0" then
+			if (fs.access("/sys/module/xt_FLOWOFFLOAD/refcnt") and
+			(readfile("/sys/module/xt_FLOWOFFLOAD/refcnt") or "0") ~= "0") or
+			(fs.access("/sys/module/nft_flow_offload/refcnt") and
+			(readfile("/sys/module/nft_flow_offload/refcnt") or "0") ~= "0") then
 				fptype = "Flow offloading"
 			elseif fs.stat("/sys/module/fast_classifier", "type") == "dir" then
 				fptype = "Fast classifier"
 			elseif fs.stat("/sys/module/shortcut_fe_cm", "type") == "dir" then
 				fptype = "Shortcut-FE CM"
 			elseif fs.stat("/sys/kernel/debug/hnat", "type") == "dir" then
-				local ethernet_hnat = readfile("/sys/kernel/debug/hnat/hook_toggle")
-				ethernet_hnat = (ethernet_hnat ~= "enabled") and " / Ethernet HNAT Disabled" or ""
-
-				local wireless_hnat = (sys.call("grep -q 'WHNAT=1' '/etc/wireless/mediatek/'*_card*.dat") ~= 0) and " / Wireless HNAT Disabled" or ""
-				if (ethernet_hnat == "") or (wireless_hnat == "") then
-					fptype = "MediaTek HNAT" .. ethernet_hnat .. wireless_hnat
+				local hnat_toggle = readfile("/sys/kernel/debug/hnat/hook_toggle")
+				if hnat_toggle == "enabled" then
+					local wireless_hnat = (sys.call("grep -q 'WHNAT=1' '/etc/wireless/mediatek/'*_card*.dat") ~= 0) and " / Wireless HNAT Disabled" or ""
+					fptype = "MediaTek HNAT" .. wireless_hnat
 				end
 			end
 			print(json.stringify({ type = fptype }))
@@ -56,7 +57,10 @@ local methods = {
 	getFullConeStat = {
 		call = function()
 			local fctype
-			if fs.access("/sys/module/xt_FULLCONENAT/refcnt") and
+			if fs.access("/sys/module/nft_fullcone/refcnt") and
+			(readfile("/sys/module/nft_fullcone/refcnt") or "0") ~= "0" then
+				fctype = "nft_fullcone"
+			elseif fs.access("/sys/module/xt_FULLCONENAT/refcnt") and
 			(readfile("/sys/module/xt_FULLCONENAT/refcnt") or "0") ~= "0" then
 				fctype = "xt_FULLCONENAT"
 			elseif sys.call("iptables -t nat -L zone_wan_postrouting | grep -q fullcone") == 0 then
@@ -77,12 +81,30 @@ local methods = {
 			local ppe_stat = {}
 			local ppe_path = "/sys/kernel/debug/hnat/hnat_stats"
 			local fd = io.open(ppe_path, 'r')
-		
+
+			-- helper function to trim spaces
+			local function trim(s)
+				return (s:gsub("^%s*(.-)%s*$", "%1"))
+			end
+
 			if fd then
 				for line in fd:lines() do
-					local i = string.find(line, "=")
-					if i then
-						ppe_stat[string.sub(line,1,i-1)] = string.sub(line,i+1)
+					-- match PPE0, PPE1 prefix
+					local prefix, content = line:match("^(.-):%s*(.+)$")
+					if prefix then
+						-- if ":" is matched, we are in sub-object PPEx
+						ppe_stat[prefix] = {}
+						
+						-- match k=v pattern
+						for k, v in content:gmatch("([^,=]+)=([^,]+)") do
+							ppe_stat[prefix][trim(k)] = trim(v)
+						end
+					else
+						-- try match top regular pattern like "PPE num=x"
+						local k, v = line:match("^([^=]+)=(.+)$")
+						if k then
+							ppe_stat[trim(k)] = trim(v)
+						end
 					end
 				end
 				fd:close()

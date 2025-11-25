@@ -5,7 +5,13 @@
 START=90
 STOP=10
 
-start() {
+USE_PROCD=1
+
+service_triggers() {
+	procd_add_reload_trigger "turboacc"
+}
+
+start_service() {
 	config_load "turboacc"
 
 	local fastpath
@@ -52,26 +58,26 @@ start() {
 		if [ "$fastpath_mh_eth_hnat" -eq "1" ]; then
 			local fastpath_mh_eth_hnat_v6 fastpath_mh_eth_hnat_macvlan fastpath_mh_eth_hnat_bind_rate
 
-			config_get_bool "fastpath_mh_eth_hnat_v6" "config" "fastpath_mh_eth_hnat_v6" "1"
-			echo "8 $fastpath_mh_eth_hnat_v6" > "$hnat_path/hnat_setting"
+			# config_get_bool "fastpath_mh_eth_hnat_v6" "config" "fastpath_mh_eth_hnat_v6" "1"
+			# echo "8 $fastpath_mh_eth_hnat_v6" > "$hnat_path/hnat_setting"
 
 			config_get "fastpath_mh_eth_hnat_bind_rate" "config" "fastpath_mh_eth_hnat_bind_rate" "30"
-			echo "11 $fastpath_mh_eth_hnat_bind_rate" > "$hnat_path/hnat_setting"
+			echo "1 $fastpath_mh_eth_hnat_bind_rate" > "$hnat_path/hnat_setting"
 
-			config_get_bool "fastpath_mh_eth_hnat_macvlan" "config" "fastpath_mh_eth_hnat_macvlan" "0"
-			echo "12 $fastpath_mh_eth_hnat_macvlan" > "$hnat_path/hnat_setting"
+			# config_get_bool "fastpath_mh_eth_hnat_macvlan" "config" "fastpath_mh_eth_hnat_macvlan" "0"
+			# echo "12 $fastpath_mh_eth_hnat_macvlan" > "$hnat_path/hnat_setting"
 		fi
 		;;
 	esac
 
-	local fullcone
-	config_get "fullcone" "config" "fullcone" "0"
-	uci -q set "firewall.@defaults[0].fullcone"="$fullcone"
+	# local fullcone
+	# config_get "fullcone" "config" "fullcone" "0"
+	# uci -q set "firewall.@defaults[0].fullcone"="$fullcone"
 
 	local tcpcca
 	config_get "tcpcca" "config" "tcpcca" "cubic"
 	sysctl -w net.ipv4.tcp_congestion_control="$tcpcca" >"/dev/null"
 
-	uci -q commit "firewall"
-	/etc/init.d/firewall restart >"/dev/null" 2>&1
+	# uci -q commit "firewall"
+	# /etc/init.d/firewall restart >"/dev/null" 2>&1
 }

@@ -129,26 +129,48 @@ return view.extend({
 				])
 			]);
 
-			if (ppe_stats.hasOwnProperty('PPE_NUM')) {
+			if (ppe_stats && ppe_stats['PPE num']) {
 				poll.add(function () {
 					return L.resolveDefault(getMTKPPEStatus()).then(function (res) {
-						var ppe_num = parseInt(res[0].PPE_NUM);
-						for (var i=0; i<ppe_num; i++) {
-							var ppe_bar = document.getElementById(`ppe${i}_entry`);
-							ppe_bar.innerHTML = E('td', {},
-							progressbar(res[0][`BIND_PPE${i}`], res[0][`ALL_PPE${i}`])).innerHTML;
+						var stats = res[0]; 
+
+						if (stats && stats['PPE num']) {
+							var ppe_num = parseInt(stats['PPE num']);
+							
+							for (var i = 0; i < ppe_num; i++) {
+								var ppe_bar = document.getElementById(`ppe${i}_entry`);
+								var ppe_key = 'PPE' + i;
+
+								if (ppe_bar && stats[ppe_key]) {
+									var bind_num = stats[ppe_key]['BIND state num'];
+									var total_num = stats[ppe_key]['entry num'];
+									
+									ppe_bar.innerHTML = E('td', {},
+										progressbar(bind_num, total_num)
+									).innerHTML;
+								}
+							}
 						}
 					});
 				}, 3);
 
-				var ppe_num = parseInt(ppe_stats.PPE_NUM);
+				var ppe_num = parseInt(ppe_stats['PPE num']);
 
-				for (var i=0; i<ppe_num; i++) {
-					acc_status.appendChild(E('tr', {}, [
-						E('td', { 'width': '33%' }, `PPE${i} ` + _('Bind Entries')),
-						E('td', {'id': `ppe${i}_entry` },
-						progressbar(ppe_stats[`BIND_PPE${i}`], ppe_stats[`ALL_PPE${i}`]))
-					]));
+				for (var i = 0; i < ppe_num; i++) {
+					var ppe_key = 'PPE' + i;
+
+					if (ppe_stats[ppe_key]) {
+						var bind_num = ppe_stats[ppe_key]['BIND state num'];
+						var total_num = ppe_stats[ppe_key]['entry num'];
+
+						acc_status.appendChild(E('tr', {}, [
+							E('td', { 'width': '33%' }, `${ppe_key} ` + _('Bind Entries')),
+							
+							E('td', {'id': `ppe${i}_entry` },
+								progressbar(bind_num, total_num)
+							)
+						]));
+					}
 				}
 			}
 
@@ -214,49 +236,49 @@ return view.extend({
 			o.depends('fastpath', 'fast_classifier');
 		}
 
-		o = s.option(form.Flag, 'fastpath_mh_eth_hnat', _('Enable ethernet HNAT'),
-			_('Enable hardware offloading for wired connections.'));
-		o.default = o.enabled;
-		o.rmempty = false;
-		o.depends('fastpath', 'mediatek_hnat');
+		// o = s.option(form.Flag, 'fastpath_mh_eth_hnat', _('Enable ethernet HNAT'),
+		// 	_('Enable hardware offloading for wired connections.'));
+		// o.default = o.enabled;
+		// o.rmempty = false;
+		// o.depends('fastpath', 'mediatek_hnat');
 
-		o = s.option(form.Flag, 'fastpath_mh_eth_hnat_v6', _('Enable ethernet IPv6 HNAT'),
-			_('Enable hardware offloading for wired IPv6 connections.'));
-		o.default = o.enabled;
-		o.rmempty = false;
-		o.depends('fastpath_mh_eth_hnat', '1');
+		// o = s.option(form.Flag, 'fastpath_mh_eth_hnat_v6', _('Enable ethernet IPv6 HNAT'),
+		// 	_('Enable hardware offloading for wired IPv6 connections.'));
+		// o.default = o.enabled;
+		// o.rmempty = false;
+		// o.depends('fastpath_mh_eth_hnat', '1');
 		
-		o = s.option(form.Flag, 'fastpath_mh_eth_hnat_macvlan', _('Enable ethernet HNAT for MACVLAN WAN device'),
-			_('Enable hardware offloading for macvlan (sing wan only).'));
-		o.default = o.disabled;
-		o.rmempty = false;
-		o.depends('fastpath_mh_eth_hnat', '1');
+		// o = s.option(form.Flag, 'fastpath_mh_eth_hnat_macvlan', _('Enable ethernet HNAT for MACVLAN WAN device'),
+		// 	_('Enable hardware offloading for macvlan (sing wan only).'));
+		// o.default = o.disabled;
+		// o.rmempty = false;
+		// o.depends('fastpath_mh_eth_hnat', '1');
 		
 		o = s.option(form.Value, 'fastpath_mh_eth_hnat_bind_rate', _('HNAT bind rate threshold (pps)'),
 			_('The smaller the threshold, the easier it is for the connection to be accelerated.'));
 		o.optional = true;
 		o.datatype = 'range(1,30)';
 		o.placeholder = 30;
-		o.depends('fastpath_mh_eth_hnat', '1');
+		o.depends('fastpath', 'mediatek_hnat');
 
 		if (features.hasGMAC2) {
-			o = s.option(form.ListValue, 'fastpath_mh_eth_hnat_ppenum', _('Number of HNAT PPE'),
-				_('Apply this setting after reboot.'));
-			o.rmempty = false;
-			o.value(1);
-			o.value(2);
-			o.default = 1;
-			o.depends('fastpath_mh_eth_hnat', '1');
+			// o = s.option(form.ListValue, 'fastpath_mh_eth_hnat_ppenum', _('Number of HNAT PPE'),
+			// 	_('Apply this setting after reboot.'));
+			// o.rmempty = false;
+			// o.value(1);
+			// o.value(2);
+			// o.default = 1;
+			// o.depends('fastpath_mh_eth_hnat', '1');
 		}
 
-		o = s.option(form.ListValue, 'fullcone', _('Full cone NAT'),
-			_('Full cone NAT (NAT1) can improve gaming performance effectively.'));
-		o.value('0', _('Disable'))
-		if (features.hasXTFULLCONENAT)
-			o.value('1', _('XT_FULLCONE_NAT'));
-		o.value('2', _('Boardcom_FULLCONE_NAT'));
-		o.default = '0';
-		o.rmempty = false;
+		// o = s.option(form.ListValue, 'fullcone', _('Full cone NAT'),
+		// 	_('Full cone NAT (NAT1) can improve gaming performance effectively.'));
+		// o.value('0', _('Disable'))
+		// if (features.hasXTFULLCONENAT)
+		// 	o.value('1', _('XT_FULLCONE_NAT'));
+		// o.value('2', _('Boardcom_FULLCONE_NAT'));
+		// o.default = '0';
+		// o.rmempty = false;
 
 		o = s.option(form.ListValue, 'tcpcca', _('TCP CCA'),
 			_('TCP congestion control algorithm.'));

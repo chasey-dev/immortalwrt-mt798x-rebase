@@ -733,38 +733,80 @@ setup_model()
 	logger -t "mtk_smp" "board=${board}, wifi_num=${num_of_wifi}, cpu_num=${NUM_OF_CPU}, usbnet=${usbnet}"
 
 	case $board in
-	xiaomi,redmi-router-ax6000* |\
-	bananapi,bpi-r3mini* |\
-	netcore,n60 |\
-	glinet,gl-mt6000|\
-	ruijie,rg-x60-pro* |\
+	acelink,ew-7886cax |\
+	acer,predator-w6* |\
+	acer,vero-w6m |\
+	arcadyan,mozart |\
+	asus,rt-ax59u |\
+	asus,tuf-ax4200 |\
+	asus,tuf-ax6000 |\
+	bananapi,bpi-r3* |\
+	dlink,aquila-pro-ai-m60-a1 |\
+	glinet,gl-mt6000 |\
 	jdcloud,re-cp-03 |\
+	mercusys,mr90x* |\
+	netcore,n60* |\
+	netgear,wax220 |\
+	ruijie,rg-x60-pro* |\
+	smartrg,sdg* |\
+	tplink,archer-ax80-v1 |\
+	tplink,re6000xd |\
+	tplink,tl-xdr4288 |\
 	tplink,tl-xdr608* |\
-	zyxel,ex5700 |\
+	tplink,tl-xtr8488 |\
+	xiaomi,redmi-router-ax6000* |\
+	zyxel,ex5601* |\
+	zyxel,ex5700* |\
 	*7986*)
 		MT7986_whnat $num_of_wifi $usbnet
 		;;
 	*mt3000* |\
-	glinet,x3000-emmc |\
 	*xe3000* |\
 	*mt2500* |\
 	*zr-3020* |\
 	*360,t7* |\
-	abt,asr3000* |\
 	*clt,r30b1* |\
-	cmcc,a10* |\
-	xiaomi,mi-router-wr30u* |\
-	xiaomi,mi-router-ax3000t* |\
-	*rax3000m* |\
 	*cmcc,xr30* |\
-	h3c,nx30pro |\
 	*honor,fur-602* |\
-	konka,komi-a31 |\
 	*nokia,ea0326gmp* |\
+	*rax3000m* |\
+	abt,asr3000* |\
+	asus,rt-ax52 |\
+	cetron,ct3003* |\
+	cmcc,a10* |\
+	comfast,cf-e393ax |\
+	confiabits,mt7981 |\
+	cudy,*3000* |\
+	dlink,aquila-pro-ai-m30-a1 |\
+	edgecore,eap111 |\
+	glinet,gl-x3000 |\
+	glinet,x3000-emmc |\
+	h3c,nx30pro |\
+	h3c,magic-nx30-pro* |\
+	huasifei,wh3000* |\
+	imou,lc-hx3001 |\
+	iptime,ax3000* |\
+	jcg,q30-pro |\
+	keenetic,kn-* |\
+	konka,komi-a31 |\
+	mercusys,mr80x* |\
+	netis,nx31 |\
 	newland,nl-wr8103 |\
 	newland,nl-wr9103 |\
 	nradio,wt9103 |\
+	openembed,som7981 |\
+	openfi,6c |\
+	openwrt,one |\
+	routerich,ax3000* |\
 	ruijie,rg-x30e* |\
+	ubnt,unifi-6-plus |\
+	unielec,u7981* |\
+	wavlink,wl-wn586x3 |\
+	xiaomi,mi-router-ax3000t* |\
+	xiaomi,mi-router-wr30u* |\
+	yuncore,ax835 |\
+	zbtlink,zbt-z810* |\
+	zyxel,nwa50ax-pro |\
 	*7981*)
 		MT7981_whnat $num_of_wifi $usbnet
 		;;

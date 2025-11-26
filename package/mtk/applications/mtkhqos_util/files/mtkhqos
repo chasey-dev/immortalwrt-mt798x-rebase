@@ -67,7 +67,7 @@ fi
 if [ "$hqos" -eq 0 ]; then
 	# disable hqos, enable hnat
 	dbg "disable hqos, enable hnat"
-	SOC=`cat /proc/device-tree/ethernet*/compatible | cut -c 10-15`
+	SOC=`cat /proc/device-tree/soc/ethernet*/compatible | cut -c 10-15`
 	DUAL_SCH=$(if [ $SOC = "mt7981" ]; then echo true; fi)
 
 	echo 0 $(sch_mode2str $sch0_mode) ${sch0_bw} > $hqos_path/qdma_sch0

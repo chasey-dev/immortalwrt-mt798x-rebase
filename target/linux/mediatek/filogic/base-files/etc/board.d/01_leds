@@ -168,10 +168,11 @@ mercusys,mr90x-v1-ubi)
 netcore,n60)
 	ucidef_set_led_netdev "wan" "WAN" "mdio-bus:06:green:wan" "eth1" "link tx rx"
 	;;
-netcore,n60-pro)
-	ucidef_set_led_netdev "lan1" "LAN1" "mdio-bus:05:green:lan" "lan1" "link tx rx"
-	ucidef_set_led_netdev "wanact" "WANACT" "mdio-bus:06:green:wan" "eth1" "tx rx"
-	ucidef_set_led_netdev "wanlink" "WANLINK" "blue:wan" "eth1" "link"
+netcore,n60-pro|\
+netcore,n60-pro-mtkuboot)
+	ucidef_set_led_netdev "wlan5g" "WLAN_5G" "blue:wlan" "rax0" "link"
+	ucidef_set_led_netdev "wan" "WAN" "blue:wan" "eth1" "link"
+	ucidef_set_led_usbport "usb" "USB" "blue:usb" "usb2-port1"
 	;;
 netgear,eax17)
 	ucidef_set_led_default power_green "Power (green)" green:power 1

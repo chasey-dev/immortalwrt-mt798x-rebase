@@ -21,7 +21,7 @@ define Device/netcore_n60-pro-mtkuboot
   DEVICE_VARIANT := (MTK U-Boot layout)
   DEVICE_DTS := mt7986a-netcore-n60-pro-mtkuboot
   DEVICE_DTS_DIR := ../dts-ext
-  DEVICE_PACKAGES := kmod-usb3 automount
+  DEVICE_PACKAGES := kmod-usb3 automount kmod-usb-ledtrig-usbport 
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k
   PAGESIZE := 2048

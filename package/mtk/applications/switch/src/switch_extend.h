@@ -154,7 +154,7 @@
 #define REG_VAWD2_ADDR			(0x0098)
 #define REG_VLAN_ID_BASE		(0x0100)
 
-#define REG_CPGC_ADDR 			(0xB0)
+#define REG_CPGC_ADDR			(0xB0)
 #define REG_CPCG_COL_EN_OFFT		(0)
 #define REG_CPCG_COL_EN_RELMASK		(0x00000001)
 #define REG_CPCG_COL_EN_MASK		(REG_CPCG_COL_EN_RELMASK << REG_CPCG_COL_EN_OFFT)
@@ -336,7 +336,7 @@
 						 "         1: Blocking/Listening/Discarding\n" \
 						 "         2: Learning\n" \
 						 "         3: Forwarding\n"
-#define HELP_COLLISION_POOL_EN	"collision-pool enable [enable 0|1] \n"
-#define HELP_EEE_EN		"eee [enable|disable] ([port|portMap]) \n"
+#define HELP_COLLISION_POOL_EN	"collision-pool enable [enable 0|1]\n"
+#define HELP_EEE_EN		"eee [enable|disable] ([port|portMap])\n"
 
 //#endif //SQA_VERIFY

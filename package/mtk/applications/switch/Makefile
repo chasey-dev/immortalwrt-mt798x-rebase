@@ -1,7 +1,5 @@
 #
-# hua.shao@mediatek.com
-#
-# MTK Property Software.
+# SPDX-License-Identifier: GPL-2.0
 #
 
 include $(TOPDIR)/rules.mk
@@ -42,10 +40,7 @@ endef
 define Package/switch/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_DIR) $(1)/lib/network
-	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/switch $(1)/usr/sbin/
-	$(INSTALL_BIN) ./files/switch_ctl.sh $(1)/usr/sbin/
-	$(INSTALL_BIN) ./files/switch_ctl.init $(1)/etc/init.d/switch_ctl
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/switch $(1)/usr/sbin
 endef
 
 $(eval $(call BuildPackage,switch))

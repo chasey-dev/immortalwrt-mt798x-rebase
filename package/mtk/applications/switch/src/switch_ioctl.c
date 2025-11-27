@@ -164,7 +164,7 @@ int mii_mgr_cl22_read_ioctl(unsigned int port_num, unsigned int reg, unsigned in
 			break;
 		}
 	}
-	//printf(" PHY Indirect Access Control(0x701c) register read value =0x%x  \n", reg_value);
+	//printf(" PHY Indirect Access Control(0x701c) register read value =0x%x\n", reg_value);
 	*value = reg_value;
 
 	return 0;
@@ -205,7 +205,7 @@ int mii_mgr_cl22_write_ioctl(unsigned int port_num, unsigned int reg, unsigned i
 		}
 	}
 
-	//printf(" PHY Indirect Access Control(0x701c) register write value =0x%x  \n", reg_value);
+	//printf(" PHY Indirect Access Control(0x701c) register write value =0x%x\n", reg_value);
 
 	return 0;
 }
@@ -235,18 +235,33 @@ int mii_mgr_cl45_read_indirect(unsigned int port_num, unsigned int dev,
 	mii.reg_num = 13;
 	mii.val_in = dev;
 	ret = ioctl(sk, method, &ifr);
+	if (ret < 0) {
+		printf("ioctl failed for reg %d and return errno %s\n",
+			mii.reg_num, strerror(errno));
+		goto error;
+	}
 
 	method = RAETH_MII_WRITE;
 	mii.phy_id = port_num;
 	mii.reg_num = 14;
 	mii.val_in = reg;
 	ret = ioctl(sk, method, &ifr);
+	if (ret < 0) {
+		printf("ioctl failed for reg %d and return errno %s\n",
+			mii.reg_num, strerror(errno));
+		goto error;
+	}
 
 	method = RAETH_MII_WRITE;
 	mii.phy_id = port_num;
 	mii.reg_num = 13;
 	mii.val_in = (0x6000 | dev);
 	ret = ioctl(sk, method, &ifr);
+	if (ret < 0) {
+		printf("ioctl failed for reg %d and return errno %s\n",
+			mii.reg_num, strerror(errno));
+		goto error;
+	}
 
 	usleep(1000);
 
@@ -254,10 +269,15 @@ int mii_mgr_cl45_read_indirect(unsigned int port_num, unsigned int dev,
 	mii.phy_id = port_num;
 	mii.reg_num = 14;
 	ret = ioctl(sk, method, &ifr);
-
-	close(sk);
+	if (ret < 0) {
+		printf("ioctl failed for reg %d and return errno %s\n",
+			mii.reg_num, strerror(errno));
+		goto error;
+	}
 	*value = mii.val_out;
 
+error:
+	close(sk);
 	return ret;
 }
 
@@ -283,18 +303,33 @@ int mii_mgr_cl45_write_indirect(unsigned int port_num, unsigned int dev,
 	mii.reg_num = 13;
 	mii.val_in = dev;
 	ret = ioctl(sk, method, &ifr);
+	if (ret < 0) {
+		printf("ioctl failed for reg %d and return errno %s\n",
+			mii.reg_num, strerror(errno));
+		goto error;
+	}
 
 	method = RAETH_MII_WRITE;
 	mii.phy_id = port_num;
 	mii.reg_num = 14;
 	mii.val_in = reg;
 	ret = ioctl(sk, method, &ifr);
+	if (ret < 0) {
+		printf("ioctl failed for reg %d and return errno %s\n",
+			mii.reg_num, strerror(errno));
+		goto error;
+	}
 
 	method = RAETH_MII_WRITE;
 	mii.phy_id = port_num;
 	mii.reg_num = 13;
 	mii.val_in = (0x6000 | dev);
 	ret = ioctl(sk, method, &ifr);
+	if (ret < 0) {
+		printf("ioctl failed for reg %d and return errno %s\n",
+			mii.reg_num, strerror(errno));
+		goto error;
+	}
 
 	usleep(1000);
 
@@ -303,9 +338,14 @@ int mii_mgr_cl45_write_indirect(unsigned int port_num, unsigned int dev,
 	mii.reg_num = 14;
 	mii.val_in = value;
 	ret = ioctl(sk, method, &ifr);
+	if (ret < 0) {
+		printf("ioctl failed for reg %d and return errno %s\n",
+			mii.reg_num, strerror(errno));
+		goto error;
+	}
 
+error:
 	close(sk);
-
 	return ret;
 }
 
@@ -332,7 +372,7 @@ int mii_mgr_cl45_read(unsigned int port_num, unsigned int dev,
 		} else {
 			printf("MDIO cl45 set dev opeartion timeout\n");
 			reg_value = 0;
-			ret = -1; 
+			ret = -1;
 			goto out;
 		}
 	}
@@ -351,12 +391,12 @@ int mii_mgr_cl45_read(unsigned int port_num, unsigned int dev,
 		} else {
 			printf("MDIO cl45 read reg opeartion timeout\n");
 			reg_value = 0;
-			ret = -1; 
+			ret = -1;
 			break;
 		}
 	}
 out:
-	//printf(" PHY Indirect Access Control(0x701c) register read value =0x%x  \n", reg_value);
+	//printf(" PHY Indirect Access Control(0x701c) register read value =0x%x\n", reg_value);
 	*value = reg_value;
 
 	return ret;
@@ -384,7 +424,7 @@ int mii_mgr_cl45_write(unsigned int port_num, unsigned int dev,
 			loop_cnt++;
 		else {
 			printf("MDIO cl45 set dev opeartion timeout\n");
-			ret = -1; 
+			ret = -1;
 			goto out;
 		}
 	}
@@ -401,12 +441,12 @@ int mii_mgr_cl45_write(unsigned int port_num, unsigned int dev,
 			loop_cnt++;
 		else {
 			printf("MDIO cl45 write reg opeartion timeout\n");
-			ret = -1; 
+			ret = -1;
 			break;
 		}
 	}
 out:
-	//printf(" PHY Indirect Access Control(0x701c) register write value =0x%x  \n", reg_value);
+	//printf(" PHY Indirect Access Control(0x701c) register write value =0x%x\n", reg_value);
 	return ret;
 }
 

@@ -12,8 +12,8 @@ index 372160c15929..ec0dd8be4a4f 100644
 +			resets = <&ethsys 0>;
 +			reset-names = "mtketh";
 +			status = "okay";
-+			mtketh-wan = "eth1";
-+			mtketh-lan = "eth0";
++			mtketh-wan = "wan";
++			mtketh-lan = "lan";
 +			mtketh-max-gmac = <2>;
 +			mtketh-ppe-num = <2>;
 +		};

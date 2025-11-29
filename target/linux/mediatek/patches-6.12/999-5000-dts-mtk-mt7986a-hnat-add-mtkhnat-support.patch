@@ -13,7 +13,7 @@ index 4c7bed7845cb..46bc2d2676a9 100644
 +			reset-names = "mtketh";
 +			status = "okay";
 +			mtketh-wan = "eth1";
-+			mtketh-lan = "eth0";
++			mtketh-lan = "lan";
 +			mtketh-max-gmac = <2>;
 +			mtketh-ppe-num = <2>;
 +		};

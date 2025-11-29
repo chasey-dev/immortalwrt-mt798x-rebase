@@ -97,10 +97,6 @@ define Build/mt7988-mozart-gpt
 	rm $@.tmp
 endef
 
-define Build/append-openwrt-one-eeprom
-	dd if=$(STAGING_DIR_IMAGE)/mt7981_eeprom_mt7976_dbdc.bin >> $@
-endef
-
 define Build/mstc-header
   $(eval version=$(word 1,$(1)))
   $(eval magic=$(word 2,$(1)))

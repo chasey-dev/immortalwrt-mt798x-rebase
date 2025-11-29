@@ -588,6 +588,22 @@ endef
 
 $(eval $(call KernelPackage,phy-aeonsemi-as21xxx))
 
+define KernelPackage/phy-airoha-an8801sb
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=Airoha AN8801SB 1G Ethernet PHY
+  DEPENDS:=+kmod-libphy
+  KCONFIG:=CONFIG_AIROHA_AN8801_PHY
+  FILES:= \
+   $(LINUX_DIR)/drivers/net/phy/an8801.ko
+  AUTOLOAD:=$(call AutoLoad,18,an8801,1)
+endef
+
+define KernelPackage/phy-airoha-an8801sb/description
+  Kernel modules for Airoha AN8801SB 1G Ethernet PHY
+endef
+
+$(eval $(call KernelPackage,phy-airoha-an8801sb))
+
 
 define KernelPackage/phy-airoha-en8811h
   SUBMENU:=$(NETWORK_DEVICES_MENU)
@@ -2290,6 +2306,24 @@ define KernelPackage/mtk-t7xx/description
 endef
 
 $(eval $(call KernelPackage,mtk-t7xx))
+
+define KernelPackage/mediatek_hnat
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=Mediatek HNAT module
+  DEPENDS:=@TARGET_mediatek +kmod-nf-conntrack
+  KCONFIG:= \
+	CONFIG_BRIDGE_NETFILTER=y \
+	CONFIG_NETFILTER_FAMILY_BRIDGE=y \
+	CONFIG_NET_MEDIATEK_HNAT
+  FILES:= \
+        $(LINUX_DIR)/drivers/net/ethernet/mediatek/mtk_hnat/mtkhnat.ko
+endef
+
+define KernelPackage/mediatek_hnat/description
+  Kernel modules for MediaTek HW NAT offloading
+endef
+
+$(eval $(call KernelPackage,mediatek_hnat))
 
 define KernelPackage/atlantic
   SUBMENU:=$(NETWORK_DEVICES_MENU)

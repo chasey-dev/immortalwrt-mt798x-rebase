@@ -1,0 +1,32 @@
+From 3372b6c6c8734f9f99d9daab6ac969421e92c7dc Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Mon, 22 Sep 2025 11:12:07 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add phya tx rx clock path
+ for SGMII
+
+In NETSYSv3.1, the SGMII hardware introduces a new clock path from PHYA.
+Consequently, users can switch the SGMII PCS to this new clock source
+for better performance on the MT7987.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index dad1d00..01eeeec 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -6191,6 +6191,9 @@ static int mtk_sgmii_init(struct mtk_eth *eth)
+ 		else if (of_property_read_bool(np, "mediatek,pnswap-rx"))
+ 			flags |= MTK_SGMII_FLAG_PN_SWAP_RX;
+ 
++		if (of_property_read_bool(np->parent, "mediatek,phya_trx_ck"))
++			flags |= MTK_SGMII_FLAG_PHYA_TRX_CK;
++
+ 		of_node_put(np);
+ 
+ 		if (IS_ERR(regmap))
+-- 
+2.45.2
+

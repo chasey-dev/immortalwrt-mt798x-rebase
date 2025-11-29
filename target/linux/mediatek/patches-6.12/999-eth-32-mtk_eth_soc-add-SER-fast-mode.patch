@@ -1,0 +1,239 @@
+From 02248e4190b6f8ae7401079461eb06b7b1264b17 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Mon, 10 Nov 2025 11:47:15 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add SER fast mode
+
+In the current design, NETSYS SER would reset the FE and GMAC in any
+hang condition. However, in cases where the GMAC is not hung, we can
+use MAC_LINK_DOWN instead of a PHY power-down to save a few seconds of
+waiting for the PHY link to come up, thereby avoiding a WiFi traffic
+stop.
+
+Without this patch, the traffic between ETH and WiFi would stop for a
+few seconds, even if the GMAC is not hung.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 115 +++++++++++++++++---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.h |   4 +
+ 2 files changed, 102 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index b05e320..21f85b9 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -807,6 +807,7 @@ static void mtk_mac_config(struct phylink_config *config, unsigned int mode,
+ 		}
+ 	}
+ 
++	mac->mode = mode;
+ 	mac->interface = state->interface;
+ 	mtk_set_mcr_max_rx(mac, MTK_MAX_RX_LENGTH);
+ 
+@@ -1178,6 +1179,9 @@ static void mtk_mac_link_up(struct phylink_config *config,
+ 					   phylink_config);
+ 
+ 	mac->speed = speed;
++	mac->duplex = duplex;
++	mac->tx_pause = tx_pause;
++	mac->rx_pause = rx_pause;
+ 	if (mtk_is_netsys_v3_or_greater(mac->hw) && mtk_interface_mode_is_xgmii(interface))
+ 		mtk_xgdm_mac_link_up(mac, phy, mode, interface, speed, duplex,
+ 				     tx_pause, rx_pause);
+@@ -4343,6 +4347,68 @@ static int mtk_device_event(struct notifier_block *n, unsigned long event, void
+ 	return NOTIFY_DONE;
+ }
+ 
++static bool mtk_phy_should_powerdown(struct mtk_eth *eth)
++{
++	int i;
++
++	/*
++	 * In non-SER scenarios, we always allow the PHY to enter power-down mode
++	 * when the interface is disabled, and to return to active mode when the
++	 * interface is enabled.
++	 */
++	if (!test_bit(MTK_RESETTING, &eth->state))
++		return true;
++
++	/*
++	 * In SER scenarios, we aim to minimize the recovery time required for the
++	 * SER procedure. Therefore, we only allow the PHY to enter power-down mode
++	 * if the MAC will be reset.
++	 */
++	for (i = 0; i < 3; i++) {
++		if ((eth->reset.mac_tx_hang_count[i] > 2)||
++		    (eth->reset.mac_rx_hang_count[i] > 2))
++			return true;
++	}
++
++	return false;
++}
++
++static void mtk_mac_fe_reset_complete(struct mtk_eth *eth, unsigned long restart)
++{
++	struct phylink_link_state state;
++	struct mtk_mac *mac;
++	int i;
++
++	/* When pending_work triggers SER and the SER process does not reset the
++	 * MAC, the PHY does not enter power-down mode. In this case, we need to
++	 * execute this function to restore the MAC configuration.
++	 * However, if SER process resets the MAC and the PHY enters power-down
++	 * mode, this function can be skipped.
++	 */
++	if (mtk_phy_should_powerdown(eth))
++		return;
++
++	for (i = 0; i < MTK_MAX_DEVS; i++) {
++		if (!test_bit(i, &restart) || !eth->netdev[i])
++			continue;
++
++		mac = eth->mac[i];
++
++		/* The FE reset will cause the NETSYS Mux to return to its
++		 * initial state, so we need to call `mkt_mac_config()` to
++		 * configure the Muxes correctly after the FE reset.
++		 */
++		state.interface = mac->interface;
++		mac->interface = PHY_INTERFACE_MODE_NA;
++		mtk_mac_config(&mac->phylink_config, mac->mode, &state);
++		mtk_mac_finish(&mac->phylink_config, mac->interface,
++			       mac->interface);
++		mtk_mac_link_up(&mac->phylink_config, NULL, mac->mode,
++				mac->interface, mac->speed, mac->duplex,
++				mac->tx_pause, mac->rx_pause);
++	}
++}
++
+ static int mtk_open(struct net_device *dev)
+ {
+ 	struct mtk_mac *mac = netdev_priv(dev);
+@@ -4352,13 +4418,6 @@ static int mtk_open(struct net_device *dev)
+ 
+ 	ppe_num = eth->soc->ppe_num;
+ 
+-	err = phylink_of_phy_connect(mac->phylink, mac->of_node, 0);
+-	if (err) {
+-		netdev_err(dev, "%s: could not attach PHY: %d\n", __func__,
+-			   err);
+-		return err;
+-	}
+-
+ 	/* we run 2 netdevs on the same dma ring so we only bring it up once */
+ 	if (!refcount_read(&eth->dma_refcnt)) {
+ 		const struct mtk_soc_data *soc = eth->soc;
+@@ -4366,10 +4425,8 @@ static int mtk_open(struct net_device *dev)
+ 		int i;
+ 
+ 		err = mtk_start_dma(eth);
+-		if (err) {
+-			phylink_disconnect_phy(mac->phylink);
++		if (err)
+ 			return err;
+-		}
+ 
+ 		for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+ 			mtk_ppe_start(eth->ppe[i]);
+@@ -4424,7 +4481,20 @@ static int mtk_open(struct net_device *dev)
+ 		refcount_inc(&eth->dma_refcnt);
+ 	}
+ 
+-	phylink_start(mac->phylink);
++	/* When pending_work triggers the SER and the SER process does not reset
++	 * the MAC, there is no need to disconnect PHY in mtk_stop(), or reconnect
++	 * it in mtk_open().
++	 */
++	if (mtk_phy_should_powerdown(eth)) {
++		err = phylink_of_phy_connect(mac->phylink, mac->of_node, 0);
++		if (err) {
++			netdev_err(dev, "%s: could not attach PHY: %d\n", __func__,
++				   err);
++			return err;
++		}
++
++		phylink_start(mac->phylink);
++	}
+ 	netif_tx_start_all_queues(dev);
+ 
+ 	if (MTK_HAS_CAPS(eth->soc->caps, MTK_NETSYS_RX_9K) &&
+@@ -4498,11 +4568,17 @@ static int mtk_stop(struct net_device *dev)
+ 	struct mtk_eth *eth = mac->hw;
+ 	int i;
+ 
+-	phylink_stop(mac->phylink);
+-
+ 	netif_tx_disable(dev);
+ 
+-	phylink_disconnect_phy(mac->phylink);
++	/* When pending_work triggers the SER and the SER process does not reset
++	 * the MAC, there is no need to disconnect PHY in mtk_stop(), or reconnect
++	 * it in mtk_open().
++	 */
++	if (mtk_phy_should_powerdown(eth)) {
++		phylink_stop(mac->phylink);
++
++		phylink_disconnect_phy(mac->phylink);
++	}
+ 
+ 	/* only shutdown DMA if this is the last user */
+ 	if (!refcount_dec_and_test(&eth->dma_refcnt))
+@@ -4853,8 +4929,11 @@ static void mtk_hw_warm_reset(struct mtk_eth *eth)
+ 		return;
+ 	}
+ 
++	if (mtk_phy_should_powerdown(eth))
++		rst_mask |= RSTCTRL_ETH;
++
+ 	if (mtk_is_netsys_v3_or_greater(eth)) {
+-		rst_mask = RSTCTRL_ETH | RSTCTRL_PPE0_V3;
++		rst_mask = RSTCTRL_PPE0_V3;
+ 		if (MTK_HAS_CAPS(eth->soc->caps, MTK_RSTCTRL_PPE1))
+ 			rst_mask |= RSTCTRL_PPE1_V3;
+ 		if (MTK_HAS_CAPS(eth->soc->caps, MTK_RSTCTRL_PPE2))
+@@ -4862,11 +4941,11 @@ static void mtk_hw_warm_reset(struct mtk_eth *eth)
+ 
+ 		rst_mask |= RSTCTRL_WDMA0 | RSTCTRL_WDMA1 | RSTCTRL_WDMA2;
+ 	} else if (mtk_is_netsys_v2_or_greater(eth)) {
+-		rst_mask = RSTCTRL_ETH | RSTCTRL_PPE0_V2;
++		rst_mask = RSTCTRL_PPE0_V2;
+ 		if (MTK_HAS_CAPS(eth->soc->caps, MTK_RSTCTRL_PPE1))
+ 			rst_mask |= RSTCTRL_PPE1;
+ 	} else {
+-		rst_mask = RSTCTRL_ETH | RSTCTRL_PPE0;
++		rst_mask = RSTCTRL_PPE0;
+ 	}
+ 
+ 	regmap_update_bits(eth->ethsys, ETHSYS_RSTCTRL, rst_mask, rst_mask);
+@@ -5614,6 +5693,8 @@ static void mtk_pending_work(struct work_struct *work)
+ 			mt7988_esw_force_link(eth, true);
+ 	}
+ 
++	mtk_mac_fe_reset_complete(eth, restart);
++
+ 	clear_bit(MTK_RESETTING, &eth->state);
+ 
+ 	mtk_wed_fe_reset_complete();
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.h b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+index a690bb1..3bc0835 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -1751,11 +1751,15 @@ struct mtk_eth {
+  */
+ struct mtk_mac {
+ 	int				id;
++	unsigned int			mode;
+ 	phy_interface_t			interface;
+ 	u8				ppe_idx;
+ 	bool				tx_lpi_enabled;
+ 	u8				txidle_thd_ms;
+ 	int				speed;
++	int				duplex;
++	bool				tx_pause;
++	bool				rx_pause;
+ 	struct device_node		*of_node;
+ 	struct phylink			*phylink;
+ 	struct phylink_config		phylink_config;
+-- 
+2.45.2
+

@@ -1,0 +1,40 @@
+From 933061753d47efaa2453cdf721379db75bc9a4bb Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Thu, 18 Sep 2025 16:39:27 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add individual polarity control
+ for SGMII
+
+The user can add the following property to the sgmiisys node of the DTS
+to control the SGMII PN polarity.
+  - mediatek,pnswap: Swap TX and RX PN polarity
+  - mediatek,pnswap-tx: Swap TX PN polarity
+  - mediatek,pnswap-rx: Swap RX PN polarity
+
+Without this patch, the TX/RX polarity of the SGMII cannot be controlled
+individually.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index c56af53..7954d95 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -5311,7 +5311,11 @@ static int mtk_sgmii_init(struct mtk_eth *eth)
+ 		regmap = syscon_node_to_regmap(np);
+ 		flags = 0;
+ 		if (of_property_read_bool(np, "mediatek,pnswap"))
+-			flags |= MTK_SGMII_FLAG_PN_SWAP;
++			flags |= MTK_SGMII_FLAG_PN_SWAP_TX | MTK_SGMII_FLAG_PN_SWAP_RX;
++		else if (of_property_read_bool(np, "mediatek,pnswap-tx"))
++			flags |= MTK_SGMII_FLAG_PN_SWAP_TX;
++		else if (of_property_read_bool(np, "mediatek,pnswap-rx"))
++			flags |= MTK_SGMII_FLAG_PN_SWAP_RX;
+ 
+ 		of_node_put(np);
+ 
+-- 
+2.45.2
+

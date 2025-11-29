@@ -1,0 +1,36 @@
+From e2e76226a9eb6facb0d0c0ce9288e1b75668a756 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Thu, 18 Sep 2025 16:37:46 +0800
+Subject: [PATCH] net: dsa: mt7530: add individual polarity control for SGMII
+
+The user can add the following property to the sgmiisys node of the DTS
+to control the SGMII PN polarity.
+  - mediatek,pnswap: Swap TX and RX PN polarity
+  - mediatek,pnswap-tx: Swap TX PN polarity
+  - mediatek,pnswap-rx: Swap RX PN polarity
+
+Without this patch, the TX/RX polarity of the SGMII cannot be controlled
+individually.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/dsa/mt7530-mdio.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/dsa/mt7530-mdio.c b/drivers/net/dsa/mt7530-mdio.c
+index 51df42c..6163be7 100644
+--- a/drivers/net/dsa/mt7530-mdio.c
++++ b/drivers/net/dsa/mt7530-mdio.c
+@@ -114,7 +114,8 @@ mt7531_create_sgmii(struct mt7530_priv *priv)
+ 			break;
+ 		}
+ 		pcs = mtk_pcs_lynxi_create(priv->dev, regmap,
+-					   MT7531_PHYA_CTRL_SIGNAL3, 0);
++					   MT7531_PHYA_CTRL_SIGNAL3,
++					   MTK_SGMII_FLAG_PN_SWAP_TX);
+ 		if (!pcs) {
+ 			ret = -ENXIO;
+ 			break;
+-- 
+2.45.2
+

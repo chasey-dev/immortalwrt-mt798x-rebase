@@ -1,0 +1,188 @@
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988-logan-warp.dtsi
+@@ -0,0 +1,177 @@
++/* replace reserved memory regions */
++
++&wmcpu_emi {
++	compatible = "mediatek,wmcpu-reserved";
++};
++
++&wo_emi0 {
++	compatible = "mediatek,wocpu0_emi";
++	shared = <0>;
++};
++
++&wo_emi1 {
++	compatible = "mediatek,wocpu1_emi";
++	shared = <0>;
++};
++
++&wo_emi2 {
++	compatible = "mediatek,wocpu2_emi";
++	shared = <0>;
++};
++
++&wo_data {
++	compatible = "mediatek,wocpu_data";
++};
++
++/* replace wed0: wed@15010000 */
++
++&soc {
++	/delete-node/ wed@15010000;
++
++	wed: wed@15010000 {
++		compatible = "mediatek,wed";
++		wed_num = <3>;
++		/* add this property for wed get the pci slot number. */
++		pci_slot_map = <0>, <1>, <2>;
++		reg = <0 0x15010000 0 0x2000>,
++		      <0 0x15012000 0 0x2000>,
++		      <0 0x15014000 0 0x2000>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 205 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 206 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 270 IRQ_TYPE_LEVEL_HIGH>;
++	};
++};
++
++&eth {
++	/*
++	 * The upstream Wed driver is called by the Ethernet driver for
++	 * initialization. Remove this call for the Logan-based Wed driver
++	 */
++
++	/delete-property/ mediatek,wed;
++};
++
++/* replace wed1: wed@15012000 */
++
++&soc {
++	/delete-node/ wed@15012000;
++
++	wed1: wed2@15012000 {
++		compatible = "mediatek,wed2";
++		wed_num = <3>;
++		reg = <0 0x15010000 0 0x2000>,
++		      <0 0x15012000 0 0x2000>,
++		      <0 0x15014000 0 0x2000>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 205 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 206 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 270 IRQ_TYPE_LEVEL_HIGH>;
++	};
++};
++
++/* replace wed2: wed@15014000 */
++
++&soc {
++	/delete-node/ wed@15014000;
++
++	wed2: wed3@15014000 {
++		compatible = "mediatek,wed3";
++		wed_num = <3>;
++		reg = <0 0x15010000 0 0x2000>,
++		      <0 0x15012000 0 0x2000>,
++		      <0 0x15014000 0 0x2000>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 205 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 206 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 270 IRQ_TYPE_LEVEL_HIGH>;
++	};
++};
++
++/* Add wdma node */
++
++&soc {
++	wdma: wdma@15104800 {
++		compatible = "mediatek,wed-wdma";
++		reg = <0 0x15104800 0 0x400>,
++		      <0 0x15104c00 0 0x400>,
++		      <0 0x15105000 0 0x400>;
++	};
++};
++
++/* replace wo_cpuboot0, wo_cpuboot1, wo_cpuboot2 */
++
++&soc {
++	/delete-node/ syscon@15194000;
++	/delete-node/ syscon@15294000;
++	/delete-node/ syscon@15394000;
++
++	cpu_boot: wocpu_boot@15194000 {
++		compatible = "mediatek,wocpu_boot";
++		reg = <0 0x15194000 0 0x1000>,
++		      <0 0x15294000 0 0x1000>,
++		      <0 0x15394000 0 0x1000>;
++	};
++};
++
++/* replace wo_ccif0, woccif1, wo_ccif2 */
++
++&soc {
++	/delete-node/ syscon@151a5000;
++	/delete-node/ syscon@152a5000;
++	/delete-node/ syscon@153a5000;
++
++	ap2woccif: ap2woccif@151a5000 {
++		compatible = "mediatek,ap2woccif";
++		reg = <0 0x151a5000 0 0x1000>,
++		      <0 0x152a5000 0 0x1000>,
++		      <0 0x153a5000 0 0x1000>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 211 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 212 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 272 IRQ_TYPE_LEVEL_HIGH>;
++	};
++};
++
++/* replace wo_ilm0, wo_ilm1, wo_ilm2 */
++
++&wo_ilm0 {
++	compatible = "mediatek,wocpu0_ilm";
++};
++
++&wo_ilm1 {
++	compatible = "mediatek,wocpu1_ilm";
++};
++
++&wo_ilm2 {
++	compatible = "mediatek,wocpu2_ilm";
++};
++
++/* replace wo_dlm0, wo_dlm1, wo_dlm2 */
++
++&soc {
++	/delete-node/ syscon@151e8000;
++	/delete-node/ syscon@152e8000;
++	/delete-node/ syscon@153e8000;
++
++       	wocpu_dlm: wocpu_dlm@151e8000 {
++		compatible = "mediatek,wocpu_dlm";
++		reg = <0 0x151e8000 0 0x2000>,
++		      <0 0x152e8000 0 0x2000>,
++		      <0 0x153e8000 0 0x2000>;
++		resets = <&ethsysrst 0>;
++		reset-names = "wocpu_rst";
++	};
++};
++
++#include <dt-bindings/reset/ti-syscon.h>
++
++&ethsys {
++	ethsysrst: reset-controller {
++		compatible = "ti,syscon-reset";
++		#reset-cells = <1>;
++		ti,reset-bits = <0x34 4 0x34 4 0x34 4
++				 (ASSERT_SET | DEASSERT_CLEAR | STATUS_SET)>;
++	};
++};
++
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -1465,3 +1465,5 @@
+ 		compatible = "mediatek,mt7988-rng";
+ 	};
+ };
++
++#include "mt7988-logan-warp.dtsi"

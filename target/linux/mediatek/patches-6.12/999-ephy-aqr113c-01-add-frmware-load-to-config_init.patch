@@ -1,0 +1,44 @@
+From 9acfe9cec63854167bafcb811bc2f18bbe46bcc5 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Fri, 3 Oct 2025 17:29:23 +0800
+Subject: [PATCH 1/2] net: phy: aquantia: add frmware load to config_init
+
+Without this patch, the PHY firmware will be lost and cannot be reloaded
+after a GPIO reset.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/phy/aquantia/aquantia_main.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/net/phy/aquantia/aquantia_main.c b/drivers/net/phy/aquantia/aquantia_main.c
+index f25e634..1bc1d5c 100644
+--- a/drivers/net/phy/aquantia/aquantia_main.c
++++ b/drivers/net/phy/aquantia/aquantia_main.c
+@@ -614,6 +614,11 @@ static int aqr107_config_init(struct phy_device *phydev)
+ 	ret = aqr_wait_reset_complete(phydev);
+ 	if (!ret)
+ 		aqr107_chip_info(phydev);
++	else {
++		ret = aqr_firmware_load(phydev);
++		if (ret)
++			return ret;
++	}
+ 
+ 	ret = aqr107_set_downshift(phydev, MDIO_AN_VEND_PROV_DOWNSHIFT_DFLT);
+ 	if (ret)
+@@ -651,6 +656,11 @@ static int aqcs109_config_init(struct phy_device *phydev)
+ 	ret = aqr_wait_reset_complete(phydev);
+ 	if (!ret)
+ 		aqr107_chip_info(phydev);
++	else {
++		ret = aqr_firmware_load(phydev);
++		if (ret)
++			return ret;
++	}
+ 
+ 	return aqr107_set_downshift(phydev, MDIO_AN_VEND_PROV_DOWNSHIFT_DFLT);
+ }
+-- 
+2.45.2
+

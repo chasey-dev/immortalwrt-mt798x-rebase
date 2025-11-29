@@ -1,0 +1,97 @@
+From 7f5ea5902e528b4631a4cd259dfa4586e18f7af4 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Thu, 18 Sep 2025 17:12:45 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor hw dump for forced reset
+
+Without this patch, the ETH driver is unable to dump the registers
+before triggering a forced reset.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 49 +++++++++++++++++++--
+ 1 file changed, 45 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index 4f80841..f2c979d 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -4057,7 +4057,7 @@ static void mtk_hw_dump_reg(struct mtk_eth *eth, char *name, u32 offset, u32 ran
+ 	}
+ }
+ 
+-static void mtk_hw_dump(struct mtk_eth *eth)
++static void mtk_hw_dump_all(struct mtk_eth *eth)
+ {
+ 	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
+ 	u32 id;
+@@ -4089,8 +4089,47 @@ static void mtk_hw_dump(struct mtk_eth *eth)
+ 	if (mtk_is_netsys_v3_or_greater(eth))
+ 		mtk_hw_dump_reg(eth, "GMAC", 0x10300, 0x100);
+ 	if (mtk_is_netsys_v3_or_greater(eth)) {
+-		mtk_hw_dump_reg(eth, "XGMAC0", 0x12000, 0x300);
+-		mtk_hw_dump_reg(eth, "XGMAC1", 0x13000, 0x300);
++		mtk_hw_dump_reg(eth, "XGMAC1", 0x12000, 0x300);
++		if (MTK_HAS_CAPS(eth->soc->caps, MTK_GMAC3_USXGMII))
++			mtk_hw_dump_reg(eth, "XGMAC2", 0x13000, 0x300);
++	}
++}
++
++static void mtk_hw_dump_partial(struct mtk_eth *eth)
++{
++	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
++
++	mtk_hw_dump_reg(eth, "FE", 0x180, 0x1C0);
++	mtk_hw_dump_reg(eth, "ADMA", reg_map->pdma.rx_ptr + 0x100, 0x40);
++	mtk_hw_dump_reg(eth, "QDMA", reg_map->qdma.rx_ptr + 0x100, 0x10);
++	mtk_hw_dump_reg(eth, "WDMA0", reg_map->wdma_base[0], 0x10);
++	mtk_hw_dump_reg(eth, "WDMA0", reg_map->wdma_base[0] + 0x100, 0x10);
++	mtk_hw_dump_reg(eth, "WDMA0", reg_map->wdma_base[0] + 0x200, 0x10);
++	mtk_hw_dump_reg(eth, "WDMA1", reg_map->wdma_base[1], 0x10);
++	mtk_hw_dump_reg(eth, "WDMA1", reg_map->wdma_base[1] + 0x100, 0x10);
++	mtk_hw_dump_reg(eth, "WDMA1", reg_map->wdma_base[1] + 0x200, 0x10);
++	if (mtk_is_netsys_v3_or_greater(eth)) {
++		mtk_hw_dump_reg(eth, "WDMA2", reg_map->wdma_base[2], 0x10);
++		mtk_hw_dump_reg(eth, "WDMA2", reg_map->wdma_base[2] + 0x100, 0x10);
++		mtk_hw_dump_reg(eth, "WDMA2", reg_map->wdma_base[2] + 0x200, 0x10);
++	}
++	mtk_hw_dump_reg(eth, "PPE0", reg_map->ppe_base + 0x200, 0x10);
++	mtk_hw_dump_reg(eth, "PPE0", reg_map->ppe_base + 0x380, 0x20);
++	if (mtk_is_netsys_v2_or_greater(eth)) {
++		mtk_hw_dump_reg(eth, "PPE1", reg_map->ppe_base + 0x600, 0x10);
++		mtk_hw_dump_reg(eth, "PPE1", reg_map->ppe_base + 0x780, 0x20);
++	}
++	if (mtk_is_netsys_v3_or_greater(eth)) {
++		mtk_hw_dump_reg(eth, "PPE2", reg_map->ppe_base + 0xa00, 0x10);
++		mtk_hw_dump_reg(eth, "PPE2", reg_map->ppe_base + 0xb80, 0x20);
++	}
++	mtk_hw_dump_reg(eth, "GMAC1", 0x10100, 0x10);
++	mtk_hw_dump_reg(eth, "GMAC2", 0x10200, 0x10);
++	if (mtk_is_netsys_v3_or_greater(eth)) {
++		mtk_hw_dump_reg(eth, "GMAC3", 0x10300, 0x10);
++		mtk_hw_dump_reg(eth, "XGMAC1", 0x12000, 0x20);
++		if (MTK_HAS_CAPS(eth->soc->caps, MTK_GMAC3_USXGMII))
++			mtk_hw_dump_reg(eth, "XGMAC2", 0x13000, 0x20);
+ 	}
+ }
+ 
+@@ -4142,6 +4181,8 @@ static void mtk_hw_warm_reset(struct mtk_eth *eth)
+ {
+ 	u32 rst_mask, val;
+ 
++	mtk_hw_dump_partial(eth);
++
+ 	regmap_update_bits(eth->ethsys, ETHSYS_RSTCTRL, RSTCTRL_FE,
+ 			   RSTCTRL_FE);
+ 	if (readx_poll_timeout_atomic(mtk_hw_reset_read, eth, val,
+@@ -4573,7 +4614,7 @@ static void mtk_pending_work(struct work_struct *work)
+ 	rtnl_lock();
+ 	set_bit(MTK_RESETTING, &eth->state);
+ 
+-	mtk_hw_dump(eth);
++	mtk_hw_dump_all(eth);
+ 
+ 	mtk_prepare_for_reset(eth);
+ 	mtk_wed_fe_reset();
+-- 
+2.45.2
+

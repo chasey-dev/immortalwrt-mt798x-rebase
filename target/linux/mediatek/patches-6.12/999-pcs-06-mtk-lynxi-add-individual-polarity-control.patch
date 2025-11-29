@@ -1,0 +1,84 @@
+From 214923b5896be57946810182f8a6ead60c2a3af0 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Thu, 18 Sep 2025 16:36:37 +0800
+Subject: [PATCH] net: pcs: mtk-lynxi: add individual polarity control
+
+The user can add the following property to the sgmiisys node of the DTS
+to control the SGMII PN polarity.
+  - mediatek,pnswap: Swap TX and RX PN polarity
+  - mediatek,pnswap-tx: Swap TX PN polarity
+  - mediatek,pnswap-rx: Swap RX PN polarity
+
+Without this patch, the TX/RX polarity of the SGMII cannot be controlled
+individually.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/pcs/pcs-mtk-lynxi.c   | 22 ++++++++++++++++------
+ include/linux/pcs/pcs-mtk-lynxi.h |  3 ++-
+ 2 files changed, 18 insertions(+), 7 deletions(-)
+
+--- a/drivers/net/pcs/pcs-mtk-lynxi.c
++++ b/drivers/net/pcs/pcs-mtk-lynxi.c
+@@ -74,7 +74,8 @@
+ /* Register to QPHY wrapper control */
+ #define SGMSYS_QPHY_WRAP_CTRL		0xec
+ #define SGMII_PN_SWAP_MASK		GENMASK(1, 0)
+-#define SGMII_PN_SWAP_TX_RX		(BIT(0) | BIT(1))
++#define SGMII_PN_SWAP_RX		BIT(1)
++#define SGMII_PN_SWAP_TX		BIT(0)
+ 
+ #define MTK_NETSYS_V3_AMA_RGC3		0x128
+ 
+@@ -205,6 +206,7 @@ static int mtk_pcs_lynxi_config(struct p
+ 	struct mtk_pcs_lynxi *mpcs = pcs_to_mtk_pcs_lynxi(pcs);
+ 	bool mode_changed = false, changed;
+ 	unsigned int rgc3, sgm_mode, bmcr = 0, trxbuf_thr = 0x3112;
++	unsigned int pnswap_tx, pnswap_rx;
+ 	int advertise, link_timer;
+ 
+ 	advertise = phylink_mii_c22_pcs_encode_advertisement(interface,
+@@ -254,10 +256,14 @@ static int mtk_pcs_lynxi_config(struct p
+ 		regmap_set_bits(mpcs->regmap, SGMSYS_RESERVED_0,
+ 				SGMII_SW_RESET);
+ 
+-		if (mpcs->flags & MTK_SGMII_FLAG_PN_SWAP)
+-			regmap_update_bits(mpcs->regmap, SGMSYS_QPHY_WRAP_CTRL,
+-					   SGMII_PN_SWAP_MASK,
+-					   SGMII_PN_SWAP_TX_RX);
++		/* Configure the interface polarity */
++		pnswap_tx = (mpcs->flags & MTK_SGMII_FLAG_PN_SWAP_TX) ?
++			    SGMII_PN_SWAP_TX : 0;
++		pnswap_rx = (mpcs->flags & MTK_SGMII_FLAG_PN_SWAP_RX) ?
++			    SGMII_PN_SWAP_RX : 0;
++		regmap_update_bits(mpcs->regmap, SGMSYS_QPHY_WRAP_CTRL,
++				   SGMII_PN_SWAP_MASK,
++				   pnswap_tx | pnswap_rx);
+ 
+ 		if (interface == PHY_INTERFACE_MODE_2500BASEX)
+ 			rgc3 = SGMII_PHY_SPEED_3_125G;
+@@ -473,7 +479,11 @@ static int mtk_pcs_lynxi_probe(struct pl
+ 		return PTR_ERR(regmap);
+ 
+ 	if (of_property_read_bool(np->parent, "mediatek,pnswap"))
+-		flags |= MTK_SGMII_FLAG_PN_SWAP;
++		flags |= MTK_SGMII_FLAG_PN_SWAP_TX | MTK_SGMII_FLAG_PN_SWAP_RX;
++	else if (of_property_read_bool(np->parent, "mediatek,pnswap-tx"))
++		flags |= MTK_SGMII_FLAG_PN_SWAP_TX;
++	else if (of_property_read_bool(np->parent, "mediatek,pnswap-rx"))
++		flags |= MTK_SGMII_FLAG_PN_SWAP_RX;
+ 
+ 	if (of_property_read_bool(np->parent, "mediatek,phya_trx_ck"))
+ 		flags |= MTK_SGMII_FLAG_PHYA_TRX_CK;
+--- a/include/linux/pcs/pcs-mtk-lynxi.h
++++ b/include/linux/pcs/pcs-mtk-lynxi.h
+@@ -5,7 +5,8 @@
+ #include <linux/phylink.h>
+ #include <linux/regmap.h>
+ 
+-#define MTK_SGMII_FLAG_PN_SWAP BIT(0)
++#define MTK_SGMII_FLAG_PN_SWAP_TX BIT(0)
++#define MTK_SGMII_FLAG_PN_SWAP_RX BIT(1)
+ #define MTK_SGMII_FLAG_PHYA_TRX_CK BIT(2)
+ struct phylink_pcs *mtk_pcs_lynxi_create(struct device *dev,
+ 					 struct regmap *regmap,

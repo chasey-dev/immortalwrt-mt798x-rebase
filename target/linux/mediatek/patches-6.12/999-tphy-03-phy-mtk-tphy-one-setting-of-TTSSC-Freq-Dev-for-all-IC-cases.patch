@@ -1,0 +1,71 @@
+From 1a5aff4e4818671decde5efbe415c0f2985157c0 Mon Sep 17 00:00:00 2001
+From: Zhanyong Wang <zhanyong.wang@mediatek.com>
+Date: Fri, 2 Jun 2023 13:06:26 +0800
+Subject: [PATCH 3/6]
+
+---
+ drivers/phy/mediatek/phy-mtk-tphy.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/drivers/phy/mediatek/phy-mtk-tphy.c b/drivers/phy/mediatek/phy-mtk-tphy.c
+index 3e7b2f7d9796..d2a4cf21226b 100644
+--- a/drivers/phy/mediatek/phy-mtk-tphy.c
++++ b/drivers/phy/mediatek/phy-mtk-tphy.c
+@@ -204,6 +204,12 @@
+ #define U3P_U3_PHYD_RXDET2		0x12c
+ #define P3D_RG_RXDET_STB2_SET_P3	GENMASK(8, 0)
+ 
++#define U3P_U3_PHYD_REG19		0x338
++#define P3D_RG_PLL_SSC_DELTA1          GENMASK(15, 0)
++
++#define U3P_U3_PHYD_REG21		0x340
++#define P3D_RG_PLL_SSC_DELTA           GENMASK(31, 16)
++
+ #define U3P_SPLLC_XTALCTL3		0x018
+ #define XC3_RG_U3_XTAL_RX_PWD		BIT(9)
+ #define XC3_RG_U3_FRC_XTAL_RX_PWD	BIT(8)
+@@ -349,6 +355,8 @@ struct mtk_phy_instance {
+ 	int pre_emphasis;
+ 	bool bc12_en;
+ 	bool type_force_mode;
++	bool u3_pll_ssc_delta;
++	bool u3_pll_ssc_delta1;
+ };
+ 
+ struct mtk_tphy {
+@@ -829,6 +837,12 @@ static void u3_phy_instance_init(struct mtk_tphy *tphy,
+ 
+ 	mtk_phy_update_field(phyd + U3P_U3_PHYD_RXDET2, P3D_RG_RXDET_STB2_SET_P3, 0x10);
+ 
++	if (instance->u3_pll_ssc_delta1)
++		mtk_phy_update_field(phyd + U3P_U3_PHYD_REG19, P3D_RG_PLL_SSC_DELTA1, 0x1c3);
++
++	if (instance->u3_pll_ssc_delta)
++		mtk_phy_update_field(phyd + U3P_U3_PHYD_REG21, P3D_RG_PLL_SSC_DELTA, 0x1c3);
++
+ 	dev_dbg(tphy->dev, "%s(%d)\n", __func__, instance->index);
+ }
+ 
+@@ -1189,6 +1203,19 @@ static void phy_parse_property(struct mtk_tphy *tphy,
+ {
+ 	struct device *dev = &instance->phy->dev;
+ 
++	if (instance->type == PHY_TYPE_USB3) {
++		instance->u3_pll_ssc_delta =
++				device_property_read_bool(dev,
++				"mediatek,usb3-pll-ssc-delta");
++		instance->u3_pll_ssc_delta1 =
++				device_property_read_bool(dev,
++				"mediatek,usb3-pll-ssc-delta1");
++
++			dev_dbg(dev, "u3_pll_ssc_delta:%i, u3_pll_ssc_delta1:%i\n",
++				instance->u3_pll_ssc_delta,
++				instance->u3_pll_ssc_delta1);
++		}
++
+ 	if (instance->type == PHY_TYPE_USB3)
+ 		instance->type_force_mode = device_property_read_bool(dev, "mediatek,force-mode");
+ 
+-- 
+2.45.2
+

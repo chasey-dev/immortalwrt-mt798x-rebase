@@ -1,0 +1,72 @@
+From a0858742cbdb6b1774ebd67a2a7713d9d39001d0 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Mon, 22 Sep 2025 11:12:12 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add non-DSA devices handling to
+ mtk_device_event
+
+Without this patch, ETH is unable to set the QDMA maximum rate limit
+for non-DSA devices.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 25 ++++++++++++---------
+ 1 file changed, 15 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index 6d02b2a..efca93b 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -4166,35 +4166,40 @@ static int mtk_device_event(struct notifier_block *n, unsigned long event, void
+ 	struct net_device *ldev;
+ 	struct list_head *iter;
+ 	struct dsa_port *dp;
++	unsigned int queue;
+ 
+-	if (event != NETDEV_CHANGE)
++	if (event != NETDEV_CHANGE || dev->priv_flags & IFF_EBRIDGE)
+ 		return NOTIFY_DONE;
+ 
++	/* handle DSA switch devices event */
+ 	netdev_for_each_lower_dev(dev, ldev, iter) {
+ 		if (netdev_priv(ldev) == mac)
+ 			goto found;
+ 	}
+ 
++	/* handle non-DSA switch devices event */
++	if (netdev_priv(dev) == mac)
++		goto found;
++
+ 	return NOTIFY_DONE;
+ 
+ found:
+-	if (!dsa_user_dev_check(dev))
+-		return NOTIFY_DONE;
+-
+ 	if (__ethtool_get_link_ksettings(dev, &s))
+ 		return NOTIFY_DONE;
+ 
+ 	if (s.base.speed == 0 || s.base.speed == ((__u32)-1))
+ 		return NOTIFY_DONE;
+ 
+-	dp = dsa_port_from_netdev(dev);
+-	if (dp->index >= MTK_QDMA_NUM_QUEUES)
+-		return NOTIFY_DONE;
++	if (dsa_user_dev_check(dev)) {
++		dp = dsa_port_from_netdev(dev);
++		queue = dp->index + 3;
++	} else
++		queue = mac->id;
+ 
+-	if (mac->speed > 0 && mac->speed <= s.base.speed)
+-		s.base.speed = 0;
++	if (queue >= MTK_QDMA_NUM_QUEUES)
++		return NOTIFY_DONE;
+ 
+-	mtk_set_queue_speed(eth, dp->index + 3, s.base.speed);
++	mtk_set_queue_speed(eth, queue, s.base.speed);
+ 
+ 	return NOTIFY_DONE;
+ }
+-- 
+2.45.2
+

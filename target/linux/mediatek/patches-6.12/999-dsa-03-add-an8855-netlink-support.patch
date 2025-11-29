@@ -1,0 +1,584 @@
+From a78a0a0d3ded4a9dc1f570289f1c6bc0f272cd81 Mon Sep 17 00:00:00 2001
+From: "neal.yen" <neal.yen@mediatek.com>
+Date: Tue, 21 Oct 2025 16:18:39 +0800
+Subject: [PATCH] net: dsa: add an8855 netlink support for switch app
+
+
+diff --git a/drivers/net/dsa/Makefile b/drivers/net/dsa/Makefile
+index fd740d0..b329f0d 100644
+--- a/drivers/net/dsa/Makefile
++++ b/drivers/net/dsa/Makefile
+@@ -6,7 +6,8 @@ ifdef CONFIG_NET_DSA_LOOP
+ obj-$(CONFIG_FIXED_PHY)		+= dsa_loop_bdinfo.o
+ endif
+ obj-$(CONFIG_NET_DSA_KS8995) 	+= ks8995.o
+-obj-$(CONFIG_NET_DSA_AN8855)	+= an8855.o
++obj-$(CONFIG_NET_DSA_AN8855)    += an8855-dsa.o
++an8855-dsa-objs                 := an8855.o an8855_nl.o
+ obj-$(CONFIG_NET_DSA_LANTIQ_GSWIP) += lantiq_gswip.o
+ obj-$(CONFIG_NET_DSA_MT7530)    += mt7530-dsa.o
+ mt7530-dsa-objs                 := mt7530.o mt7530_nl.o
+diff --git a/drivers/net/dsa/an8855.c b/drivers/net/dsa/an8855.c
+index e6666d2..c184b84 100644
+--- a/drivers/net/dsa/an8855.c
++++ b/drivers/net/dsa/an8855.c
+@@ -10,15 +10,24 @@
+ #include <linux/gpio/consumer.h>
+ #include <linux/if_bridge.h>
+ #include <linux/iopoll.h>
++#include <linux/mfd/airoha-an8855-mfd.h>
+ #include <linux/netdevice.h>
+ #include <linux/of_net.h>
+ #include <linux/of_platform.h>
+ #include <linux/phylink.h>
+ #include <linux/platform_device.h>
++#include <linux/proc_fs.h>
+ #include <linux/regmap.h>
+ #include <net/dsa.h>
+ 
+ #include "an8855.h"
++#include "an8855_nl.h"
++
++#define ARHT_CHIP_NAME                  "an8855"
++#define ARHT_PROC_DIR                   "air_sw"
++#define ARHT_PROC_NODE_DEVICE           "device"
++
++struct proc_dir_entry *proc_an8855_dsa_dir;
+ 
+ static const struct an8855_mib_desc an8855_mib[] = {
+ 	MIB_DESC(1, AN8855_PORT_MIB_TX_DROP, "TxDrop"),
+@@ -128,6 +137,65 @@ static int an8855_fdb_cmd(struct an8855_priv *priv, u32 cmd,
+ 	return 0;
+ }
+ 
++void an8855_write(struct an8855_priv *priv, u32 reg, u32 val)
++{
++	regmap_write(priv->regmap, reg, val);
++}
++
++u32 an8855_read(struct an8855_priv *priv, u32 reg)
++{
++	u32 val;
++	int ret;
++
++	ret = regmap_read(priv->regmap, reg, &val);
++	if (ret)
++		return ret;
++
++	return val;
++}
++
++int an8855_phy_cl22_read(struct an8855_priv *priv, int port, int regnum)
++{
++	struct device *parent = priv->ds->dev->parent;
++	struct an8855_mfd_priv *mfd_priv = dev_get_drvdata(parent);
++	struct mii_bus *bus = mfd_priv->bus;
++
++	port += mfd_priv->switch_addr;
++	return mdiobus_read(bus, port, regnum);
++}
++
++int an8855_phy_cl22_write(struct an8855_priv *priv, int port, int regnum,
++			    u16 val)
++{
++	struct device *parent = priv->ds->dev->parent;
++	struct an8855_mfd_priv *mfd_priv = dev_get_drvdata(parent);
++	struct mii_bus *bus = mfd_priv->bus;
++
++	port += mfd_priv->switch_addr;
++	return mdiobus_write(bus, port, regnum, val);
++}
++
++int an8855_phy_cl45_read(struct an8855_priv *priv, int port, int devad, int regnum)
++{
++	struct device *parent = priv->ds->dev->parent;
++	struct an8855_mfd_priv *mfd_priv = dev_get_drvdata(parent);
++	struct mii_bus *bus = mfd_priv->bus;
++
++	port += mfd_priv->switch_addr;
++	return mdiobus_c45_read(bus, port, devad, regnum);
++}
++
++int an8855_phy_cl45_write(struct an8855_priv *priv, int port, int devad, int regnum,
++		      u16 val)
++{
++	struct device *parent = priv->ds->dev->parent;
++	struct an8855_mfd_priv *mfd_priv = dev_get_drvdata(parent);
++	struct mii_bus *bus = mfd_priv->bus;
++
++	port += mfd_priv->switch_addr;
++	return mdiobus_c45_write(bus, port, devad, regnum, val);
++}
++
+ static void
+ an8855_port_stp_state_set(struct dsa_switch *ds, int port, u8 state)
+ {
+@@ -2152,6 +2220,41 @@ static void an8855_pcs_an_restart(struct phylink_pcs *pcs)
+ 	return;
+ }
+ 
++static int an8855_proc_device_read(struct seq_file *seq, void *v)
++{
++	seq_printf(seq, "%s\n", ARHT_CHIP_NAME);
++
++	return 0;
++}
++
++static int an8855_proc_device_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, an8855_proc_device_read, 0);
++}
++
++static const struct proc_ops an8855_proc_device_fops = {
++	.proc_open	= an8855_proc_device_open,
++	.proc_read	= seq_read,
++	.proc_lseek	= seq_lseek,
++	.proc_release	= single_release,
++};
++
++static int an8855_proc_device_init(void)
++{
++	if (!proc_an8855_dsa_dir)
++		proc_an8855_dsa_dir = proc_mkdir(ARHT_PROC_DIR, 0);
++
++	proc_create(ARHT_PROC_NODE_DEVICE, 0400, proc_an8855_dsa_dir,
++			&an8855_proc_device_fops);
++
++	return 0;
++}
++
++static void an8855_proc_device_exit(void)
++{
++	remove_proc_entry(ARHT_PROC_NODE_DEVICE, 0);
++}
++
+ static const struct phylink_pcs_ops an8855_pcs_ops = {
+ 	.pcs_inband_caps = an8855_pcs_inband_caps,
+ 	.pcs_get_state = an8855_pcs_get_state,
+@@ -2275,7 +2378,22 @@ static int an8855_switch_probe(struct platform_device *pdev)
+ 
+ 	dev_set_drvdata(priv->dev, priv);
+ 
+-	return dsa_register_switch(priv->ds);
++	ret = dsa_register_switch(priv->ds);
++	if (ret) {
++		dev_err(priv->dev, "Failed to register DSA switch: %d\n", ret);
++		return ret;
++	}
++
++	ret = an8855_nl_init(&priv);
++	if (ret) {
++		dev_err(priv->dev, "Failed to initialize netlink with DSA: %d\n", ret);
++		dsa_unregister_switch(priv->ds);
++		return ret;
++	}
++
++	an8855_proc_device_init();
++
++	return 0;
+ }
+ 
+ static void an8855_switch_remove(struct platform_device *pdev)
+@@ -2284,6 +2402,8 @@ static void an8855_switch_remove(struct platform_device *pdev)
+ 
+ 	if (priv)
+ 		dsa_unregister_switch(priv->ds);
++	an8855_nl_exit();
++	an8855_proc_device_exit();
+ }
+ 
+ static const struct of_device_id an8855_switch_of_match[] = {
+diff --git a/drivers/net/dsa/an8855.h b/drivers/net/dsa/an8855.h
+index 2462b9d..47bfea7 100644
+--- a/drivers/net/dsa/an8855.h
++++ b/drivers/net/dsa/an8855.h
+@@ -780,4 +780,13 @@ struct an8855_priv {
+ 	bool phy_require_calib;
+ };
+ 
++u32 an8855_read(struct an8855_priv *priv, u32 reg);
++void an8855_write(struct an8855_priv *priv, u32 reg, u32 val);
++int an8855_phy_cl22_read(struct an8855_priv *priv, int port, int regnum);
++int an8855_phy_cl22_write(struct an8855_priv *priv, int port, int regnum,
++	u16 val);
++int an8855_phy_cl45_read(struct an8855_priv *priv, int port, int devad, int regnum);
++int an8855_phy_cl45_write(struct an8855_priv *priv, int port, int devad, int regnum,
++	u16 val);
++
+ #endif /* __AN8855_H */
+diff --git a/drivers/net/dsa/an8855_nl.c b/drivers/net/dsa/an8855_nl.c
+new file mode 100644
+index 0000000..ad4845e
+--- /dev/null
++++ b/drivers/net/dsa/an8855_nl.c
+@@ -0,0 +1,318 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) 2023 Airoha Inc.
++ * Author: Min Yao <min.yao@airoha.com>
++ */
++
++#include <linux/types.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/init.h>
++#include <net/genetlink.h>
++#include <linux/of_mdio.h>
++#include <linux/phylink.h>
++#include <net/dsa.h>
++
++#include "an8855.h"
++#include "an8855_nl.h"
++
++struct an8855_nl_cmd_item {
++	enum an8855_cmd cmd;
++	bool require_dev;
++	int (*process)(struct genl_info *info);
++	u32 nr_required_attrs;
++	const enum an8855_attr *required_attrs;
++};
++
++struct an8855_priv *an8855_sw_priv;
++
++static DEFINE_MUTEX(an8855_devs_lock);
++
++static void an8855_put(void)
++{
++	mutex_unlock(&an8855_devs_lock);
++}
++
++static void an8855_lock(void)
++{
++	mutex_lock(&an8855_devs_lock);
++}
++
++static int an8855_nl_response(struct sk_buff *skb, struct genl_info *info);
++
++static const struct nla_policy an8855_nl_cmd_policy[] = {
++	[AN8855_ATTR_TYPE_MESG] = {.type = NLA_STRING},
++	[AN8855_ATTR_TYPE_PHY] = {.type = NLA_S32},
++	[AN8855_ATTR_TYPE_REG] = {.type = NLA_U32},
++	[AN8855_ATTR_TYPE_VAL] = {.type = NLA_U32},
++	[AN8855_ATTR_TYPE_DEV_NAME] = {.type = NLA_S32},
++	[AN8855_ATTR_TYPE_DEV_ID] = {.type = NLA_S32},
++	[AN8855_ATTR_TYPE_DEVAD] = {.type = NLA_S32},
++};
++
++static const struct genl_ops an8855_nl_ops[] = {
++	{
++		.cmd = AN8855_CMD_REQUEST,
++		.doit = an8855_nl_response,
++		.flags = GENL_ADMIN_PERM,
++	},
++	{
++		.cmd = AN8855_CMD_READ,
++		.doit = an8855_nl_response,
++		.flags = GENL_ADMIN_PERM,
++	},
++	{
++		.cmd = AN8855_CMD_WRITE,
++		.doit = an8855_nl_response,
++		.flags = GENL_ADMIN_PERM,
++	},
++};
++
++static struct genl_family an8855_nl_family = {
++	.name = AN8855_DSA_GENL_NAME,
++	.version = AN8855_GENL_VERSION,
++	.maxattr = AN8855_NR_ATTR_TYPE,
++	.ops = an8855_nl_ops,
++	.n_ops = ARRAY_SIZE(an8855_nl_ops),
++	.policy = an8855_nl_cmd_policy,
++};
++
++static int
++an8855_nl_prepare_reply(struct genl_info *info, u8 cmd,
++				   struct sk_buff **skbp)
++{
++	struct sk_buff *msg;
++	void *reply;
++
++	if (!info)
++		return -EINVAL;
++
++	msg = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
++	if (!msg)
++		return -ENOMEM;
++
++	/* Construct send-back message header */
++	reply = genlmsg_put(msg, info->snd_portid, info->snd_seq,
++				&an8855_nl_family, 0, cmd);
++	if (!reply) {
++		nlmsg_free(msg);
++		return -EINVAL;
++	}
++
++	*skbp = msg;
++	return 0;
++}
++
++static int
++an8855_nl_send_reply(struct sk_buff *skb, struct genl_info *info)
++{
++	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(skb));
++	void *reply = genlmsg_data(genlhdr);
++
++	/* Finalize a generic netlink message (update message header) */
++	genlmsg_end(skb, reply);
++
++	/* reply to a request */
++	return genlmsg_reply(skb, info);
++}
++
++static s32
++an8855_nl_get_s32(struct genl_info *info, enum an8855_attr attr,
++				 s32 defval)
++{
++	struct nlattr *na;
++
++	na = info->attrs[attr];
++	if (na)
++		return nla_get_s32(na);
++
++	return defval;
++}
++
++static int
++an8855_nl_get_u32(struct genl_info *info, enum an8855_attr attr,
++				 u32 *val)
++{
++	struct nlattr *na;
++
++	na = info->attrs[attr];
++	if (na) {
++		*val = nla_get_u32(na);
++		return 0;
++	}
++
++	return -1;
++}
++
++static int
++an8855_nl_reply_read(struct genl_info *info)
++{
++	struct sk_buff *rep_skb = NULL;
++	s32 phy, devad;
++	u32 reg = 0;
++	int value = 0;
++	int ret = 0;
++
++	phy = an8855_nl_get_s32(info, AN8855_ATTR_TYPE_PHY, -1);
++	devad = an8855_nl_get_s32(info, AN8855_ATTR_TYPE_DEVAD, -1);
++
++	if (an8855_nl_get_u32(info, AN8855_ATTR_TYPE_REG, &reg))
++		goto err;
++
++	ret = an8855_nl_prepare_reply(info, AN8855_CMD_READ, &rep_skb);
++	if (ret < 0)
++		goto err;
++	if (phy >= 0) {
++		if (devad < 0)
++			value = an8855_phy_cl22_read(an8855_sw_priv, phy, reg);
++		else
++			value =	an8855_phy_cl45_read(an8855_sw_priv, phy,
++						devad, reg);
++	} else
++		value = an8855_read(an8855_sw_priv, reg);
++	ret = nla_put_u32(rep_skb, AN8855_ATTR_TYPE_REG, reg);
++	if (ret < 0)
++		goto err;
++
++	ret = nla_put_u32(rep_skb, AN8855_ATTR_TYPE_VAL, value);
++	if (ret < 0)
++		goto err;
++
++	return an8855_nl_send_reply(rep_skb, info);
++
++err:
++	if (rep_skb)
++		nlmsg_free(rep_skb);
++
++	return ret;
++}
++
++static int
++an8855_nl_reply_write(struct genl_info *info)
++{
++	struct sk_buff *rep_skb = NULL;
++	s32 phy, devad;
++	u32 value = 0, reg = 0;
++	int ret = 0;
++
++	phy = an8855_nl_get_s32(info, AN8855_ATTR_TYPE_PHY, -1);
++	devad = an8855_nl_get_s32(info, AN8855_ATTR_TYPE_DEVAD, -1);
++	if (an8855_nl_get_u32(info, AN8855_ATTR_TYPE_REG, &reg))
++		goto err;
++
++	if (an8855_nl_get_u32(info, AN8855_ATTR_TYPE_VAL, &value))
++		goto err;
++
++	ret = an8855_nl_prepare_reply(info, AN8855_CMD_WRITE, &rep_skb);
++	if (ret < 0)
++		goto err;
++	if (phy >= 0) {
++		if (devad < 0)
++			an8855_phy_cl22_write(an8855_sw_priv, phy, reg, value);
++		else
++			an8855_phy_cl45_write(an8855_sw_priv, phy, devad, reg,
++					  value);
++	} else
++		an8855_write(an8855_sw_priv, reg, value);
++	ret = nla_put_u32(rep_skb, AN8855_ATTR_TYPE_REG, reg);
++	if (ret < 0)
++		goto err;
++
++	ret = nla_put_u32(rep_skb, AN8855_ATTR_TYPE_VAL, value);
++	if (ret < 0)
++		goto err;
++
++	return an8855_nl_send_reply(rep_skb, info);
++
++err:
++	if (rep_skb)
++		nlmsg_free(rep_skb);
++
++	return ret;
++}
++
++static const enum an8855_attr an8855_nl_cmd_read_attrs[] = {
++	AN8855_ATTR_TYPE_REG
++};
++
++static const enum an8855_attr an8855_nl_cmd_write_attrs[] = {
++	AN8855_ATTR_TYPE_REG,
++	AN8855_ATTR_TYPE_VAL
++};
++
++static const struct an8855_nl_cmd_item an8855_nl_cmds[] = {
++	{
++	 .cmd = AN8855_CMD_READ,
++	 .require_dev = true,
++	 .process = an8855_nl_reply_read,
++	 .required_attrs = an8855_nl_cmd_read_attrs,
++	 .nr_required_attrs = ARRAY_SIZE(an8855_nl_cmd_read_attrs),
++	},
++	{
++		 .cmd = AN8855_CMD_WRITE,
++		 .require_dev = true,
++		 .process = an8855_nl_reply_write,
++		 .required_attrs = an8855_nl_cmd_write_attrs,
++		 .nr_required_attrs = ARRAY_SIZE(an8855_nl_cmd_write_attrs),
++	}
++};
++
++static int
++an8855_nl_response(struct sk_buff *skb, struct genl_info *info)
++{
++	struct genlmsghdr *hdr = nlmsg_data(info->nlhdr);
++	const struct an8855_nl_cmd_item *cmditem = NULL;
++	u32 sat_req_attrs = 0;
++	int i, ret;
++
++	for (i = 0; i < ARRAY_SIZE(an8855_nl_cmds); i++) {
++		if (hdr->cmd == an8855_nl_cmds[i].cmd) {
++			cmditem = &an8855_nl_cmds[i];
++			break;
++		}
++	}
++
++	if (!cmditem) {
++		pr_info("an8855-nl: unknown cmd %u\n", hdr->cmd);
++		return -EINVAL;
++	}
++
++	for (i = 0; i < cmditem->nr_required_attrs; i++) {
++		if (info->attrs[cmditem->required_attrs[i]])
++			sat_req_attrs++;
++	}
++
++	if (sat_req_attrs != cmditem->nr_required_attrs) {
++		pr_info("an8855-nl: missing required attr(s) for cmd %u\n",
++			hdr->cmd);
++		return -EINVAL;
++	}
++
++	an8855_lock();
++	ret = cmditem->process(info);
++	an8855_put();
++
++	return ret;
++}
++
++int
++an8855_nl_init(struct an8855_priv **priv)
++{
++	int ret;
++
++	pr_info("an8855-nl: genl_register_family_with_ops\n");
++
++	an8855_sw_priv = *priv;
++	ret = genl_register_family(&an8855_nl_family);
++	if (ret)
++		return ret;
++
++	return 0;
++}
++
++void
++an8855_nl_exit(void)
++{
++	an8855_sw_priv = NULL;
++	genl_unregister_family(&an8855_nl_family);
++}
+diff --git a/drivers/net/dsa/an8855_nl.h b/drivers/net/dsa/an8855_nl.h
+new file mode 100644
+index 0000000..f8a462d
+--- /dev/null
++++ b/drivers/net/dsa/an8855_nl.h
+@@ -0,0 +1,43 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) 2023 Airoha Inc.
++ * Author: Min Yao <min.yao@airoha.com>
++ */
++
++#ifndef _AN8855_NL_H_
++#define _AN8855_NL_H_
++
++#define AN8855_DSA_GENL_NAME "an8855_dsa"
++#define AN8855_GENL_VERSION		0x1
++
++enum an8855_cmd {
++	AN8855_CMD_UNSPEC = 0,
++	AN8855_CMD_REQUEST,
++	AN8855_CMD_REPLY,
++	AN8855_CMD_READ,
++	AN8855_CMD_WRITE,
++
++	__AN8855_CMD_MAX,
++};
++
++enum an8855_attr {
++	AN8855_ATTR_TYPE_UNSPEC = 0,
++	AN8855_ATTR_TYPE_MESG,
++	AN8855_ATTR_TYPE_PHY,
++	AN8855_ATTR_TYPE_DEVAD,
++	AN8855_ATTR_TYPE_REG,
++	AN8855_ATTR_TYPE_VAL,
++	AN8855_ATTR_TYPE_DEV_NAME,
++	AN8855_ATTR_TYPE_DEV_ID,
++
++	__AN8855_ATTR_TYPE_MAX,
++};
++
++#define AN8855_NR_ATTR_TYPE		(__AN8855_ATTR_TYPE_MAX - 1)
++
++#ifdef __KERNEL__
++int an8855_nl_init(struct an8855_priv **priv);
++void an8855_nl_exit(void);
++#endif /* __KERNEL__ */
++
++#endif /* _AN8855_NL_H_ */
+-- 
+2.45.2
+

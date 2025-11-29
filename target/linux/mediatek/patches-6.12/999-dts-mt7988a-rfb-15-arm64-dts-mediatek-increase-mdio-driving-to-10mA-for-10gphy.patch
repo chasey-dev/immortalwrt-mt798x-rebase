@@ -1,0 +1,28 @@
+From c8ec5f7eb607fdf2cb111cb7b0fc256b762f4dba Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Mon, 10 Nov 2025 09:25:37 +0800
+Subject: [PATCH] arm64: dts: mt7988a: increase mdio driving to 10mA for 10gphy
+
+To align with the internal Kernel-5.4 settings for MDIO driving.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts b/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
+index 96a6960..82c3b74 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
+@@ -286,7 +286,7 @@ mux {
+ 
+ 		conf {
+ 			groups = "mdc_mdio0";
+-			drive-strength = <MTK_DRIVE_8mA>;
++			drive-strength = <MTK_DRIVE_10mA>;
+ 		};
+ 	};
+ 
+-- 
+2.45.2
+

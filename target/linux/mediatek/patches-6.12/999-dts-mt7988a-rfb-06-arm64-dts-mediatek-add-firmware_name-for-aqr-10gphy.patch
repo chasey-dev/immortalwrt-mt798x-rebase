@@ -1,0 +1,42 @@
+From 027156a755873f87425ad56aee397b7881ffb11d Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Fri, 3 Oct 2025 10:36:34 +0800
+Subject: [PATCH] arm64: dts: mt7988: add firmware_name for aqr 10gphy
+
+Without this patch, users are unable to bring up the AQR113C on the MTK
+RFB.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+
+---
+ arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-aqr.dtso | 1 +
+ arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-aqr.dtso | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-aqr.dtso b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-aqr.dtso
+index d21a61a..58a20be 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-aqr.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-aqr.dtso
+@@ -22,6 +22,7 @@ __overlay__ {
+ 			phy0: ethernet-phy@0 {
+ 				reg = <0>;
+ 				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "Rhe-05.06-Candidate9-AQR_Mediatek_23B_P5_ID45824_LCLVER1.cld";
+ 				reset-gpios = <&pio 72 GPIO_ACTIVE_LOW>;
+ 				reset-assert-us = <100000>;
+ 				reset-deassert-us = <221000>;
+diff --git a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-aqr.dtso b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-aqr.dtso
+index 140391f..6d90fc9 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-aqr.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-aqr.dtso
+@@ -22,6 +22,7 @@ __overlay__ {
+ 			phy8: ethernet-phy@8 {
+ 				reg = <8>;
+ 				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "Rhe-05.06-Candidate9-AQR_Mediatek_23B_P5_ID45824_LCLVER1.cld";
+ 				reset-gpios = <&pio 71 GPIO_ACTIVE_LOW>;
+ 				reset-assert-us = <100000>;
+ 				reset-deassert-us = <221000>;
+-- 
+2.45.2
+

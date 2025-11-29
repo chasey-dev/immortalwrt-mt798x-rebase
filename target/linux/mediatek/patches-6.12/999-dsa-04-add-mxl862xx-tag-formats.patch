@@ -1,0 +1,341 @@
+From fd1cec7529fe1ddc0974042b6512c9652ea6dec0 Mon Sep 17 00:00:00 2001
+From: "neal.yen" <neal.yen@mediatek.com>
+Date: Mon, 3 Nov 2025 10:13:05 +0800
+Subject: [PATCH] net: dsa: add tag formats for MaxLinear switches
+
+The MaxLinear MXL862xx family of switches can either be used with a
+8-byte proprietary special tag or utilizing IEEE 802.1ad (aka. Q-in-Q)
+VLANs to destinguish user ports. 
+Add support for both tag formats.
+
+diff --git a/include/net/dsa.h b/include/net/dsa.h
+index 6f2a397..5ccd598 100644
+--- a/include/net/dsa.h
++++ b/include/net/dsa.h
+@@ -55,6 +55,8 @@ struct tc_action;
+ #define DSA_TAG_PROTO_LAN937X_VALUE		27
+ #define DSA_TAG_PROTO_VSC73XX_8021Q_VALUE	28
+ #define DSA_TAG_PROTO_BRCM_LEGACY_FCS_VALUE	29
++#define DSA_TAG_PROTO_MXL862_VALUE		30
++#define DSA_TAG_PROTO_MXL862_8021Q_VALUE	31
+ 
+ enum dsa_tag_protocol {
+ 	DSA_TAG_PROTO_NONE		= DSA_TAG_PROTO_NONE_VALUE,
+@@ -87,6 +89,8 @@ enum dsa_tag_protocol {
+ 	DSA_TAG_PROTO_RZN1_A5PSW	= DSA_TAG_PROTO_RZN1_A5PSW_VALUE,
+ 	DSA_TAG_PROTO_LAN937X		= DSA_TAG_PROTO_LAN937X_VALUE,
+ 	DSA_TAG_PROTO_VSC73XX_8021Q	= DSA_TAG_PROTO_VSC73XX_8021Q_VALUE,
++	DSA_TAG_PROTO_MXL862		= DSA_TAG_PROTO_MXL862_VALUE,
++	DSA_TAG_PROTO_MXL862_8021Q	= DSA_TAG_PROTO_MXL862_8021Q_VALUE,
+ };
+ 
+ struct dsa_switch;
+diff --git a/net/dsa/Kconfig b/net/dsa/Kconfig
+index 869cbe5..a05fe9c 100644
+--- a/net/dsa/Kconfig
++++ b/net/dsa/Kconfig
+@@ -137,6 +137,19 @@ config NET_DSA_TAG_QCA
+ 	  Say Y or M if you want to enable support for tagging frames for
+ 	  the Qualcomm Atheros QCA8K switches.
+ 
++config NET_DSA_TAG_MXL862
++	tristate "Tag driver for MxL862xx switches"
++	help
++	  Say Y or M if you want to enable support for tagging frames for the
++	  Maxlinear MxL862xx switches.
++
++config NET_DSA_TAG_MXL862_8021Q
++	tristate "Tag driver for MxL862xx switches, based on VLAN tags"
++	help
++	  Say Y or M if you want to enable support for tagging frames for the
++	  Maxlinear MxL862xx switches. This tagging variant is based on 4-byte wide VLAN
++	  tags
++
+ config NET_DSA_TAG_RTL4_A
+ 	tristate "Tag driver for Realtek 4 byte protocol A tags"
+ 	help
+diff --git a/net/dsa/Makefile b/net/dsa/Makefile
+index 555c07c..7e774e2 100644
+--- a/net/dsa/Makefile
++++ b/net/dsa/Makefile
+@@ -28,6 +28,8 @@ obj-$(CONFIG_NET_DSA_TAG_HELLCREEK) += tag_hellcreek.o
+ obj-$(CONFIG_NET_DSA_TAG_KSZ) += tag_ksz.o
+ obj-$(CONFIG_NET_DSA_TAG_LAN9303) += tag_lan9303.o
+ obj-$(CONFIG_NET_DSA_TAG_MTK) += tag_mtk.o
++obj-$(CONFIG_NET_DSA_TAG_MXL862) += tag_mxl862xx.o
++obj-$(CONFIG_NET_DSA_TAG_MXL862_8021Q) += tag_mxl862xx_8021q.o
+ obj-$(CONFIG_NET_DSA_TAG_NONE) += tag_none.o
+ obj-$(CONFIG_NET_DSA_TAG_OCELOT) += tag_ocelot.o
+ obj-$(CONFIG_NET_DSA_TAG_OCELOT_8021Q) += tag_ocelot_8021q.o
+diff --git a/net/dsa/tag_mxl862xx.c b/net/dsa/tag_mxl862xx.c
+new file mode 100644
+index 0000000..b07116e
+--- /dev/null
++++ b/net/dsa/tag_mxl862xx.c
+@@ -0,0 +1,165 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * net/dsa/tag_mxl862xx.c - DSA driver Special Tag support for MaxLinear 862xx switch chips
++ *
++ * Copyright (C) 2024 MaxLinear Inc.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version 2
++ * of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
++ *
++ */
++
++#include <linux/bitops.h>
++#include <linux/etherdevice.h>
++#include <linux/skbuff.h>
++#include <net/dsa.h>
++#include "tag.h"
++
++#define MXL862_TAG_NAME	"mxl862"
++
++/* To define the outgoing port and to discover the incoming port a special
++ * tag is used by the GSW1xx.
++ *
++ *       Dest MAC       Src MAC    special TAG        EtherType
++ * ...| 1 2 3 4 5 6 | 1 2 3 4 5 6 | 1 2 3 4 5 6 7 8 | 1 2 |...
++ *                                |<--------------->|
++ */
++
++/* special tag in TX path header */
++#define MXL862_TX_HEADER_LEN 8
++
++#define MXL862_RX_HEADER_LEN 8
++
++/* Byte 7 */
++#define MXL862_IGP_EGP_SHIFT 0
++#define MXL862_IGP_EGP_MASK GENMASK(3, 0)
++
++static int mxl862_dsa_port_to_tag_port(const int in_dsa_port)
++{
++	if (in_dsa_port < 15)
++		return in_dsa_port + 1;
++
++	dev_err_ratelimited(NULL, "%s Wrong in_dsa_port value: %d\n", __FILE__, in_dsa_port);
++	return 0;
++}
++
++static int mxl862_tag_port_to_dsa_port(const int in_hw_port)
++{
++	if (in_hw_port >= 1 && in_hw_port <= 15)
++		return in_hw_port - 1;
++
++	dev_err_ratelimited(NULL, "%s Wrong in_hw_port value: %d\n", __FILE__, in_hw_port);
++	return 0;
++}
++
++static struct sk_buff *mxl862_tag_xmit(struct sk_buff *skb,
++				       struct net_device *dev)
++{
++	struct dsa_port *dp = dsa_user_to_port(dev);
++	struct dsa_port *cpu_dp = dp->cpu_dp;
++	unsigned int cpu_port = mxl862_dsa_port_to_tag_port(cpu_dp->index);
++	unsigned int usr_port = mxl862_dsa_port_to_tag_port(dp->index);
++
++	u8 *mxl862_tag;
++
++	if (skb == NULL)
++		return skb;
++
++	/* provide additional space 'MXL862_TX_HEADER_LEN' bytes */
++	skb_push(skb, MXL862_TX_HEADER_LEN);
++
++	/* shift MAC address to the beginnig of the enlarged buffer,
++	 * releasing the space required for DSA tag (between MAC address and Ethertype) */
++	memmove(skb->data, skb->data + MXL862_TX_HEADER_LEN, 2 * ETH_ALEN);
++
++	/* special tag ingress */
++	mxl862_tag = skb->data + 2 * ETH_ALEN;
++	mxl862_tag[0] = 0x88;
++	mxl862_tag[1] = 0xc3;
++	mxl862_tag[2] = 0;
++	mxl862_tag[3] = 0;
++	mxl862_tag[4] = 0;
++	mxl862_tag[5] = usr_port + 16 - cpu_port;
++	mxl862_tag[6] = 0;
++	mxl862_tag[7] = (cpu_port)&MXL862_IGP_EGP_MASK;
++
++	return skb;
++}
++
++static struct sk_buff *mxl862_tag_rcv(struct sk_buff *skb,
++				      struct net_device *dev)
++{
++	int port, usr_port;
++	u8 *mxl862_tag;
++
++	if (unlikely(!pskb_may_pull(skb, MXL862_RX_HEADER_LEN))) {
++		dev_warn_ratelimited(&dev->dev,
++				     "Dropping packet, cannot pull SKB\n");
++		return NULL;
++	}
++
++	mxl862_tag = skb->data - 2;
++
++	if ((mxl862_tag[0] != 0x88) && (mxl862_tag[1] != 0xc3)) {
++		dev_warn_ratelimited(
++			&dev->dev,
++			"Dropping packet due to invalid special tag marker\n");
++		dev_warn_ratelimited(
++			&dev->dev,
++			"Rx Packet Tag: 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x\n",
++			mxl862_tag[0], mxl862_tag[1], mxl862_tag[2],
++			mxl862_tag[3], mxl862_tag[4], mxl862_tag[5],
++			mxl862_tag[6], mxl862_tag[7]);
++		return NULL;
++	}
++
++	/* Get source port information */
++	port = (mxl862_tag[7] & MXL862_IGP_EGP_MASK) >> MXL862_IGP_EGP_SHIFT;
++	usr_port = mxl862_tag_port_to_dsa_port(port);
++	skb->dev = dsa_conduit_find_user(dev, 0, usr_port);
++	if (!skb->dev) {
++		dev_warn_ratelimited(
++			&dev->dev,
++			"Dropping packet due to invalid source port (hw %d, usr %d)\n",
++			port, usr_port);
++		dev_warn_ratelimited(
++			&dev->dev,
++			"Rx Packet Tag: 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x\n",
++			mxl862_tag[0], mxl862_tag[1], mxl862_tag[2],
++			mxl862_tag[3], mxl862_tag[4], mxl862_tag[5],
++			mxl862_tag[6], mxl862_tag[7]);
++		return NULL;
++	}
++
++	/* remove the MxL862xx special tag between the MAC addresses and the current ethertype field. */
++	skb_pull_rcsum(skb, MXL862_RX_HEADER_LEN);
++	memmove(skb->data - ETH_HLEN,
++		skb->data - (ETH_HLEN + MXL862_RX_HEADER_LEN), 2 * ETH_ALEN);
++	dsa_default_offload_fwd_mark(skb);
++
++	return skb;
++}
++
++static const struct dsa_device_ops mxl862_netdev_ops = {
++	.name = MXL862_TAG_NAME,
++	.proto = DSA_TAG_PROTO_MXL862,
++	.xmit = mxl862_tag_xmit,
++	.rcv = mxl862_tag_rcv,
++	.needed_headroom = MXL862_RX_HEADER_LEN,
++};
++
++MODULE_LICENSE("GPL");
++MODULE_ALIAS_DSA_TAG_DRIVER(DSA_TAG_PROTO_MXL862, MXL862_TAG_NAME);
++module_dsa_tag_driver(mxl862_netdev_ops);
++
+diff --git a/net/dsa/tag_mxl862xx_8021q.c b/net/dsa/tag_mxl862xx_8021q.c
+new file mode 100644
+index 0000000..e761034
+--- /dev/null
++++ b/net/dsa/tag_mxl862xx_8021q.c
+@@ -0,0 +1,92 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * net/dsa/tag_mxl862xx_8021q.c - DSA driver 802.1q based Special Tag support for MaxLinear 862xx switch chips
++ *
++ * Copyright (C) 2024 MaxLinear Inc.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version 2
++ * of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
++ *
++ */
++
++#include <linux/dsa/8021q.h>
++#include "tag_8021q.h"
++#include "tag.h"
++
++
++#define MXL862_TAG_8021Q_NAME	"mxl862_8021q"
++
++/* To define the outgoing port and to discover the incoming port
++ * a special 4-byte outer VLAN tag is used by the MxL862xx.
++ *
++ *       Dest MAC       Src MAC    special   optional  EtherType
++ *                                 outer     inner
++ *                                 VLAN tag  tag(s)
++ * ...| 1 2 3 4 5 6 | 1 2 3 4 5 6 | 1 2 3 4 | 1 2 3 4 | 1 2 |...
++ *                                |<------->|
++ */
++
++/* special tag in TX path header */
++
++static struct sk_buff *mxl862_8021q_tag_xmit(struct sk_buff *skb,
++				      struct net_device *dev)
++{
++	struct dsa_port *dp = dsa_user_to_port(dev);
++
++	u16 tx_vid = dsa_tag_8021q_standalone_vid(dp);
++	u16 queue_mapping = skb_get_queue_mapping(skb);
++	u8 pcp = netdev_txq_to_tc(dev, queue_mapping);
++
++	dsa_8021q_xmit(skb, dev, ETH_P_8021Q,
++			      ((pcp << VLAN_PRIO_SHIFT) | tx_vid));
++
++	return skb;
++}
++
++static struct sk_buff *mxl862_8021q_tag_rcv(struct sk_buff *skb,
++				      struct net_device *dev)
++{
++	int src_port = -1;
++	int switch_id = -1;
++
++	/* removes Outer VLAN tag */
++	dsa_8021q_rcv(skb, &src_port, &switch_id, NULL, NULL);
++	if (src_port == -1 || switch_id == -1) {
++		dev_warn_ratelimited(&dev->dev, "Dropping packet due to invalid outer 802.1Q tag: switch %d port %d\n", switch_id, src_port);
++		return NULL;
++	}
++
++	skb->dev = dsa_conduit_find_user(dev, switch_id, src_port);
++	if (!skb->dev) {
++		dev_warn_ratelimited(&dev->dev, "Dropping packet due to invalid source port: %d\n", src_port);
++		return NULL;
++	}
++
++	dsa_default_offload_fwd_mark(skb);
++
++	return skb;
++}
++
++static const struct dsa_device_ops mxl862_8021q_netdev_ops = {
++	.name = MXL862_TAG_8021Q_NAME,
++	.proto = DSA_TAG_PROTO_MXL862_8021Q,
++	.xmit = mxl862_8021q_tag_xmit,
++	.rcv = mxl862_8021q_tag_rcv,
++	.needed_headroom	= VLAN_HLEN,
++	.promisc_on_conduit = true,
++};
++
++MODULE_LICENSE("GPL");
++MODULE_ALIAS_DSA_TAG_DRIVER(DSA_TAG_PROTO_MXL862_8021Q, MXL862_TAG_8021Q_NAME);
++module_dsa_tag_driver(mxl862_8021q_netdev_ops);
+-- 
+2.45.2
+

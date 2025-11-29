@@ -1,0 +1,26 @@
+From 5db3f26b17830e5468b06a6757f23c3b03e25918 Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Fri, 3 Oct 2025 11:22:02 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add skb mark support for qos
+
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index 81773ee..b578511 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -5971,6 +5971,9 @@ static u16 mtk_select_queue(struct net_device *dev, struct sk_buff *skb,
+ 	struct mtk_mac *mac = netdev_priv(dev);
+ 	unsigned int queue = 0;
+ 
++	if (skb->mark > 0 && skb->mark < dev->num_tx_queues)
++		return skb->mark;
++
+ 	if (netdev_uses_dsa(dev))
+ 		queue = skb_get_queue_mapping(skb) + 3;
+ 	else
+-- 
+2.45.2
+

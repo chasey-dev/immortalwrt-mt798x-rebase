@@ -1,0 +1,86 @@
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb-spim-nand-nmbm.dtso
+@@ -0,0 +1,71 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR MIT) */
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++&{/chosen} {
++	rootdisk-spim-nand = <&ubi_rootfs>;
++	bootargs-append = " ubi.block=0,firmware root=/dev/fit0 rootwait";
++};
++
++&{/soc/spi@1100a000} {
++	status = "okay";
++
++	flash@0 {
++		compatible = "spi-nand";
++		reg = <0>;
++		spi-max-frequency = <52000000>;
++		spi-tx-bus-width = <4>;
++		spi-rx-bus-width = <4>;
++		mediatek,nmbm;
++		mediatek,bmt-max-ratio = <1>;
++		mediatek,bmt-max-reserved-blocks = <64>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "BL2";
++				reg = <0x00000 0x0100000>;
++				read-only;
++			};
++
++			partition@100000 {
++				label = "u-boot-env";
++				reg = <0x0100000 0x0080000>;
++			};
++
++			factory: partition@180000 {
++				label = "Factory";
++				reg = <0x180000 0x0200000>;
++			};
++
++			partition@580000 {
++				label = "FIP";
++				reg = <0x380000 0x0200000>;
++			};
++
++			partition@780000 {
++				label = "ubi";
++				reg = <0x580000 0x4000000>;
++				compatible = "linux,ubi";
++
++				volumes {
++					ubi_rootfs: ubi-volume-fit {
++						volname = "firmware";
++					};
++				};
++			};
++		};
++	};
++};
++
++&{/soc/wifi@18000000} {
++	mediatek,mtd-eeprom = <&factory 0>;
++};
+--- a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
+@@ -255,7 +255,8 @@
+ 		};
+ 
+ 		spi0: spi@1100a000 {
+-			compatible = "mediatek,mt7981-spi-ipm", "mediatek,spi-ipm";
++			compatible = "mediatek,ipm-spi-quad",
++				     "mediatek,spi-ipm";
+ 			reg = <0 0x1100a000 0 0x1000>;
+ 			interrupts = <GIC_SPI 140 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&topckgen CLK_TOP_CB_M_D2>,

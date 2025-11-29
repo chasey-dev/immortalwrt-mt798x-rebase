@@ -1,0 +1,154 @@
+From 175d9755d51bdf3e0a86e1a8f8120d0d54f3ec1c Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Fri, 3 Oct 2025 14:18:53 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: change xgmac counter statistics
+
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 120 +++++++++++++-------
+ 1 file changed, 79 insertions(+), 41 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index b578511..551e422 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -1324,6 +1324,9 @@ void mtk_stats_update_mac(struct mtk_mac *mac)
+ 	struct mtk_hw_stats *hw_stats = mac->hw_stats;
+ 	struct mtk_eth *eth = mac->hw;
+ 
++	if (!netif_carrier_ok(eth->netdev[mac->id]))
++		return;
++
+ 	u64_stats_update_begin(&hw_stats->syncp);
+ 
+ 	if (MTK_HAS_CAPS(eth->soc->caps, MTK_SOC_MT7628)) {
+@@ -1336,51 +1339,86 @@ void mtk_stats_update_mac(struct mtk_mac *mac)
+ 	} else {
+ 		const struct mtk_reg_map *reg_map = eth->soc->reg_map;
+ 		unsigned int offs = hw_stats->reg_offset;
+-		u64 stats;
+-
+-		hw_stats->rx_bytes += mtk_r32(mac->hw, reg_map->gdm1_cnt + offs);
+-		stats = mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x4 + offs);
+-		if (stats)
+-			hw_stats->rx_bytes += (stats << 32);
+-		hw_stats->rx_packets +=
+-			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x8 + offs);
+-		hw_stats->rx_overflow +=
+-			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x10 + offs);
+-		hw_stats->rx_fcs_errors +=
+-			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x14 + offs);
+-		hw_stats->rx_short_errors +=
+-			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x18 + offs);
+-		hw_stats->rx_long_errors +=
+-			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x1c + offs);
+-		hw_stats->rx_checksum_errors +=
+-			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x20 + offs);
+-		hw_stats->rx_flow_control_packets +=
+-			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x24 + offs);
++		u64 stats, rx_crcerr_cnt, rx_eof_cnt;;
++
++                if (mtk_is_netsys_v3_or_greater(eth) &&
++                    mtk_interface_mode_is_xgmii(mac->interface) &&
++                    mac->id != MTK_GMAC1_ID) {
++			rx_crcerr_cnt = FIELD_GET(GENMASK(15, 0),
++						  mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x198));
++			rx_eof_cnt = FIELD_GET(GENMASK(15, 0),
++					       mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1a4));
++			if (rx_crcerr_cnt <= rx_eof_cnt * 2) {
++				hw_stats->rx_fcs_errors += rx_crcerr_cnt;
++				hw_stats->rx_packets +=
++					mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x18c);
++				hw_stats->rx_bytes +=
++					mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1ac);
++				hw_stats->rx_flow_control_packets += FIELD_GET(GENMASK(15, 0),
++					mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x190));
++				hw_stats->rx_long_errors += FIELD_GET(GENMASK(15, 0),
++					mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x194));
++
++				if (!MTK_HAS_CAPS(eth->soc->caps, MTK_XGMAC)) {
++					hw_stats->rx_short_errors +=
++						mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1bc);
++				} else {
++					hw_stats->rx_short_errors +=
++						mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x18 + offs);
++				}
++			}
+ 
+-		if (mtk_is_netsys_v3_or_greater(eth)) {
+-			hw_stats->tx_skip +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x50 + offs);
+-			hw_stats->tx_collisions +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x54 + offs);
+-			hw_stats->tx_bytes +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x40 + offs);
+-			stats =  mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x44 + offs);
+-			if (stats)
+-				hw_stats->tx_bytes += (stats << 32);
+ 			hw_stats->tx_packets +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x48 + offs);
+-		} else {
+-			hw_stats->tx_skip +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x28 + offs);
+-			hw_stats->tx_collisions +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x2c + offs);
++				mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x114);
+ 			hw_stats->tx_bytes +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x30 + offs);
+-			stats =  mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x34 + offs);
++				mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x134);
++
++			mtk_m32(mac->hw, XMAC_GLB_CNTCLR, 0x1, MTK_XMAC_CNT_CTRL(mac->id));
++		} else {
++			hw_stats->rx_bytes += mtk_r32(mac->hw, reg_map->gdm1_cnt + offs);
++			stats = mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x4 + offs);
+ 			if (stats)
+-				hw_stats->tx_bytes += (stats << 32);
+-			hw_stats->tx_packets +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x38 + offs);
++				hw_stats->rx_bytes += (stats << 32);
++			hw_stats->rx_packets +=
++				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x8 + offs);
++			hw_stats->rx_overflow +=
++				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x10 + offs);
++			hw_stats->rx_fcs_errors +=
++				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x14 + offs);
++			hw_stats->rx_short_errors +=
++				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x18 + offs);
++			hw_stats->rx_long_errors +=
++				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x1c + offs);
++			hw_stats->rx_checksum_errors +=
++				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x20 + offs);
++			hw_stats->rx_flow_control_packets +=
++				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x24 + offs);
++
++			if (mtk_is_netsys_v3_or_greater(eth)) {
++				hw_stats->tx_skip +=
++					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x50 + offs);
++				hw_stats->tx_collisions +=
++					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x54 + offs);
++				hw_stats->tx_bytes +=
++					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x40 + offs);
++				stats =  mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x44 + offs);
++				if (stats)
++					hw_stats->tx_bytes += (stats << 32);
++				hw_stats->tx_packets +=
++					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x48 + offs);
++			} else {
++				hw_stats->tx_skip +=
++					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x28 + offs);
++				hw_stats->tx_collisions +=
++					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x2c + offs);
++				hw_stats->tx_bytes +=
++					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x30 + offs);
++				stats =  mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x34 + offs);
++				if (stats)
++					hw_stats->tx_bytes += (stats << 32);
++				hw_stats->tx_packets +=
++					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x38 + offs);
++			}
+ 		}
+ 	}
+ 
+-- 
+2.45.2
+

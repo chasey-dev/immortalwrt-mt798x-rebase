@@ -1,0 +1,31 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
+@@ -262,6 +262,8 @@
+ };
+ 
+ &pcie0 {
++	wifi-reset-gpios = <&pio 7 GPIO_ACTIVE_HIGH>;
++	wifi-reset-msleep = <100>;
+ 	status = "okay";
+ };
+ 
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0-only OR MIT
+ 
+ #include <dt-bindings/clock/mediatek,mt7988-clk.h>
++#include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
+ #include <dt-bindings/phy/phy.h>
+ #include <dt-bindings/pinctrl/mt65xx.h>
+@@ -266,8 +267,7 @@
+ 			pcie0_pins: pcie0-pins {
+ 				mux {
+ 					function = "pcie";
+-					groups = "pcie_2l_0_pereset", "pcie_clk_req_n0_0",
+-						 "pcie_wake_n0_0";
++					groups = "pcie_2l_0_pereset", "pcie_clk_req_n0_0";
+ 				};
+ 			};
+ 

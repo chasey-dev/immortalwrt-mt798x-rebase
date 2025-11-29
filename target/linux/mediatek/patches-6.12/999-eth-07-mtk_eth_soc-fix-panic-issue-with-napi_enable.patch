@@ -1,0 +1,115 @@
+From 54298b484f6bd28a33901d2b3562dc536c7807e8 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Thu, 18 Sep 2025 17:26:48 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: fix panic issue with napi_enable 
+ in mtk_open
+
+In some scenarios, the ETH may be initialized late, making it very
+close to when mtk_open is called. This could lead to a kernel panic at
+netif_napi_enable because the ETH driver does not call netif_napi_add().
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 44 ++++++++++++---------
+ 1 file changed, 26 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index 6d6d18c..47e6e42 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -4672,6 +4672,12 @@ static void mtk_pending_work(struct work_struct *work)
+ 	rtnl_unlock();
+ }
+ 
++static void mtk_napi_del(struct mtk_eth *eth)
++{
++	netif_napi_del(&eth->tx_napi);
++	netif_napi_del(&eth->rx_napi);
++}
++
+ static int mtk_free_dev(struct mtk_eth *eth)
+ {
+ 	int i;
+@@ -4702,7 +4708,8 @@ static int mtk_unreg_dev(struct mtk_eth *eth)
+ 		mac = netdev_priv(eth->netdev[i]);
+ 		if (MTK_HAS_CAPS(eth->soc->caps, MTK_QDMA))
+ 			unregister_netdevice_notifier(&mac->device_notifier);
+-		unregister_netdev(eth->netdev[i]);
++		if (eth->netdev[i]->reg_state == NETREG_REGISTERED)
++			unregister_netdev(eth->netdev[i]);
+ 	}
+ 
+ 	return 0;
+@@ -5837,20 +5844,6 @@ static int mtk_probe(struct platform_device *pdev)
+ 		}
+ 	}
+ 
+-	for (i = 0; i < MTK_MAX_DEVS; i++) {
+-		if (!eth->netdev[i])
+-			continue;
+-
+-		err = register_netdev(eth->netdev[i]);
+-		if (err) {
+-			dev_err(eth->dev, "error bringing up device\n");
+-			goto err_deinit_ppe;
+-		} else
+-			netif_info(eth, probe, eth->netdev[i],
+-				   "mediatek frame engine at 0x%08lx, irq %d\n",
+-				   eth->netdev[i]->base_addr, eth->irq[0]);
+-	}
+-
+ 	/* we run 2 devices on the same DMA ring so we need a dummy device
+ 	 * for NAPI to work
+ 	 */
+@@ -5858,13 +5851,27 @@ static int mtk_probe(struct platform_device *pdev)
+ 	if (!eth->dummy_dev) {
+ 		err = -ENOMEM;
+ 		dev_err(eth->dev, "failed to allocated dummy device\n");
+-		goto err_unreg_netdev;
++		goto err_deinit_ppe;
+ 	}
+ 	eth->dummy_dev->threaded = 1;
+ 	strcpy(eth->dummy_dev->name, "mtk_eth");
+ 	netif_napi_add(eth->dummy_dev, &eth->tx_napi, mtk_napi_tx);
+ 	netif_napi_add(eth->dummy_dev, &eth->rx_napi, mtk_napi_rx);
+ 
++	for (i = 0; i < MTK_MAX_DEVS; i++) {
++		if (!eth->netdev[i])
++			continue;
++
++		err = register_netdev(eth->netdev[i]);
++		if (err) {
++			dev_err(eth->dev, "error bringing up device\n");
++			goto err_unreg_netdev;
++		} else
++			netif_info(eth, probe, eth->netdev[i],
++				   "mediatek frame engine at 0x%08lx, irq %d\n",
++				   eth->netdev[i]->base_addr, eth->irq[0]);
++	}
++
+ 	platform_set_drvdata(pdev, eth);
+ 	schedule_delayed_work(&eth->reset.monitor_work,
+ 			      MTK_DMA_MONITOR_TIMEOUT);
+@@ -5873,7 +5880,9 @@ static int mtk_probe(struct platform_device *pdev)
+ 
+ err_unreg_netdev:
+ 	mtk_unreg_dev(eth);
++	free_netdev(eth->dummy_dev);
+ err_deinit_ppe:
++	mtk_napi_del(eth);
+ 	mtk_ppe_deinit(eth);
+ 	mtk_release_all_muxes(eth);
+ 	mtk_mdio_cleanup(eth);
+@@ -5912,8 +5921,7 @@ static void mtk_remove(struct platform_device *pdev)
+ 	mtk_wed_exit();
+ 	mtk_hw_deinit(eth);
+ 
+-	netif_napi_del(&eth->tx_napi);
+-	netif_napi_del(&eth->rx_napi);
++	mtk_napi_del(eth);
+ 	mtk_cleanup(eth);
+ 	free_netdev(eth->dummy_dev);
+ 	mtk_mdio_cleanup(eth);
+-- 
+2.45.2
+

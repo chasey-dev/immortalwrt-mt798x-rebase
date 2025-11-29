@@ -1,0 +1,109 @@
+From 22e63c3caf830e3234ef6ebb7870e14c10308269 Mon Sep 17 00:00:00 2001
+From: Zhanyong Wang <zhanyong.wang@mediatek.com>
+Date: Sat, 30 Nov 2024 09:26:02 +0800
+Subject: [PATCH 5/6] 
+ 999-xHCI-02-xhci-mtk-mt79xx-USB-2.0-USBIF-compliance-toolkit.patch
+
+---
+ drivers/usb/host/Kconfig    |  9 +++++++++
+ drivers/usb/host/Makefile   | 14 +++++++++++++-
+ drivers/usb/host/xhci-mtk.c |  5 +++++
+ drivers/usb/host/xhci-mtk.h |  7 +++++++
+ 4 files changed, 34 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/usb/host/Kconfig b/drivers/usb/host/Kconfig
+index d011d6c753ed..f49ad1e678de 100644
+--- a/drivers/usb/host/Kconfig
++++ b/drivers/usb/host/Kconfig
+@@ -77,6 +77,15 @@ config USB_XHCI_MTK
+ 	  found in MediaTek SoCs.
+ 	  If unsure, say N.
+ 
++config USB_XHCI_MTK_DEBUGFS
++	bool "xHCI DEBUGFS support for Mediatek MT79xx"
++	depends on USB_XHCI_MTK && DEBUG_FS
++	default n
++	help
++	  Say 'Y' to enable the debugfs support for the xHCI host controller
++	  found in Mediatek MT79xx SoCs.
++	  If don't need, say N.
++
+ config USB_XHCI_MVEBU
+ 	tristate "xHCI support for Marvell Armada 375/38x/37xx"
+ 	select USB_XHCI_PLATFORM
+diff --git a/drivers/usb/host/Makefile b/drivers/usb/host/Makefile
+index be4e5245c52f..a6bbdfbd870b 100644
+--- a/drivers/usb/host/Makefile
++++ b/drivers/usb/host/Makefile
+@@ -19,7 +19,19 @@ ifneq ($(CONFIG_USB_XHCI_DBGCAP), )
+ 	xhci-hcd-y += xhci-dbgcap.o xhci-dbgtty.o
+ endif
+ 
+-xhci-mtk-hcd-y := xhci-mtk.o xhci-mtk-sch.o
++ifneq ($(CONFIG_USB_XHCI_MTK), )
++	xhci-mtk-hcd-y := xhci-mtk.o xhci-mtk-sch.o
++	xhci-mtk-hcd-$(CONFIG_USB_XHCI_MTK_DEBUGFS) += xhci-mtk-test.o
++	xhci-mtk-hcd-$(CONFIG_USB_XHCI_MTK_DEBUGFS) += xhci-mtk-unusual.o
++	xhci-mtk-hcd-$(CONFIG_USB_XHCI_MTK_DEBUGFS) += xhci-mtk-intr-en.o
++	xhci-mtk-hcd-$(CONFIG_USB_XHCI_MTK_DEBUGFS) += xhci-mtk-vrt-vref.o
++	xhci-mtk-hcd-$(CONFIG_USB_XHCI_MTK_DEBUGFS) += xhci-mtk-term-vref.o
++	xhci-mtk-hcd-$(CONFIG_USB_XHCI_MTK_DEBUGFS) += xhci-mtk-hstx-srctrl.o
++	xhci-mtk-hcd-$(CONFIG_USB_XHCI_MTK_DEBUGFS) += xhci-mtk-discth.o
++	xhci-mtk-hcd-$(CONFIG_USB_XHCI_MTK_DEBUGFS) += xhci-mtk-chgdt-en.o
++	xhci-mtk-hcd-$(CONFIG_USB_XHCI_MTK_DEBUGFS) += xhci-mtk-reg.o
++	xhci-mtk-hcd-$(CONFIG_USB_XHCI_MTK_DEBUGFS) += xhci-mtk-preemphasic.o
++endif
+ 
+ xhci-plat-hcd-y := xhci-plat.o
+ ifneq ($(CONFIG_USB_XHCI_MVEBU), )
+diff --git a/drivers/usb/host/xhci-mtk.c b/drivers/usb/host/xhci-mtk.c
+index 45be35beb114..1a1e05db5be9 100644
+--- a/drivers/usb/host/xhci-mtk.c
++++ b/drivers/usb/host/xhci-mtk.c
+@@ -23,6 +23,7 @@
+ 
+ #include "xhci.h"
+ #include "xhci-mtk.h"
++#include "xhci-mtk-test.h"
+ 
+ /* COMPLIANCE_CP5_CP7_TXDEEMPH_10G register */
+ #define COMPLIANCE_CP5_CP7_TXDEEMPH_10G  0x2428
+@@ -695,6 +696,8 @@ static int xhci_mtk_probe(struct platform_device *pdev)
+ 	pm_runtime_put_autosuspend(dev);
+ 	pm_runtime_forbid(dev);
+ 
++	hqa_create_attr(dev);
++
+ 	return 0;
+ 
+ dealloc_usb3_hcd:
+@@ -733,6 +736,8 @@ static void xhci_mtk_remove(struct platform_device *pdev)
+ 	struct usb_hcd  *shared_hcd = xhci->shared_hcd;
+ 	struct device *dev = &pdev->dev;
+ 
++	hqa_remove_attr(dev);
++
+ 	pm_runtime_get_sync(dev);
+ 	xhci->xhc_state |= XHCI_STATE_REMOVING;
+ 	dev_pm_clear_wake_irq(dev);
+diff --git a/drivers/usb/host/xhci-mtk.h b/drivers/usb/host/xhci-mtk.h
+index 5153c1e65a22..143e4d2d173b 100644
+--- a/drivers/usb/host/xhci-mtk.h
++++ b/drivers/usb/host/xhci-mtk.h
+@@ -174,6 +174,13 @@ struct xhci_hcd_mtk {
+ 	/* quirk */
+ 	u32 rxfifo_depth;
+ 	bool p0_speed_fixup;
++
++#if IS_ENABLED(CONFIG_USB_XHCI_MTK_DEBUGFS)
++	int     test_mode;
++	size_t  hqa_size;
++	u32     hqa_pos;
++	char   *hqa_buf;
++#endif
+ };
+ 
+ static inline struct xhci_hcd_mtk *hcd_to_mtk(struct usb_hcd *hcd)
+-- 
+2.45.2
+

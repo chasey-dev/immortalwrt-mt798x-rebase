@@ -1,0 +1,10 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nor.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nor.dtso
+@@ -54,7 +54,6 @@
+ 				nor_root: partition@2D0000 {
+ 					label = "firmware";
+ 					reg = <0x2d0000 0x1d30000>;
+-					compatible = "denx,fit";
+ 				};
+ 			};
+ 		};

@@ -1,0 +1,72 @@
+From c5c8b1bc5f50acc7786b4f63bc060a1d5485d623 Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Fri, 26 Sep 2025 16:28:37 +0800
+Subject: [PATCH] dts: mediatek: add mt7988 cpufreq cooling device
+
+---
+ arch/arm64/boot/dts/mediatek/mt7988a.dtsi | 28 +++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+index 62f99e3..a0aad82 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -6,6 +6,7 @@
+ #include <dt-bindings/pinctrl/mt65xx.h>
+ #include <dt-bindings/reset/mediatek,mt7988-resets.h>
+ #include <dt-bindings/leds/common.h>
++#include <dt-bindings/thermal/thermal.h>
+ #include <dt-bindings/thermal/mediatek,lvts-thermal.h>
+ 
+ / {
+@@ -57,6 +58,7 @@ cpu0: cpu@0 {
+			nvmem-cells = <&cpufreq_calibration>;
+			nvmem-cell-names = "calibration-data";
+ 			mediatek,cci = <&cci>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu1: cpu@1 {
+@@ -1308,6 +1310,19 @@ cpu_trip_crit: crit {
+ 					hysteresis = <2000>;
+ 					type = "critical";
+ 				};
++
++				cpu_trip_active_hot: active-hot {
++					temperature = <117000>;
++					hysteresis = <2000>;
++					type = "active";
++				};
++			};
++
++			cooling-maps {
++				cpu-active-hot {
++					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++					trip = <&cpu_trip_active_hot>;
++				};
+ 			};
+ 		};
+ 
+@@ -1321,6 +1336,19 @@ cpu_1_trip_crit: crit {
+ 					hysteresis = <2000>;
+ 					type = "critical";
+ 				};
++
++				cpu_1_trip_active_hot: active-hot {
++					temperature = <117000>;
++					hysteresis = <2000>;
++					type = "active";
++				};
++			};
++
++			cooling-maps {
++				cpu-active-hot {
++					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++					trip = <&cpu_1_trip_active_hot>;
++				};
+ 			};
+ 		};
+ 
+-- 
+2.45.2
+

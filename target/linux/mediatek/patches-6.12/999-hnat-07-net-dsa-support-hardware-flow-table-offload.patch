@@ -1,0 +1,74 @@
+From: Felix Fietkau <nbd@nbd.name>
+Date: Thu, 17 Sep 2020 18:41:23 +0200
+Subject: [PATCH] net: dsa: support hardware flow table offload
+
+Look up the conduit device and the port id
+
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
+---
+
+diff --git a/include/net/netfilter/nf_flow_table.h b/include/net/netfilter/nf_flow_table.h
+index 179f9cb..534bbc0 100644
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -195,6 +195,7 @@ struct flow_offload_hw_path {
+ 	u16 vlan_proto;
+ 	u16 vlan_id;
+ 	u16 pppoe_sid;
++	u16 dsa_port;
+ };
+ 
+ #define NF_FLOW_TIMEOUT (30 * HZ)
+diff --git a/net/dsa/user.c b/net/dsa/user.c
+index 06267c5..868a013 100644
+--- a/net/dsa/user.c
++++ b/net/dsa/user.c
+@@ -22,6 +22,10 @@
+ #include <net/dcbnl.h>
+ #include <linux/netpoll.h>
+ #include <linux/string.h>
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++#include <linux/netfilter.h>
++#include <net/netfilter/nf_flow_table.h>
++#endif
+ 
+ #include "conduit.h"
+ #include "dsa.h"
+@@ -2525,6 +2529,27 @@ static int dsa_user_fill_forward_path(struct net_device_path_ctx *ctx,
+ 	return 0;
+ }
+ 
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++static int dsa_flow_offload_check(struct flow_offload_hw_path *path)
++{
++	struct net_device *dev = path->dev;
++	struct dsa_port *dp;
++
++	if (!(path->flags & BIT(DEV_PATH_ETHERNET)))
++		return -EINVAL;
++
++	dp = dsa_user_to_port(dev);
++	path->dsa_port = dp->index;
++	path->dev = dsa_user_to_conduit(dev);
++	path->flags |= BIT(DEV_PATH_DSA);
++
++	if (path->dev->netdev_ops->ndo_flow_offload_check)
++		return path->dev->netdev_ops->ndo_flow_offload_check(path);
++
++	return 0;
++}
++#endif /* CONFIG_NF_FLOW_TABLE */
++
+ static const struct net_device_ops dsa_user_netdev_ops = {
+ 	.ndo_open		= dsa_user_open,
+ 	.ndo_stop		= dsa_user_close,
+@@ -2546,6 +2571,9 @@ static const struct net_device_ops dsa_user_netdev_ops = {
+ 	.ndo_vlan_rx_kill_vid	= dsa_user_vlan_rx_kill_vid,
+ 	.ndo_change_mtu		= dsa_user_change_mtu,
+ 	.ndo_fill_forward_path	= dsa_user_fill_forward_path,
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++	.ndo_flow_offload_check	 = dsa_flow_offload_check,
++#endif
+ };
+ 
+ static const struct device_type dsa_type = {

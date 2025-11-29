@@ -1,0 +1,29 @@
+From fa1e066936ed1a0237aee8615363887315327bcc Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Thu, 18 Sep 2025 16:27:10 +0800
+Subject: [PATCH] net: pcs: mtk-lynxi: add 1000BASEX autoneg mode
+
+---
+ drivers/net/pcs/pcs-mtk-lynxi.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/pcs/pcs-mtk-lynxi.c b/drivers/net/pcs/pcs-mtk-lynxi.c
+index bdae0e2..9cfa6fe 100644
+--- a/drivers/net/pcs/pcs-mtk-lynxi.c
++++ b/drivers/net/pcs/pcs-mtk-lynxi.c
+@@ -222,10 +222,10 @@ static int mtk_pcs_lynxi_config(struct phylink_pcs *pcs, unsigned int neg_mode,
+ 		sgm_mode |= SGMII_REMOTE_FAULT_DIS;
+ 
+ 	if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED) {
+-		if (interface == PHY_INTERFACE_MODE_SGMII)
++		if (interface != PHY_INTERFACE_MODE_2500BASEX) {
+ 			sgm_mode |= SGMII_SPEED_DUPLEX_AN;
+-		if (interface != PHY_INTERFACE_MODE_2500BASEX)
+ 			bmcr = BMCR_ANENABLE;
++		}
+ 	}
+ 
+ 	/* Configure SGMII PCS clock source */
+-- 
+2.45.2
+

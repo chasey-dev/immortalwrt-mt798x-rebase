@@ -1,0 +1,17 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
+@@ -862,7 +862,13 @@ struct foe_entry {
+ 		struct hnat_ipv6_5t_route ipv6_5t_route;
+ 		struct hnat_ipv6_6rd ipv6_6rd;
+ 		struct hnat_ipv6_hnapt ipv6_hnapt;
+-		u32 data[31];
++#if defined(CONFIG_MEDIATEK_NETSYS_V3)
++		/* 4 + 31 * 4 = 128 Bytes for NETSYS_V3 */
++        u32 data[31];
++#else
++		/* 4 + 23 * 4 = 96 Bytes for NETSYS_V2 */
++        u32 data[23];
++#endif
+ 	};
+ };
+ 

@@ -1,0 +1,11 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
+@@ -2469,7 +2469,7 @@ static const struct file_operations hnat_mape_toggle_fops = {
+ 
+ static int hnat_hook_toggle_read(struct seq_file *m, void *private)
+ {
+-	pr_info("value=%d, hook is %s now!\n", hook_toggle, (hook_toggle) ? "enabled" : "disabled");
++	seq_printf(m, "%s\n", (hook_toggle) ? "enabled" : "disabled");
+ 
+ 	return 0;
+ }

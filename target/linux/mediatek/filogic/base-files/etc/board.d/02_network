@@ -258,6 +258,11 @@ mediatek_setup_macs()
 		lan_mac=$label_mac
 		wan_mac=$(macaddr_add "$lan_mac" 1)
 		;;
+	mediatek,mt7987*|\
+	mediatek,mt7988*)
+		lan_mac=$(mtd_get_mac_binary "Factory" "0xFFFF4")
+		wan_mac=$(mtd_get_mac_binary "Factory" "0xFFFFA")
+		;;
 	mercusys,mr90x-v1|\
 	tplink,archer-ax80-v1|\
 	tplink,archer-ax80-v1-eu|\

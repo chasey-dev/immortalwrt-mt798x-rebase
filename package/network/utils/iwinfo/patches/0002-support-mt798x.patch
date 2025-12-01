@@ -14,7 +14,7 @@
  	IWINFO_CLI_LDFLAGS += -lnl-tiny
 --- a/include/iwinfo.h
 +++ b/include/iwinfo.h
-@@ -429,6 +429,7 @@ extern const struct iwinfo_ops wext_ops;
+@@ -437,6 +437,7 @@ extern const struct iwinfo_ops wext_ops;
  extern const struct iwinfo_ops madwifi_ops;
  extern const struct iwinfo_ops nl80211_ops;
  extern const struct iwinfo_ops wl_ops;
@@ -24,7 +24,7 @@
  
 --- a/iwinfo_lib.c
 +++ b/iwinfo_lib.c
-@@ -401,6 +401,9 @@ static const struct iwinfo_ops *backends
+@@ -409,6 +409,9 @@ static const struct iwinfo_ops *backends
  #ifdef USE_WEXT
  	&wext_ops,
  #endif
@@ -151,9 +151,9 @@
  0x14c3 0x7990 0x14C3 0x6639    0      0  "MediaTek" "MT7996E"
 +0x14c3 0x7986 0x14c3 0x7986    0      0  "MediaTek" "MT7986"
 +0x14c3 0x7981 0x14c3 0x7981    0      0  "MediaTek" "MT7981"
+ 0x14c3 0x7992 0x14c3 0x7992    0      0  "MediaTek" "MT7992E"
  0x14e4 0xaa52 0x14e4 0xaa52    0      0  "Broadcom" "BCM43602"
  0x02d0 0xa9a6 0x0000 0x0000    0      0  "Cypress"  "CYW43455"
- 0x02d0 0x4345 0x0000 0x0000    0      0  "Cypress"  "CYW43455"
 --- a/iwinfo_utils.c
 +++ b/iwinfo_utils.c
 @@ -340,6 +340,7 @@ int iwinfo_hardware_id_from_mtd(struct i

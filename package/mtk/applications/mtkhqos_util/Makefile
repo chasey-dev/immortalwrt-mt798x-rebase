@@ -17,7 +17,6 @@ define Package/mtkhqos_util
   SECTION:=MTK Properties
   CATEGORY:=MTK Properties
   TITLE:=mtk hqos utility
-  VERSION:=$(PKG_RELEASE)-$(REVISION)
   SUBMENU:=Applications
 endef
 

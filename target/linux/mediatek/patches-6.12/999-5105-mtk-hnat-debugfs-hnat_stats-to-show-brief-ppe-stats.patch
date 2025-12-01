@@ -1,10 +1,10 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
-@@ -2148,6 +2148,61 @@ static const struct file_operations hnat_entry_fops = {
+@@ -2168,6 +2168,61 @@ static const struct file_operations hnat
  	.release = single_release,
  };
  
-+int __hnat_stats_read(struct seq_file *m, void *private, u32 ppe_id)
++static int __hnat_stats_read(struct seq_file *m, void *private, u32 ppe_id)
 +{
 +	struct mtk_hnat *h = hnat_priv;
 +	struct foe_entry *entry, *end;
@@ -23,8 +23,8 @@
 +		entry++;
 +	}
 +
-+	seq_printf(m, "PPE%d: entry num=%d, %s state num=%d\n", 
-+		ppe_id, hnat_priv->foe_etry_num, 
++	seq_printf(m, "PPE%d: entry num=%d, %s state num=%d\n",
++		ppe_id, hnat_priv->foe_etry_num,
 +		dbg_entry_state == 0 ?
 +		"Invalid" : dbg_entry_state == 1 ?
 +		"Unbind" : dbg_entry_state == 2 ?
@@ -34,7 +34,7 @@
 +	return 0;
 +}
 +
-+int hnat_stats_read(struct seq_file *m, void *private)
++static int hnat_stats_read(struct seq_file *m, void *private)
 +{
 +	int i;
 +
@@ -59,10 +59,10 @@
 +	.release = single_release,
 +};
 +
- int __hnat_setting_read(struct seq_file *m, void *private, u32 ppe_id)
+ static int __hnat_setting_read(struct seq_file *m, void *private, u32 ppe_id)
  {
  	struct mtk_hnat *h = hnat_priv;
-@@ -3413,6 +3468,8 @@ int hnat_init_debugfs(struct mtk_hnat *h)
+@@ -3542,6 +3597,8 @@ int hnat_init_debugfs(struct mtk_hnat *h
  			    &cpu_reason_fops);
  	debugfs_create_file("hnat_entry", 0444, root, h,
  			    &hnat_entry_fops);

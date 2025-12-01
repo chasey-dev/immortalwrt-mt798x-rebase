@@ -1,17 +1,16 @@
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -1908,6 +1908,13 @@ static int mtk_tx_map(struct sk_buff *sk
- 	txd = itxd;
- 	txd_pdma = qdma_to_pdma(ring, txd);
+@@ -1825,6 +1825,13 @@ next_frag:
+ 	state.tx_buf->type = MTK_TYPE_SKB;
+ 	state.tx_buf->data = skb;
  
 +#if defined(CONFIG_NET_MEDIATEK_HNAT) || defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
 +	if (HNAT_SKB_CB2(skb)->magic == 0x78681415) {
-+		txd->txd4 &= ~(0xf << TX_DMA_FPORT_SHIFT_V2);
-+		txd->txd4 |= 0x4 << TX_DMA_FPORT_SHIFT_V2;
++		itxd->txd4 &= ~(0xf << TX_DMA_FPORT_SHIFT_V2);
++		itxd->txd4 |= 0x4 << TX_DMA_FPORT_SHIFT_V2;
 +	}
 +#endif
 +
- 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
- 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
- 		unsigned int offset = 0;
-
+ 	netdev_tx_sent_queue(txq, skb->len);
+ 	skb_tx_timestamp(skb);
+ 

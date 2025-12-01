@@ -325,11 +325,10 @@ static int rbus_probe(struct platform_device *pdev)
 /*
 *
 */
-static int rbus_remove(struct platform_device *pdev)
+static void rbus_remove(struct platform_device *pdev)
 {
 	struct rbus_dev *rbus = platform_get_drvdata(pdev);
 	dev_err(&pdev->dev, "remove rbus name: %s\n", rbus->name);
-	return 0;
 }
 
 

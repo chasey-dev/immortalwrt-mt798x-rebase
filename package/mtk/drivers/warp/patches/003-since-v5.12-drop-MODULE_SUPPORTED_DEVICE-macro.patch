@@ -5,6 +5,6 @@
  MODULE_LICENSE("GPL");
  MODULE_DESCRIPTION(DRIVER_DESC);
 -MODULE_SUPPORTED_DEVICE("mt7615 within mt7622");
-+/* MODULE_SUPPORTED_DEVICE is obsolete in modern kernels */
++/* MODULE_SUPPORTED_DEVICE is obsolete since kernel 5.12 */
 +// MODULE_SUPPORTED_DEVICE("mt7615 within mt7622");
  

@@ -1,5 +1,5 @@
 diff --git a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
-index 4cfd49cf0008..273fda771b31 100644
+index d43d72d8dc68..3d55e6fcee4a 100644
 --- a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
 +++ b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
 @@ -84,23 +84,30 @@ secmon_reserved: secmon@43000000 {
@@ -60,7 +60,7 @@ index 4cfd49cf0008..273fda771b31 100644
  				     "syscon";
  			reg = <0 0x10003000 0 0x10>;
  		};
-@@ -522,41 +540,39 @@ ethsysrst: reset-controller {
+@@ -522,32 +540,26 @@ ethsysrst: reset-controller {
  			};
          };
  
@@ -109,24 +109,7 @@ index 4cfd49cf0008..273fda771b31 100644
  		};
  
  		eth: ethernet@15100000 {
- 			compatible = "mediatek,mt7986-eth";
- 			reg = <0 0x15100000 0 0x80000>;
--			interrupts = <GIC_SPI 196 IRQ_TYPE_LEVEL_HIGH>,
--				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>,
--				     <GIC_SPI 198 IRQ_TYPE_LEVEL_HIGH>,
--				     <GIC_SPI 199 IRQ_TYPE_LEVEL_HIGH>;
-+			interrupts = <GIC_SPI 189 IRQ_TYPE_LEVEL_HIGH>,
-+					<GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>,
-+					<GIC_SPI 191 IRQ_TYPE_LEVEL_HIGH>,
-+					<GIC_SPI 192 IRQ_TYPE_LEVEL_HIGH>,
-+					<GIC_SPI 196 IRQ_TYPE_LEVEL_HIGH>,
-+					<GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>,
-+					<GIC_SPI 198 IRQ_TYPE_LEVEL_HIGH>,
-+					<GIC_SPI 199 IRQ_TYPE_LEVEL_HIGH>;
- 			clocks = <&ethsys CLK_ETH_FE_EN>,
- 				 <&ethsys CLK_ETH_GP2_EN>,
- 				 <&ethsys CLK_ETH_GP1_EN>,
-@@ -587,51 +603,55 @@ eth: ethernet@15100000 {
+@@ -591,51 +603,55 @@ eth: ethernet@15100000 {
  			mediatek,ethsys = <&ethsys>;
  			mediatek,sgmiisys = <&sgmiisys0>, <&sgmiisys1>;
  			mediatek,wed-pcie = <&wed_pcie>;
@@ -204,7 +187,7 @@ index 4cfd49cf0008..273fda771b31 100644
  			reg = <0 0x18000000 0 0x1000000>,
  			      <0 0x10003000 0 0x1000>,
  			      <0 0x11d10000 0 0x1000>;
-@@ -644,6 +664,7 @@ wifi: wifi@18000000 {
+@@ -648,6 +664,7 @@ wifi: wifi@18000000 {
  				     <GIC_SPI 214 IRQ_TYPE_LEVEL_HIGH>,
  				     <GIC_SPI 215 IRQ_TYPE_LEVEL_HIGH>,
  				     <GIC_SPI 216 IRQ_TYPE_LEVEL_HIGH>;

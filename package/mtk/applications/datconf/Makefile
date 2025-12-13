@@ -50,6 +50,14 @@ define Package/datconf-lua
   TITLE:=Lua plugin for datconf
 endef
 
+define Package/ucode-mod-datconf
+  SECTION:=MTK Properties
+  CATEGORY:=MTK Properties
+  SUBMENU:=Applications
+  DEPENDS:=+datconf +libucode
+  TITLE:=ucode plugin for datconf
+endef
+
 TARGET_CFLAGS += -I$(STAGING_DIR)/usr/include
 TARGET_LDFLAGS += -L$(STAGING_DIR)/usr/lib
 
@@ -77,6 +85,11 @@ define Package/datconf-lua/install
 	$(CP) $(PKG_BUILD_DIR)/datconf/lua/datconf.so $(1)/usr/lib/lua/
 endef
 
+define Package/ucode-mod-datconf/install
+	$(INSTALL_DIR) $(1)/usr/lib/ucode
+	$(CP) $(PKG_BUILD_DIR)/datconf/ucode/datconf.so $(1)/usr/lib/ucode/
+endef
+
 define Build/InstallDev
 	$(INSTALL_DIR) $(1)/usr/include
 	$(CP) $(PKG_BUILD_DIR)/kvcutil/libkvcutil.h $(1)/usr/include
@@ -90,3 +103,4 @@ $(eval $(call BuildPackage,libkvcutil))
 $(eval $(call BuildPackage,kvcedit))
 $(eval $(call BuildPackage,datconf))
 $(eval $(call BuildPackage,datconf-lua))
+$(eval $(call BuildPackage,ucode-mod-datconf))

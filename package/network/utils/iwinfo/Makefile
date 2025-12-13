@@ -29,7 +29,7 @@ define Package/libiwinfo
   SECTION:=libs
   CATEGORY:=Libraries
   TITLE:=Generalized Wireless Information Library (iwinfo)
-  DEPENDS:=+libnl-tiny +libuci +libubus +libiwinfo-data +liblua
+  DEPENDS:=+libnl-tiny +libuci +libubus +libiwinfo-data +libl1parser
   ABI_VERSION:=$(IWINFO_ABI_VERSION)
 endef
 

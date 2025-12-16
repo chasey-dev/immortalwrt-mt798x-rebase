@@ -1,0 +1,124 @@
+{
+    "description": "mtwifi interface schema",
+    "type": "object",
+    "properties": {
+        "mode": {
+            "type": "string",
+            "description": "Operation mode (ap, sta, etc.)"
+        },
+        "network": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "Network interface to attach to (e.g., lan)"
+        },
+        "encryption": {
+            "type": "string",
+            "description": "Encryption method (e.g., sae, psk2)"
+        },
+        "key": {
+            "type": "string",
+            "description": "Wireless password/key"
+        },
+        "ssid": {
+            "type": "string",
+            "description": "Service Set Identifier"
+        },
+        "bssid": {
+            "type": "string",
+            "description": "MAC address of the access point"
+        },
+        "bridge_isolate": {
+            "type": "boolean",
+            "description": "Enable bridge port isolation"
+        },
+        "tags": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "Interface tags"
+        },
+        "macfilter": {
+            "type": "string",
+            "enum": ["disable", "allow", "deny"],
+            "description": "MAC address filtering mode"
+        },
+        "maclist": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "List of MAC addresses for filtering"
+        },
+        "kicklow": {
+            "type": "string",
+            "description": "RSSI threshold to kick low signal clients"
+        },
+        "assocthres": {
+            "type": "string",
+            "description": "RSSI threshold for association"
+        },
+        "wpa_group_rekey": {
+            "type": "integer",
+            "description": "WPA group rekey interval"
+        },
+        "frag": {
+            "type": "integer",
+            "description": "Fragmentation threshold"
+        },
+        "rts": {
+            "type": "integer",
+            "description": "RTS threshold"
+        },
+        "dtim_period": {
+            "type": "integer",
+            "description": "DTIM period"
+        },
+        "wmm": {
+            "type": "boolean",
+            "description": "Enable WMM (Wi-Fi Multimedia)"
+        },
+        "hidden": {
+            "type": "boolean",
+            "description": "Hide SSID"
+        },
+        "isolate": {
+            "type": "boolean",
+            "description": "Isolate clients"
+        },
+        "ieee80211k": {
+            "type": "boolean",
+            "description": "Enable 802.11k support"
+        },
+        "mumimo_dl": {
+            "type": "boolean",
+            "description": "Enable MU-MIMO DL"
+        },
+        "mumimo_ul": {
+            "type": "boolean",
+            "description": "Enable MU-MIMO UL"
+        },
+        "ofdma_dl": {
+            "type": "boolean",
+            "description": "Enable OFDMA DL"
+        },
+        "ofdma_ul": {
+            "type": "boolean",
+            "description": "Enable OFDMA UL"
+        },
+        "amsdu": {
+            "type": "boolean",
+            "description": "Enable A-MSDU"
+        },
+        "autoba": {
+            "type": "boolean",
+            "description": "Enable Auto Block Ack"
+        },
+        "uapsd": {
+            "type": "boolean",
+            "description": "Enable U-APSD (WMM Power Save)"
+        }
+    }
+}

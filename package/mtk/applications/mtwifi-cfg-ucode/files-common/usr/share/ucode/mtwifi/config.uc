@@ -1,0 +1,233 @@
+/*
+ * Copyright (C) 2025  chasey-dev <ellenyoung0912@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+'use strict';
+
+import * as datconf from 'datconf';
+import { defs } from 'mtwifi.defaults';
+import { log } from 'mtwifi.utils';
+import * as driver from 'mtwifi.driver';
+import * as converter from 'mtwifi.converter';
+
+function get_sibling_devs(my_devname, all_devnames) {
+    let sib_devnames = [];
+
+    // extract prefix
+    // regex logic: extract pattern like: ChipName_MainIdx
+    // e.g. "MT7981_1_1" => "MT7981_1"
+	// parts = [raw_str, prefix]
+    let parts = match(my_devname, /^(.*)_\d+$/);
+
+    if (!parts) return [];
+    let prefix = parts[1];
+
+    // regex expressions to match sibling dev names
+    // starts with prefix e.g. "MT7981_1_", following with number
+    let sib_regex = regexp("^" + prefix + "_\\d+$");
+
+    for (let idx, devname in all_devnames) {
+		log.debug(`[Main] in all_devnames: ${devname}`);
+        if (devname == my_devname) continue;
+
+        if (match(devname, sib_regex)) {
+            push(sib_devnames, devname);
+        }
+    }
+
+    return sib_devnames;
+}
+
+// sync chip config to sibling devs
+function sync_chip_config(src_dat, sib_devnames, all_devs) {
+	for (let idx, devname in sib_devnames) {
+		let sib_info = all_devs[devname];
+
+		if (!sib_info.profile_path) continue;
+		let sib_dat = datconf.open(sib_info.profile_path);
+		if (sib_dat) {
+			let s_updates = {};
+			for (let k, v in defs.CHIP_CFGS) {
+				// v[0] for DAT key (e.g., WHNAT, BeaconPeriod)
+				let dat_key = v[0];
+				if (exists(src_dat, dat_key)) {
+					s_updates[dat_key] = src_dat[dat_key];
+					// log.debug(`[Sync] key to sync: ${dat_key}, src_dat val: ${src_dat[dat_key]}, s_updates val: ${s_updates[dat_key]}`);
+				}
+			}
+			log.debug(`[Sync] s_updates: keys_raw: ${s_updates}, len: ${length(s_updates)}`);
+			if (length(s_updates) > 0) {
+				log.info(`[Sync] Syncing chip configs to ${devname}`);
+				sib_dat.merge(s_updates);
+				sib_dat.commit();
+			}
+			sib_dat.close();
+		}
+	}
+}
+
+function check_prerequisite() {
+	return !driver.is_kmod();
+}
+
+function check_reload(dat_old, dat_new) {
+	// prepare hashtable for O(1) lookups
+	let reload_lookup = {};
+	for (let k in defs.REINSTALL_CFGS) reload_lookup[k] = true;
+
+	for (let k, v in dat_new) {
+		// k: DAT config key
+		// v: new DAT config of current key
+		if (!reload_lookup[k] || v == dat_old[k]) {
+			continue;
+		} else {
+			log.notice(`[Reload Trigger] Key changed: ${k} (${dat_old[k]} -> ${v})`);
+			return true;
+		}
+	}
+	return false;
+}
+
+export function setup(uci_cfg, all_devs) {
+	// check prerequisites for driver setup
+	if (check_prerequisite()) return;
+
+	// get current dev name
+	let cur_devname = uci_cfg.device;
+	// get current dev object by dev name
+	let cur_dev = all_devs[cur_devname];
+
+	/*****    UCI CFG => DAT CFG   *******/
+	if (!cur_dev.profile_path) {
+		log.error(`[Main] Profile not found for ${cur_devname}`);
+		return;
+	}
+
+	let ctx = datconf.open(cur_dev.profile_path);
+	if (!ctx) {
+		log.error(`[Main] Unable to open profile path for ${cur_devname}`);
+		return;
+	}
+	// get old DAT config
+	let dat_old = ctx.getall();
+
+	// UCI config ==> new DAT config
+	let dat_new = converter.convert(uci_cfg);
+
+	/*****       SETTING VIFS     *******/
+
+	// prepare reload trigger first
+	let need_reload = check_reload(dat_old, dat_new);
+
+	// collect down devs list
+	let down_devnames = [ cur_devname ];
+
+	// if it is DBDC card, add all sibling devs to down dev list
+	let is_dbdc = (index(cur_dev.profile_path, "dbdc") >= 0);
+	if (is_dbdc) {
+		// find sibling devs for current dev
+		let all_devnames = keys(all_devs);
+		let sib_devnames = get_sibling_devs(cur_devname, all_devnames);
+		log.debug(`[Main] my dev: ${cur_devname}`);
+		log.debug(`[Main] Sibling devs: ${sib_devnames}`);
+
+		// sync current chip config to other sibling devs
+		if (uci_cfg.config.dbdc_main) {
+			sync_chip_config(dat_new, sib_devnames, all_devs);
+		}
+		for (let devname in sib_devnames) push(down_devnames, devname);
+	}
+
+	// we will set DOWN including:
+	// vifs of current dev,
+	// vifs of ALL sibling devs,
+	// so collect vifs needed to be restored
+	let restore_vifs = [];
+	for (let idx, devname in down_devnames) {
+		log.debug(devname);
+		// scan vifs related to dev
+		let vifs = driver.scan_related_vifs(all_devs[devname]);
+		for (let vif in vifs) {
+			driver.ifdown(vif);
+			push(restore_vifs, vif);
+		}
+	}
+
+	// commit converted DAT config
+	ctx.merge(dat_new);
+	ctx.commit();
+	ctx.close();
+	system("sync");
+
+	// reload driver if needed
+	if (need_reload) {
+		driver.reload();
+	}
+
+	// for DBDC cards, you need to init main dev first
+	if (is_dbdc) {
+		// concat main dev name: ChipName_ChipIndex_1
+		let main_devname = `${cur_dev.INDEX}_${cur_dev.mainidx}_1`;
+		let main_vif = all_devs[main_devname].main_ifname;
+
+		log.debug(`[Main] main_dev: ${main_devname}, main_dev_info: ${all_devs[main_devname]}, vif: ${main_vif}`);
+		// just init main vif !
+		driver.init_dbdc_card(main_vif);
+	}
+
+	// set vifs in current cfg UP first
+	for (let idx, iface in uci_cfg.interfaces) {
+		let vif = iface.mtwifi_ifname;
+		let vif_cfg = iface.config;
+		log.debug(`[UCI] idx:${idx}, iface: ${iface}, iface cfg:${vif_cfg}, vif: ${vif}`);
+
+		if (vif) {
+			driver.ifup(vif);
+			driver.apply_runtime_hooks(vif_cfg, vif);
+
+			// remove vif from restore lists
+			let find_idx = index(restore_vifs, vif);
+			if (find_idx >= 0) splice(restore_vifs, find_idx, 1);
+		}
+	}
+
+	// for DBDC cards, restore vifs of sibling devs
+	if (is_dbdc) {
+		for (let vif in restore_vifs) {
+			log.notice(`[Main] Restoring sibling vif: ${vif}`);
+			driver.ifup(vif);
+			
+			// for apcli vifs, do apcli triggers
+			if (index(vif, "apcli") >= 0) {
+				driver.trigger_apcli(vif);
+			}
+		}
+	}
+};
+
+export function down(cur_devname, all_devs) {
+	if(cur_devname) {
+		let cur_dev = all_devs[cur_devname];
+		let vifs = driver.scan_related_vifs(cur_dev);
+		for (let vif in vifs) driver.ifdown(vif);
+	} else {
+		// loop to DOWN all
+		for (let dev in all_devs){
+			let vifs = driver.scan_related_vifs(dev);
+			for (let vif in vifs) driver.ifdown(vif);
+		}
+	}
+};

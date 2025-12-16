@@ -1,0 +1,59 @@
+{
+    "description": "mtwifi device schema",
+    "type": "object",
+    "properties": {
+        "band": {
+            "type": "string",
+            "description": "WiFi Band (2g, 5g, 6g)",
+            "enum": [
+                "2g",
+                "5g",
+                "6g"
+            ]
+        },
+        "channel": {
+            "type": "string",
+            "description": "WiFi Channel (can be 'auto')"
+        },
+        "hwmode": {
+            "type": "string",
+            "description": "Hardware mode (e.g., 11a, 11g, 11ax)"
+        },
+        "htmode": {
+            "type": "string",
+            "description": "High Throughput Mode (e.g., HE160, HE80)"
+        },
+        "noscan": {
+            "type": "string",
+            "description": "Disable scanning (set to '1' to disable)"
+        },
+        "txpower": {
+            "type": "integer",
+            "description": "Transmission power (0-100)"
+        },
+        "beacon_int": {
+            "type": "integer",
+            "description": "Beacon interval"
+        },
+        "mu_beamformer": {
+            "type": "boolean",
+            "description": "Enable MU-MIMO Beamformer"
+        },
+        "dbdc_main": {
+            "type": "boolean",
+            "description": "Is DBDC main card"
+        },
+        "whnat": {
+            "type": "boolean",
+            "description": "Enable WHNAT (Hardware NAT for WiFi)"
+        },
+        "country": {
+            "type": "string",
+            "description": "Country code (e.g., CN, US)"
+        },
+        "twt": {
+            "type": "string",
+            "description": "Target Wake Time support"
+        }
+    }
+}

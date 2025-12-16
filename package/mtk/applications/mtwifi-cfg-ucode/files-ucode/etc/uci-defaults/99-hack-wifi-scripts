@@ -1,0 +1,17 @@
+#!/bin/sh
+
+. /etc/openwrt_release
+
+# just hack version >= 25.12
+if awk -v v="$DISTRIB_RELEASE" 'BEGIN { exit !(v < 25.12) }'; then
+    exit 0
+fi
+
+MAC80211_SCRIPT="/lib/netifd/wireless/mac80211.sh"
+
+# remove mac80211 script, that is causing netifd hang issue
+if [ -f "$MAC80211_SCRIPT" ]; then
+    mv "$MAC80211_SCRIPT" "${MAC80211_SCRIPT}.bak"
+fi
+
+exit 0

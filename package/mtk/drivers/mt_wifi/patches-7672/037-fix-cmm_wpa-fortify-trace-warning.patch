@@ -1,0 +1,60 @@
+--- a/mt_wifi/embedded/security/cmm_wpa.c
++++ b/mt_wifi/embedded/security/cmm_wpa.c
+@@ -3576,7 +3576,12 @@ VOID WPACalculateMIC(
+ 	}
+ 
+ 	/* store the calculated MIC*/
+-	NdisMoveMemory(pMsg->KeyDesc.KeyMicAndData, mic, mic_len);
++	{
++		/* Fix fortify warning about detected field-spanning write */
++		ULONG offset = (ULONG)&(((PEAPOL_PACKET)0)->KeyDesc.KeyMicAndData);
++		/* Cast to VOID* first to strip type information */
++		NdisMoveMemory((PUCHAR)((VOID *)pMsg) + offset, mic, mic_len);
++	}
+ 	os_free_mem(OutBuffer);
+ }
+ 
+@@ -3813,8 +3818,12 @@ VOID WPAConstructEapolKeyData(
+ 	if (IS_AKM_FILS_Entry(pEntry))
+ 		mic_len = 0;
+ #endif /* OCE_FILS_SUPPORT */
+-
+-	key_data_len_ptr = pMsg->KeyDesc.KeyMicAndData + mic_len;
++	{
++		/* Fix fortify warning about detected field-spanning write */
++		ULONG offset = (ULONG)&(((PEAPOL_PACKET)0)->KeyDesc.KeyMicAndData);
++		/* Cast to VOID* first to strip type information */
++		key_data_len_ptr = (UINT8 *)((VOID *)pMsg) + offset + mic_len;
++	}
+ 	key_data_ptr = key_data_len_ptr + 2;
+ 
+ 	/* eGTK Len = 512 */
+@@ -5201,8 +5210,12 @@ VOID WPABuildPairMsg1(
+ 
+ 		hex_dump("PMKID", pSecConfig->pmkid, LEN_PMKID);
+ 		hex_dump("PMK", pSecConfig->pmk_cache, pmk_len);
+-
+-		key_data_len_ptr = pEapolFrame->KeyDesc.KeyMicAndData + mic_len;
++		{
++			/* Fix fortify warning about detected field-spanning write */
++			ULONG offset = (ULONG)&(((PEAPOL_PACKET)0)->KeyDesc.KeyMicAndData);
++			/* Cast to VOID* first to strip type information */
++			key_data_len_ptr = (UINT8 *)((VOID *)pEapolFrame) + offset + mic_len;
++		}
+ 		key_data_ptr = key_data_len_ptr + 2;
+ 		/* Fill in value for KDE */
+ 		key_data_ptr[0] = 0xDD;
+@@ -5235,7 +5248,12 @@ VOID WPABuildPairMsg1(
+ 			pmk_len = LEN_PMK_SHA384;
+ 		}
+ 
+-		key_data_len_ptr = pEapolFrame->KeyDesc.KeyMicAndData + mic_len;
++		{
++			/* Fix fortify warning about detected field-spanning write */
++            ULONG offset = (ULONG)&(((PEAPOL_PACKET)0)->KeyDesc.KeyMicAndData);
++			/* Cast to VOID* first to strip type information */
++            key_data_len_ptr = (UINT8 *)((VOID *)pEapolFrame) + offset + mic_len;
++        }
+ 		key_data_ptr = key_data_len_ptr + 2;
+ 
+ 		key_data_ptr[0] = 0xDD;

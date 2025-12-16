@@ -1,0 +1,16 @@
+--- a/mt_wifi/embedded/security/pmf.c
++++ b/mt_wifi/embedded/security/pmf.c
+@@ -579,7 +579,12 @@ static VOID insert_igtk_kde(
+ 	/* Fill in the IPN field */
+ 	NdisMoveMemory(igtk_kde_ptr->IPN, pn, LEN_WPA_TSC);
+ 	/* Fill uin the IGTK field */
+-	NdisMoveMemory(igtk_kde_ptr->IGTK, igtk, igtk_len);
++	{
++		/* Fix fortify warning about detected field-spanning write */
++        ULONG offset = (ULONG)&(((PPMF_IGTK_KDE)0)->IGTK);
++		/* Cast to VOID* first to strip type information */
++        NdisMoveMemory((PUCHAR)((VOID *)igtk_kde_ptr) + offset, igtk, igtk_len);
++    }
+ 	/* Update the total output length */
+ 	*pFrameLen = *pFrameLen + LEN_KDE_HDR + 8 + igtk_len;
+ 	return;

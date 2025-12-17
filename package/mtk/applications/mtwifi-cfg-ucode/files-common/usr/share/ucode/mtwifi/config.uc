@@ -40,14 +40,12 @@ function get_sibling_devs(my_devname, all_devnames) {
     let sib_regex = regexp("^" + prefix + "_\\d+$");
 
     for (let idx, devname in all_devnames) {
-		log.debug(`[Main] in all_devnames: ${devname}`);
         if (devname == my_devname) continue;
 
         if (match(devname, sib_regex)) {
             push(sib_devnames, devname);
         }
     }
-
     return sib_devnames;
 }
 
@@ -83,22 +81,31 @@ function check_prerequisite() {
 	return !driver.is_kmod();
 }
 
-function check_reload(dat_old, dat_new) {
+function dat_diff(dat_old, dat_new) {
 	// prepare hashtable for O(1) lookups
+	let res = {
+		"is_changed" : false,
+		"need_reload": false
+	};
+
 	let reload_lookup = {};
 	for (let k in defs.REINSTALL_CFGS) reload_lookup[k] = true;
 
 	for (let k, v in dat_new) {
 		// k: DAT config key
 		// v: new DAT config of current key
-		if (!reload_lookup[k] || v == dat_old[k]) {
-			continue;
-		} else {
-			log.notice(`[Reload Trigger] Key changed: ${k} (${dat_old[k]} -> ${v})`);
-			return true;
+		if (v != dat_old[k]) {
+			res.is_changed = true;
+			// log.debug(`[dat_diff] Key changed: ${k} (${dat_old[k]} -> ${v})`);
+			if (reload_lookup[k]) {
+				res.need_reload = true;
+				log.notice(`[Reload Trigger] Key changed: ${k} (${dat_old[k]} -> ${v})`);
+				// we have collected all needed flags
+				break;
+			}
 		}
 	}
-	return false;
+	return res;
 }
 
 export function setup(uci_cfg, all_devs) {
@@ -129,20 +136,26 @@ export function setup(uci_cfg, all_devs) {
 
 	/*****       SETTING VIFS     *******/
 
-	// prepare reload trigger first
-	let need_reload = check_reload(dat_old, dat_new);
+	// prepare DAT diff result first
+	// TODO: netifd may clear UCI cfgs of disabled vif
+	// in hanwckf version, they hacked netifd with patches
+	// should find cleaner way to realize this
+	// so for now, vifs of sibling devs will be restarted anyway
+	// this is harmless, but performance may be affected when there is multiple vifs
+	let diff_res = dat_diff(dat_old, dat_new);
+	log.debug(`[Main] dat_diff: ${diff_res}`);
 
 	// collect down devs list
 	let down_devnames = [ cur_devname ];
 
-	// if it is DBDC card, add all sibling devs to down dev list
+	// if it is DBDC card and DAT is changed, add all sibling devs to down dev list
 	let is_dbdc = (index(cur_dev.profile_path, "dbdc") >= 0);
-	if (is_dbdc) {
+	// only add sibling devs when DAT has changed
+	if (is_dbdc && diff_res.is_changed) {
 		// find sibling devs for current dev
 		let all_devnames = keys(all_devs);
 		let sib_devnames = get_sibling_devs(cur_devname, all_devnames);
-		log.debug(`[Main] my dev: ${cur_devname}`);
-		log.debug(`[Main] Sibling devs: ${sib_devnames}`);
+		log.debug(`[Main] Sibling devs of ${cur_devname} : ${sib_devnames}`);
 
 		// sync current chip config to other sibling devs
 		if (uci_cfg.config.dbdc_main) {
@@ -151,18 +164,18 @@ export function setup(uci_cfg, all_devs) {
 		for (let devname in sib_devnames) push(down_devnames, devname);
 	}
 
-	// we will set DOWN including:
-	// vifs of current dev,
-	// vifs of ALL sibling devs,
-	// so collect vifs needed to be restored
+	// collect vifs needed to be restored
+	// if DAT is changed! => UP vifs of ALL sibling devs,
 	let restore_vifs = [];
 	for (let idx, devname in down_devnames) {
-		log.debug(devname);
-		// scan vifs related to dev
+		// skip current device in netifd context, vifs of which will be handled seperately
+		let need_restore = !(devname == cur_devname);
+		// scan UP vifs related to dev
 		let vifs = driver.scan_related_vifs(all_devs[devname]);
+		log.debug(`[Main] UP vifs related to ${devname}: ${vifs}, need restore: ${need_restore}`);
 		for (let vif in vifs) {
 			driver.ifdown(vif);
-			push(restore_vifs, vif);
+			if (need_restore) push(restore_vifs, vif);
 		}
 	}
 
@@ -173,7 +186,7 @@ export function setup(uci_cfg, all_devs) {
 	system("sync");
 
 	// reload driver if needed
-	if (need_reload) {
+	if (diff_res.need_reload) {
 		driver.reload();
 	}
 
@@ -189,22 +202,21 @@ export function setup(uci_cfg, all_devs) {
 	}
 
 	// set vifs in current cfg UP first
+	// implict trace here:
+	// DISABLED vifs are not contained in uci_cfg.interfaces
+	// uci_cfg.interfaces will be EMPTY when uci_cfg.disabled = true, that current dev is disabled
 	for (let idx, iface in uci_cfg.interfaces) {
 		let vif = iface.mtwifi_ifname;
 		let vif_cfg = iface.config;
 		log.debug(`[UCI] idx:${idx}, iface: ${iface}, iface cfg:${vif_cfg}, vif: ${vif}`);
 
-		if (vif) {
+		if (vif && !vif_cfg.disabled) {
 			driver.ifup(vif);
 			driver.apply_runtime_hooks(vif_cfg, vif);
-
-			// remove vif from restore lists
-			let find_idx = index(restore_vifs, vif);
-			if (find_idx >= 0) splice(restore_vifs, find_idx, 1);
 		}
 	}
 
-	// for DBDC cards, restore vifs of sibling devs
+	// for DBDC cards, restore vifs of sibling devs (if they were added before)
 	if (is_dbdc) {
 		for (let vif in restore_vifs) {
 			log.notice(`[Main] Restoring sibling vif: ${vif}`);
@@ -225,7 +237,7 @@ export function down(cur_devname, all_devs) {
 		for (let vif in vifs) driver.ifdown(vif);
 	} else {
 		// loop to DOWN all
-		for (let dev in all_devs){
+		for (let devname, dev in all_devs){
 			let vifs = driver.scan_related_vifs(dev);
 			for (let vif in vifs) driver.ifdown(vif);
 		}

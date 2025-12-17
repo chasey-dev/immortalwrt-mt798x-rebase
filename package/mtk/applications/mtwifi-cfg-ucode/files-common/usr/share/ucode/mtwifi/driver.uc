@@ -36,7 +36,7 @@ export function wait_for_iface(ifname) {
 		if (fs.access(sys_path)) {
 			return true;
 		}
-		sleep(200);
+		sleep(100);
 	}
     log.error(`[Driver] Timeout waiting for ${ifname}`);
 	return false;
@@ -91,7 +91,6 @@ export function scan_related_vifs(dev) {
 		if (get_vif_status(ifname)) {
 			for (let pat in patterns) {
 				if (match(ifname, pat)) {
-					log.debug(`[Driver] get ifname ${ifname}`);
 					push(targets, ifname);
 					break;
 				}
@@ -110,16 +109,8 @@ const DRIVERS = ["mtk_warp_proxy", "mtk_warp", "mt_wifi"];
 
 // check if drivers were installed as modules
 export function is_kmod() {
-	let checklist = [];
-
-	for(let drv in DRIVERS){
-		if (!fs.access(`/sys/module/${drv}`)) {
-			push(checklist, drv);
-		}
-	}
-
-	if (length(checklist) > 0){
-		log.error(`[Driver] ${checklist} is buit-in. Install as kmod(s)!!`);
+	if (!fs.access(`/sys/module/mt_wifi`)) {
+		log.error(`[Driver] mt_wifi is buit-in. Install as kmod(s)!!`);
 		return false;
 	}
 
@@ -127,17 +118,17 @@ export function is_kmod() {
 };
 
 // hard reset driver modules
-export function reload() {
-	log.notice("[Driver] Reloading Kernel Modules...");
-	
+export function reload() {	
 	// uninstall
 	for (let drv in DRIVERS) system(`rmmod ${drv}`);
-	
+	log.notice("[Driver] Removing Kernel Modules...");
+
 	sleep(2000);
-	
+
 	// install
 	for (let drv in reverse(DRIVERS)) system(`modprobe ${drv}`);
-	
+	log.notice("[Driver] Installing Kernel Modules...");
+
 	sleep(1000);
 };
 
@@ -168,10 +159,11 @@ export function init_dbdc_card(ifname) {
 	log.debug(`[Driver] ifname: ${ifname}, mac: ${mac}, should init: ${should_init}`);
 	// MAC all zero, not initialized
 	if (should_init) {
-		log.notice(`[Driver] Init DBDC main card: ${ifname}`);
+		log.notice(`[Driver] Init main vif of DBDC main card: ${ifname}...`);
 		ifup(ifname);
 		sleep(1000);
 		ifdown(ifname);
+		log.notice(`[Driver] Init main vif of DBDC main card done!!!`);
 	}
 };
 

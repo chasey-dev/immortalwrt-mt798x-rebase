@@ -736,72 +736,84 @@ setup_model()
 	acelink,ew-7886cax |\
 	acer,predator-w6* |\
 	acer,vero-w6m |\
-	arcadyan,mozart |\
+	asiarf,ap7986-003 |\
 	asus,rt-ax59u |\
-	asus,tuf-ax4200 |\
+	asus,tuf-ax4200* |\
 	asus,tuf-ax6000 |\
 	bananapi,bpi-r3* |\
+	buffalo,wsr-6000ax8 |\
 	dlink,aquila-pro-ai-m60-a1 |\
 	glinet,gl-mt6000 |\
+	iptime,ax7800m-6e |\
 	jdcloud,re-cp-03 |\
 	mercusys,mr90x* |\
 	netcore,n60* |\
 	netgear,wax220 |\
-	ruijie,rg-x60-pro* |\
-	smartrg,sdg* |\
+	ruijie,rg-x60-pro |\
+	smartrg,sdg-86* |\
 	tplink,archer-ax80-v1 |\
 	tplink,re6000xd |\
 	tplink,tl-xdr4288 |\
 	tplink,tl-xdr608* |\
 	tplink,tl-xtr8488 |\
+	wavlink,wl-wn536ax6-a |\
 	xiaomi,redmi-router-ax6000* |\
 	zyxel,ex5601* |\
 	zyxel,ex5700* |\
 	*7986*)
 		MT7986_whnat $num_of_wifi $usbnet
 		;;
-	*mt3000* |\
-	*xe3000* |\
-	*mt2500* |\
-	*zr-3020* |\
-	*360,t7* |\
-	*clt,r30b1* |\
-	*cmcc,xr30* |\
-	*honor,fur-602* |\
-	*nokia,ea0326gmp* |\
-	*rax3000m* |\
 	abt,asr3000* |\
 	asus,rt-ax52 |\
 	cetron,ct3003* |\
 	cmcc,a10* |\
+	cmcc,rax3000m* |\
 	comfast,cf-e393ax |\
+	comfast,cf-wr632ax* |\
 	confiabits,mt7981 |\
 	cudy,*3000* |\
+	creatlentem,clt-r30b1* |\
 	dlink,aquila-pro-ai-m30-a1 |\
 	edgecore,eap111 |\
+	elecom,wrc-x3000gs3 |\
+	gatonetworks,gdsp |\
+	glinet,gl-mt2500* |\
+	glinet,gl-mt3000 |\
 	glinet,gl-x3000 |\
-	glinet,x3000-emmc |\
-	h3c,nx30pro |\
+	glinet,gl-xe3000 |\
 	h3c,magic-nx30-pro* |\
 	huasifei,wh3000* |\
+	imou,hx21 |\
 	imou,lc-hx3001 |\
 	iptime,ax3000* |\
 	jcg,q30-pro |\
+	kebidumei,ax3000-u22 |\
 	keenetic,kn-* |\
 	konka,komi-a31 |\
+	livinet,zr-3020* |\
 	mercusys,mr80x* |\
+	mercusys,mr85x |\
+	netgear,eax17 |\
+	netis,nx30v2 |\
 	netis,nx31 |\
-	newland,nl-wr8103 |\
-	newland,nl-wr9103 |\
-	nradio,wt9103 |\
+	nokia,ea0326gmp |\
+	nradio,c8-668gl |\
 	openembed,som7981 |\
 	openfi,6c |\
 	openwrt,one |\
+	qihoo,360t7 |\
 	routerich,ax3000* |\
-	ruijie,rg-x30e* |\
+	snr,snr-cpe-ax2 |\
+	teltonika,rutc50 |\
+	tenbay,wr3000k |\
+	totolink,x6000r |\
+	tplink,fr365-v1 |\
 	ubnt,unifi-6-plus |\
 	unielec,u7981* |\
-	wavlink,wl-wn586x3 |\
+	wavlink,wl-wn551x3 |\
+	wavlink,wl-wn586x3* |\
+	wavlink,wl-wn573hx3 |\
+	widelantech,wap430x |\
 	xiaomi,mi-router-ax3000t* |\
 	xiaomi,mi-router-wr30u* |\
 	yuncore,ax835 |\

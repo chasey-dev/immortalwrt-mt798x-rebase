@@ -1,16 +1,11 @@
---- a/mt_wifi/embedded/security/pmf.c
-+++ b/mt_wifi/embedded/security/pmf.c
-@@ -579,7 +579,12 @@ static VOID insert_igtk_kde(
- 	/* Fill in the IPN field */
- 	NdisMoveMemory(igtk_kde_ptr->IPN, pn, LEN_WPA_TSC);
- 	/* Fill uin the IGTK field */
--	NdisMoveMemory(igtk_kde_ptr->IGTK, igtk, igtk_len);
-+	{
-+		/* Fix fortify warning about detected field-spanning write */
-+        ULONG offset = (ULONG)&(((PPMF_IGTK_KDE)0)->IGTK);
-+		/* Cast to VOID* first to strip type information */
-+        NdisMoveMemory((PUCHAR)((VOID *)igtk_kde_ptr) + offset, igtk, igtk_len);
-+    }
- 	/* Update the total output length */
- 	*pFrameLen = *pFrameLen + LEN_KDE_HDR + 8 + igtk_len;
- 	return;
+--- a/mt_wifi/embedded/include/security/dot11w_pmf.h
++++ b/mt_wifi/embedded/include/security/dot11w_pmf.h
+@@ -86,7 +86,7 @@ typedef struct GNU_PACKED _PMF_MMIE {
+ typedef struct GNU_PACKED _PMF_IGTK_KDE {
+ 	UINT8 KeyID[2];		/* identifies the IGTK used to compute the MIC */
+ 	UINT8 IPN[6];		/* indicates the receive sequence counter for the IGTK being installed */
+-	UINT8 IGTK[0];		/* The length of the IGTK */
++	UINT8 IGTK[];		/* The length of the IGTK, C99: use flexible array member */
+ } PMF_IGTK_KDE, *PPMF_IGTK_KDE;
+ 
+ 

@@ -1,5 +1,5 @@
---- a/mt_wifi/embedded/common/cmm_sanity.c	2022-11-27 21:58:55.000000000 +0800
-+++ b/mt_wifi/embedded/common/cmm_sanity.c	2023-09-02 10:45:49.871356520 +0800
+--- a/mt_wifi/embedded/common/cmm_sanity.c
++++ b/mt_wifi/embedded/common/cmm_sanity.c
 @@ -245,7 +245,7 @@ BOOLEAN PeerAddBARspActionSanity(
  	pAddFrame->TimeOutValue = cpu2le16(pAddFrame->TimeOutValue);
  

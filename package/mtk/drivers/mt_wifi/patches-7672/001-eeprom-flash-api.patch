@@ -1,5 +1,5 @@
---- a/mt_wifi/embedded/common/ee_flash.c	2022-04-25 18:12:11.000000000 +0800
-+++ b/mt_wifi/embedded/common/ee_flash.c	2022-11-02 20:29:54.654154912 +0800
+--- a/mt_wifi/embedded/common/ee_flash.c
++++ b/mt_wifi/embedded/common/ee_flash.c
 @@ -27,113 +27,12 @@
  #include	"rt_config.h"
  #include "hdev/hdev.h"

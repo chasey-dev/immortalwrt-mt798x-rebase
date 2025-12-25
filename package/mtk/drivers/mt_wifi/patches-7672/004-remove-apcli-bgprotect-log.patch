@@ -1,7 +1,6 @@
-diff -rupw tmp-orig/mt_wifi/embedded/fsm/sta_mgmt_sync.c tmp/mt_wifi/embedded/fsm/sta_mgmt_sync.c
---- tmp-orig/mt_wifi/embedded/fsm/sta_mgmt_sync.c	2022-04-25 18:12:04.000000000 +0800
-+++ tmp/mt_wifi/embedded/fsm/sta_mgmt_sync.c	2022-11-16 00:51:02.766847750 +0800
-@@ -483,7 +483,7 @@ static BOOLEAN sta_rx_peer_response_upda
+--- a/mt_wifi/embedded/fsm/sta_mgmt_sync.c
++++ b/mt_wifi/embedded/fsm/sta_mgmt_sync.c
+@@ -520,7 +520,7 @@ static BOOLEAN sta_rx_peer_response_upda
  				}
  
  				HW_SET_PROTECT(pAd, wdev, PROT_PROTOCOL, 0, 0);

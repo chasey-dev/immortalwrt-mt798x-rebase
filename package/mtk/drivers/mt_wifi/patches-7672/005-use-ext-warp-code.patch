@@ -1,6 +1,6 @@
 --- a/mt_wifi_ap/Makefile
 +++ b/mt_wifi_ap/Makefile
-@@ -12,8 +12,8 @@ EXTRA_CFLAGS = -I$(WIFI_DRV_PATH)/mt_wifi/include \
+@@ -13,8 +13,8 @@ EXTRA_CFLAGS = -I$(WIFI_DRV_PATH)/mt_wif
  				-I$(WIFI_DRV_PATH)/mt_wifi/ate/include \
  				-I$(WIFI_DRV_PATH)/mt_wifi/include/mcu \
  				-I$(WIFI_DRV_PATH)/mt_wifi/embedded/dbg_txcmd/include \
@@ -11,6 +11,3 @@
  
  ifeq ($(CONFIG_SUPPORT_OPENWRT),y)
  GLOBAL_DEFINES = include/uapi/linux/wapp
--- 
-2.25.1
-

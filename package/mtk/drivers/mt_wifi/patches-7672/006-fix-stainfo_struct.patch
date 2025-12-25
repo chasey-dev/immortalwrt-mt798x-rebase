@@ -132,7 +132,7 @@
  
  	for (i = 0; VALID_UCAST_ENTRY_WCID(pAd, i); i++) {
  		pEntry = &(pAd->MacTab.Content[i]);
-@@ -7244,8 +7327,8 @@ VOID RTMPIoctlGetMacTableStaInfo(
+@@ -7240,8 +7323,8 @@ VOID RTMPIoctlGetMacTableStaInfo(
  			pDst->AvgRssi3 = rssi[3];
  			/* the connected time per entry*/
  			pDst->ConnectedTime = pEntry->StaConnectTime;
@@ -143,7 +143,7 @@
  			pMacTab->Num += 1;
  			/* Add to avoid Array cross board */
  			if (pMacTab->Num >= MAX_LEN_OF_MAC_TABLE)
-@@ -7254,7 +7337,7 @@ VOID RTMPIoctlGetMacTableStaInfo(
+@@ -7250,7 +7333,7 @@ VOID RTMPIoctlGetMacTableStaInfo(
  		}
  	}
  

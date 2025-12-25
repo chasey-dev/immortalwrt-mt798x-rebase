@@ -1,6 +1,6 @@
 --- a/mt_wifi/embedded/ap/ap_cfg.c
 +++ b/mt_wifi/embedded/ap/ap_cfg.c
-@@ -11880,6 +11880,39 @@ INT RTMPAPQueryInformation(
+@@ -12113,6 +12113,39 @@ INT RTMPAPQueryInformation(
  			os_free_mem(chn_list);
  			break;
  		}
@@ -42,7 +42,7 @@
  		{
 --- a/mt_wifi/embedded/include/oid.h
 +++ b/mt_wifi/embedded/include/oid.h
-@@ -1223,6 +1223,17 @@ typedef struct GNU_PACKED _channel_info
+@@ -1225,6 +1225,17 @@ typedef struct GNU_PACKED _channel_info
  struct msg_channel_list {
  	CHANNEL_INFO CHANNELLIST[60];
  };
@@ -60,9 +60,9 @@
  typedef struct GNU_PACKED offchannel_param {
  	UCHAR channel[MAX_AWAY_CHANNEL];
  	UCHAR scan_type[MAX_AWAY_CHANNEL];
-@@ -2565,6 +2576,8 @@ enum vendor_ie_subcmd_oid {
- #define OID_SET_AFC_CONFIG						0x09BE
- #endif /* CONFIG_6G_AFC_SUPPORT */
+@@ -2573,6 +2584,8 @@ enum vendor_ie_subcmd_oid {
+ 
+ #endif /*CONFIG_6G_SUPPORT && CONFIG_6G_AFC_SUPPORT && DOT11_HE_AX*/
  
 +#define OID_GET_CHANNEL_LIST					0x09C0
 +

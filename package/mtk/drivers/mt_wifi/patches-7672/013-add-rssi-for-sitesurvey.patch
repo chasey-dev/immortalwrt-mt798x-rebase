@@ -1,6 +1,6 @@
---- a/mt_wifi/embedded/common/cmm_info.c	2023-11-23 21:25:14.125168685 +0800
-+++ b/mt_wifi/embedded/common/cmm_info.c	2023-11-24 01:50:15.459446886 +0800
-@@ -6317,7 +6317,7 @@ RTMP_STRING *GetAuthMode(CHAR auth)
+--- a/mt_wifi/embedded/common/cmm_info.c
++++ b/mt_wifi/embedded/common/cmm_info.c
+@@ -6487,7 +6487,7 @@ RTMP_STRING *GetAuthMode(CHAR auth)
  			3.) UI needs to prepare at least 4096bytes to get the results
      ==========================================================================
  */
@@ -9,7 +9,7 @@
  #ifdef CUSTOMER_VENDOR_IE_SUPPORT
  #ifdef CUSTOMER_MAXBITRATE_SUPPORT
  #define	LINE_LEN	(4+4+33+20+33+9+11+7+3+10+8+8)
-@@ -6420,14 +6420,13 @@ VOID RTMPCommSiteSurveyData(
+@@ -6590,14 +6590,13 @@ VOID RTMPCommSiteSurveyData(
  		Rssi_Quality = (UINT)(((Rssi + 90) * 26) / 10);
  	else    /* < -84 dbm*/
  		Rssi_Quality = 0;
@@ -26,7 +26,7 @@
  
  	LeftBufSize = MsgLen - strlen(msg);
  	ret = snprintf(msg + strlen(msg), LeftBufSize, "%-9d", Rssi_Quality);
-@@ -6729,13 +6728,10 @@ VOID RTMPIoctlGetSiteSurvey(
+@@ -6906,13 +6905,10 @@ VOID RTMPIoctlGetSiteSurvey(
  	}
  #else
  	LeftBufSize = TotalLen - strlen(msg);

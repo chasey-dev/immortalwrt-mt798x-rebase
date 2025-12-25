@@ -179,19 +179,22 @@ config MTK_MT_WIFI_PATH
 if MTK_MT_WIFI
 choice
 	prompt "MT_WIFI DRIVER VERSION"
-	default MTK_MT_WIFI_DRIVER_VERSION_7672
+	default MTK_MT_WIFI_DRIVER_VERSION_7673
 
 	config MTK_MT_WIFI_DRIVER_VERSION_7661
 	bool "7.6.6.1"
 
 	config MTK_MT_WIFI_DRIVER_VERSION_7672
 	bool "7.6.7.2"
+
+	config MTK_MT_WIFI_DRIVER_VERSION_7673
+	bool "7.6.7.3"
 endchoice
 
 choice
 	prompt "MT7916 custom WACPU firmware"
 	depends on MTK_CHIP_MT7916
-	default MTK_MT_WIFI_MT7916_20240823
+	default MTK_MT_WIFI_MT7916_20250408
 
 	config MTK_MT_WIFI_MT7916_DEFAULT_FIRMWARE
 	bool "default firmware"
@@ -209,7 +212,7 @@ endchoice
 choice
 	prompt "MT7981 custom WACPU firmware"
 	depends on MTK_CHIP_MT7981
-	default MTK_MT_WIFI_MT7981_20240823
+	default MTK_MT_WIFI_MT7981_20250408
 
 	config MTK_MT_WIFI_MT7981_DEFAULT_FIRMWARE
 	bool "default firmware"
@@ -239,7 +242,7 @@ endchoice
 choice
 	prompt "MT7986 custom WACPU firmware"
 	depends on MTK_CHIP_MT7986
-	default MTK_MT_WIFI_MT7986_20240823
+	default MTK_MT_WIFI_MT7986_20250408
 
 	config MTK_MT_WIFI_MT7986_DEFAULT_FIRMWARE
 	bool "default firmware"

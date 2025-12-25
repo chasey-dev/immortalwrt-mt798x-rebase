@@ -1,6 +1,6 @@
---- a/mt_wifi/embedded/common/cmm_info.c	2023-08-25 11:12:38.595484902 +0800
-+++ b/mt_wifi/embedded/common/cmm_info.c	2023-08-25 11:14:03.403925229 +0800
-@@ -6995,7 +6995,7 @@ typedef union _HTTRANSMIT_SETTING_FIX {
+--- a/mt_wifi/embedded/common/cmm_info.c
++++ b/mt_wifi/embedded/common/cmm_info.c
+@@ -7172,7 +7172,7 @@ typedef union _HTTRANSMIT_SETTING_FIX {
  		USHORT iTxBF:1;
  		USHORT eTxBF:1;
  		USHORT STBC:1;	/* only support in HT/VHT mode with MCS0~7 */
@@ -9,7 +9,7 @@
  		USHORT BW:2;	/* channel bandwidth 20MHz/40/80 MHz */
  		USHORT ldpc:1;
  		USHORT MCS:6;	/* MCS */
-@@ -7005,7 +7005,7 @@ typedef union _HTTRANSMIT_SETTING_FIX {
+@@ -7182,7 +7182,7 @@ typedef union _HTTRANSMIT_SETTING_FIX {
  		USHORT MCS:6;
  		USHORT ldpc:1;
  		USHORT BW:2;
@@ -18,7 +18,7 @@
  		USHORT STBC:1;
  		USHORT eTxBF:1;
  		USHORT iTxBF:1;
-@@ -7059,7 +7059,7 @@ UINT32 RTMPGetLastTxRate_fix(PRTMP_ADAPT
+@@ -7236,7 +7236,7 @@ UINT32 RTMPGetLastTxRate_fix(PRTMP_ADAPT
  	lastTxRate.field.MODE = phy_mode;
  	lastTxRate.field.BW = rTxStatResult.rEntryTxRate.BW;
  	lastTxRate.field.ldpc = rTxStatResult.rEntryTxRate.ldpc ? 1 : 0;
@@ -27,7 +27,7 @@
  	lastTxRate.field.STBC = rTxStatResult.rEntryTxRate.STBC;
  
  	if (lastTxRate.field.MODE >= MODE_VHT)
-@@ -7088,7 +7088,7 @@ UINT32 RTMPGetLastRxRate(PRTMP_ADAPTER p
+@@ -7265,7 +7265,7 @@ UINT32 RTMPGetLastRxRate(PRTMP_ADAPTER p
  	lastRxRate.field.MODE = rRxStatResult.u1RxMode;
  	lastRxRate.field.BW = rRxStatResult.u1BW;
  	lastRxRate.field.ldpc = rRxStatResult.u1Coding;

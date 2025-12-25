@@ -1,6 +1,6 @@
 --- a/mt_wifi/os/linux/ap_ioctl.c
 +++ b/mt_wifi/os/linux/ap_ioctl.c
-@@ -818,8 +818,51 @@ INT rt28xx_ap_ioctl(void *net_dev_obj, v
+@@ -824,8 +824,51 @@ INT rt28xx_ap_ioctl(void *net_dev_obj, v
  		break;
  	}
  	case SIOCGIWRANGE:	/*Get range of parameters */
@@ -53,7 +53,7 @@
  	case SIOCGIWRETRY:	/*get retry limits and lifetime */
  	case SIOCSIWRETRY:	/*set retry limits and lifetime */
  		Status = RTMP_IO_EOPNOTSUPP;
-@@ -832,7 +875,7 @@ INT rt28xx_ap_ioctl(void *net_dev_obj, v
+@@ -838,7 +881,7 @@ INT rt28xx_ap_ioctl(void *net_dev_obj, v
  		if ((wdev != NULL) && (wdev->if_up_down_state == FALSE)) {
  			if (wdev_down_exec_ioctl(wrq, subcmd) == FALSE) {
  				MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
@@ -64,7 +64,7 @@
  		}
 --- a/mt_wifi/embedded/ap/ap_cfg.c
 +++ b/mt_wifi/embedded/ap/ap_cfg.c
-@@ -29622,6 +29622,9 @@ BOOLEAN wdev_down_exec_ioctl(RTMP_IOCTL_
+@@ -30244,6 +30244,9 @@ BOOLEAN wdev_down_exec_ioctl(RTMP_IOCTL_
  		}
  	}
  

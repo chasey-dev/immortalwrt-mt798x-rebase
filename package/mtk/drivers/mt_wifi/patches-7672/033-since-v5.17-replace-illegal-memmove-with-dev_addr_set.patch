@@ -1,6 +1,6 @@
 --- a/mt_wifi/embedded/common/wdev.c
 +++ b/mt_wifi/embedded/common/wdev.c
-@@ -623,8 +623,13 @@ INT32 wdev_attr_update(RTMP_ADAPTER *pAd, struct wifi_dev *wdev)
+@@ -623,8 +623,13 @@ INT32 wdev_attr_update(RTMP_ADAPTER *pAd
  				 __func__, wdev->wdev_idx, MAC2STR(wdev->if_addr)));
  
  		if (wdev->if_dev) {
@@ -14,7 +14,7 @@
  		}
  
  		COPY_MAC_ADDR(wdev->bssid, wdev->if_addr);
-@@ -637,7 +642,12 @@ INT32 wdev_attr_update(RTMP_ADAPTER *pAd, struct wifi_dev *wdev)
+@@ -637,7 +642,12 @@ INT32 wdev_attr_update(RTMP_ADAPTER *pAd
  				__func__, wdev->wdev_idx, MAC2STR(wdev->if_addr)));
  
  		if (wdev->if_dev)

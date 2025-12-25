@@ -1,7 +1,5 @@
-Index: mt_wifi/mt_wifi/embedded/common/cmm_info.c
-===================================================================
---- mt_wifi.orig/mt_wifi/embedded/common/cmm_info.c
-+++ mt_wifi/mt_wifi/embedded/common/cmm_info.c
+--- a/mt_wifi/embedded/common/cmm_info.c
++++ b/mt_wifi/embedded/common/cmm_info.c
 @@ -7164,6 +7164,35 @@ USHORT RTMPGetLastTxRate(PRTMP_ADAPTER p
  	return lastTxRate.word;
  }

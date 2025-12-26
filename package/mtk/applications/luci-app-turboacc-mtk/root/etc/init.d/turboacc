@@ -54,9 +54,13 @@ start_service() {
 		if [ -d "$hnat_path" ]; then
 			echo "1" > "$hnat_path/hook_toggle"
 
-			local fastpath_mh_bind_rate
+			local fastpath_mh_bind_rate fastpath_mh_update_nfct
+			# hnat bind rate
 			config_get "fastpath_mh_bind_rate" "config" "fastpath_mh_bind_rate" "30"
 			echo "1 $fastpath_mh_bind_rate" > "$hnat_path/hnat_setting"
+			# update hnat counter to nf_conntrack or not
+			config_get "fastpath_mh_update_nfct" "config" "fastpath_mh_update_nfct" "0"
+			echo "7 $fastpath_mh_update_nfct" > "$hnat_path/hnat_setting"
 		fi
 		;;
 	esac

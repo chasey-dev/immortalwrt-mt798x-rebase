@@ -244,6 +244,12 @@ return view.extend({
 		o.default = 30;
 		o.depends('fastpath', 'mediatek_hnat');
 
+		o = s.option(form.Flag, 'fastpath_mh_update_nfct', _('Enable HNAT counter update'),
+		_('Update HNAT counter to nf_conntrack. May impact performance.'));
+		o.default = o.disabled;
+		o.rmempty = false;
+		o.depends('fastpath', 'mediatek_hnat');
+
 		o = s.option(form.ListValue, 'tcpcca', _('TCP CCA'),
 			_('TCP congestion control algorithm.'));
 		for (var i of features.hasTCPCCA.split(' ').sort())

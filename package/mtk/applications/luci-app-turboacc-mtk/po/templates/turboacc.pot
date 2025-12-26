@@ -36,8 +36,16 @@ msgstr ""
 msgid "HNAT bind rate threshold (pps)"
 msgstr ""
 
+#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:247
+msgid "Enable HNAT counter update"
+msgstr ""
+
 #: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:184
 msgid "The smaller the threshold, the easier it is for the connection to be accelerated."
+msgstr ""
+
+#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:248
+msgid "Update HNAT counter to nf_conntrack. May impact performance."
 msgstr ""
 
 #: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:152

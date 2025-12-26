@@ -32,14 +32,6 @@ msgstr ""
 msgid "Enable IPv6 Acceleration."
 msgstr ""
 
-#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:177
-msgid "Enable ethernet HNAT for MACVLAN WAN device"
-msgstr ""
-
-#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:178
-msgid "Enable hardware offloading for macvlan (sing wan only)."
-msgstr ""
-
 #: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:183
 msgid "HNAT bind rate threshold (pps)"
 msgstr ""
@@ -52,22 +44,6 @@ msgstr ""
 msgid ""
 "Enable bridge acceleration (may be functional conflict with bridge-mode VPN "
 "server)."
-msgstr ""
-
-#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:165
-msgid "Enable ethernet HNAT"
-msgstr ""
-
-#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:171
-msgid "Enable ethernet IPv6 HNAT"
-msgstr ""
-
-#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:172
-msgid "Enable hardware offloading for wired IPv6 connections."
-msgstr ""
-
-#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:166
-msgid "Enable hardware offloading for wired connections."
 msgstr ""
 
 #: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:178

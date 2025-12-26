@@ -236,49 +236,13 @@ return view.extend({
 			o.depends('fastpath', 'fast_classifier');
 		}
 
-		// o = s.option(form.Flag, 'fastpath_mh_eth_hnat', _('Enable ethernet HNAT'),
-		// 	_('Enable hardware offloading for wired connections.'));
-		// o.default = o.enabled;
-		// o.rmempty = false;
-		// o.depends('fastpath', 'mediatek_hnat');
-
-		// o = s.option(form.Flag, 'fastpath_mh_eth_hnat_v6', _('Enable ethernet IPv6 HNAT'),
-		// 	_('Enable hardware offloading for wired IPv6 connections.'));
-		// o.default = o.enabled;
-		// o.rmempty = false;
-		// o.depends('fastpath_mh_eth_hnat', '1');
-		
-		// o = s.option(form.Flag, 'fastpath_mh_eth_hnat_macvlan', _('Enable ethernet HNAT for MACVLAN WAN device'),
-		// 	_('Enable hardware offloading for macvlan (sing wan only).'));
-		// o.default = o.disabled;
-		// o.rmempty = false;
-		// o.depends('fastpath_mh_eth_hnat', '1');
-		
-		o = s.option(form.Value, 'fastpath_mh_eth_hnat_bind_rate', _('HNAT bind rate threshold (pps)'),
+		o = s.option(form.Value, 'fastpath_mh_bind_rate', _('HNAT bind rate threshold (pps)'),
 			_('The smaller the threshold, the easier it is for the connection to be accelerated.'));
 		o.optional = true;
 		o.datatype = 'range(1,30)';
 		o.placeholder = 30;
+		o.default = 30;
 		o.depends('fastpath', 'mediatek_hnat');
-
-		if (features.hasGMAC2) {
-			// o = s.option(form.ListValue, 'fastpath_mh_eth_hnat_ppenum', _('Number of HNAT PPE'),
-			// 	_('Apply this setting after reboot.'));
-			// o.rmempty = false;
-			// o.value(1);
-			// o.value(2);
-			// o.default = 1;
-			// o.depends('fastpath_mh_eth_hnat', '1');
-		}
-
-		// o = s.option(form.ListValue, 'fullcone', _('Full cone NAT'),
-		// 	_('Full cone NAT (NAT1) can improve gaming performance effectively.'));
-		// o.value('0', _('Disable'))
-		// if (features.hasXTFULLCONENAT)
-		// 	o.value('1', _('XT_FULLCONE_NAT'));
-		// o.value('2', _('Boardcom_FULLCONE_NAT'));
-		// o.default = '0';
-		// o.rmempty = false;
 
 		o = s.option(form.ListValue, 'tcpcca', _('TCP CCA'),
 			_('TCP congestion control algorithm.'));

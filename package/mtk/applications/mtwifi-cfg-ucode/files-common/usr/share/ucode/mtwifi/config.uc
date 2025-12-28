@@ -17,6 +17,8 @@
  */
 'use strict';
 
+import { task } from 'uloop';
+
 import * as datconf from 'datconf';
 import { defs } from 'mtwifi.defaults';
 import { log } from 'mtwifi.utils';
@@ -190,44 +192,51 @@ export function setup(uci_cfg, all_devs) {
 		driver.reload();
 	}
 
-	// for DBDC cards, you need to init main dev first
-	if (is_dbdc) {
-		// concat main dev name: ChipName_ChipIndex_1
-		let main_devname = `${cur_dev.INDEX}_${cur_dev.mainidx}_1`;
-		let main_vif = all_devs[main_devname].main_ifname;
+	// post setup may need ~20s
+	// netifd kills main process if it waits too long, create a async task to do that
+	const postTask = task(() => {
+		// for DBDC cards, you need to init main dev first
+		if (is_dbdc) {
+			// concat main dev name: ChipName_ChipIndex_1
+			let main_devname = `${cur_dev.INDEX}_${cur_dev.mainidx}_1`;
+			let main_vif = all_devs[main_devname].main_ifname;
 
-		log.debug(`[Main] main_dev: ${main_devname}, main_dev_info: ${all_devs[main_devname]}, vif: ${main_vif}`);
-		// just init main vif !
-		driver.init_dbdc_card(main_vif);
-	}
-
-	// set vifs in current cfg UP first
-	// implict trace here:
-	// DISABLED vifs are not contained in uci_cfg.interfaces
-	// uci_cfg.interfaces will be EMPTY when uci_cfg.disabled = true, that current dev is disabled
-	for (let idx, iface in uci_cfg.interfaces) {
-		let vif = iface.mtwifi_ifname;
-		let vif_cfg = iface.config;
-		log.debug(`[UCI] idx:${idx}, iface: ${iface}, iface cfg:${vif_cfg}, vif: ${vif}`);
-
-		if (vif && !vif_cfg.disabled) {
-			driver.ifup(vif);
-			driver.apply_runtime_hooks(vif_cfg, vif);
+			log.debug(`[Main] main_dev: ${main_devname}, main_dev_info: ${all_devs[main_devname]}, vif: ${main_vif}`);
+			// just init main vif !
+			driver.init_dbdc_card(main_vif);
 		}
-	}
 
-	// for DBDC cards, restore vifs of sibling devs (if they were added before)
-	if (is_dbdc) {
-		for (let vif in restore_vifs) {
-			log.notice(`[Main] Restoring sibling vif: ${vif}`);
-			driver.ifup(vif);
-			
-			// for apcli vifs, do apcli triggers
-			if (index(vif, "apcli") >= 0) {
-				driver.trigger_apcli(vif);
+		// set vifs in current cfg UP first
+		// implict trace here:
+		// DISABLED vifs are not contained in uci_cfg.interfaces
+		// uci_cfg.interfaces will be EMPTY when uci_cfg.disabled = true, that current dev is disabled
+		for (let idx, iface in uci_cfg.interfaces) {
+			let vif = iface.mtwifi_ifname;
+			let vif_cfg = iface.config;
+			log.debug(`[UCI] idx:${idx}, iface: ${iface}, iface cfg:${vif_cfg}, vif: ${vif}`);
+
+			if (vif && !vif_cfg.disabled) {
+				driver.ifup(vif);
+				driver.apply_runtime_hooks(vif_cfg, vif);
 			}
 		}
-	}
+
+		// for DBDC cards, restore vifs of sibling devs (if they were added before)
+		if (is_dbdc) {
+			for (let vif in restore_vifs) {
+				log.notice(`[Main] Restoring sibling vif: ${vif}`);
+				driver.ifup(vif);
+				
+				// for apcli vifs, do apcli triggers
+				if (index(vif, "apcli") >= 0) {
+					driver.trigger_apcli(vif);
+				}
+			}
+		}
+	});
+
+	// after task is created, just return and notify netifd
+	log.info(`[Main] Recovering vifs, create a task to do so. Task PID: ${postTask.pid()}`);
 };
 
 export function down(cur_devname, all_devs) {

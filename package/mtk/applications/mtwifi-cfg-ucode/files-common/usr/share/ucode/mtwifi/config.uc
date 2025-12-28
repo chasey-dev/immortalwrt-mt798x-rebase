@@ -139,11 +139,9 @@ export function setup(uci_cfg, all_devs) {
 	/*****       SETTING VIFS     *******/
 
 	// prepare DAT diff result first
-	// TODO: netifd may clear UCI cfgs of disabled vif
+	// netifd may skip UCI cfgs of disabled vif
 	// in hanwckf version, they hacked netifd with patches
-	// should find cleaner way to realize this
-	// so for now, vifs of sibling devs will be restarted anyway
-	// this is harmless, but performance may be affected when there is multiple vifs
+	// in our version, we read UCI cfg and compare with netifd parameter
 	let diff_res = dat_diff(dat_old, dat_new);
 	log.debug(`[Main] dat_diff: ${diff_res}`);
 
@@ -207,13 +205,15 @@ export function setup(uci_cfg, all_devs) {
 		}
 
 		// set vifs in current cfg UP first
-		// implict trace here:
+		// implict trace in raw netifd parameter:
 		// DISABLED vifs are not contained in uci_cfg.interfaces
 		// uci_cfg.interfaces will be EMPTY when uci_cfg.disabled = true, that current dev is disabled
+		// current trace:
+		// we read UCI cfg and added disabled ifaces from caller script
 		for (let idx, iface in uci_cfg.interfaces) {
 			let vif = iface.mtwifi_ifname;
 			let vif_cfg = iface.config;
-			log.debug(`[UCI] idx:${idx}, iface: ${iface}, iface cfg:${vif_cfg}, vif: ${vif}`);
+			log.debug(`[UCI] idx:${idx}, vif: ${vif}, disabled: ${vif_cfg.disabled ? true : false}, iface: ${iface}, iface cfg:${vif_cfg}`);
 
 			if (vif && !vif_cfg.disabled) {
 				driver.ifup(vif);

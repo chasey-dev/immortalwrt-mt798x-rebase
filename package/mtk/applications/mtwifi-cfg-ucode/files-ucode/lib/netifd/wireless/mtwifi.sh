@@ -21,6 +21,7 @@
 'use strict';
 
 import * as fs from 'fs';
+import * as uci from 'uci';
 import * as l1parser from 'l1parser';
 
 import { device_schema, iface_schema, vlan_schema, station_schema } from 'mtwifi.defaults';
@@ -111,6 +112,59 @@ function handle_setup(data) {
     // inject cur_devname into UCI cfg data
     // UCI doesnt contain this key
     data.device = cur_devname;
+    
+    /*****        ADD DISABLED VIFS CONFIG       *******/
+
+    // read UCI cfg
+    let cursor = uci.cursor();
+    cursor.load("wireless");
+
+    // build netifd ifaces projection
+    // ifname -> object
+    let netifd_ifaces = {};
+    for (let k, v in data.interfaces) {
+        if (v.name) netifd_ifaces[v.name] = v;
+    }
+
+    // rebuild ifaces object from read UCI cfg
+    let complete_ifaces = {};
+    let sort_idx = 1;
+
+    cursor.foreach("wireless", "wifi-iface", function(sec) {
+        // skip iface that doesnt belong to cur dev
+        if (sec.device != cur_devname) return;
+
+        // generate ordered keys (01, 02, 03...)
+        let key = sprintf("%02d", sort_idx++);
+
+        if (exists(netifd_ifaces, sec['.name'])) {
+            // use netifd config if exists
+            complete_ifaces[key] = netifd_ifaces[sec['.name']];
+        } else {
+            // construct iface data with same format
+            complete_ifaces[key] = {
+                "name": sec['.name'],
+                "config": {
+                    "network":      split(sec.network, " "),
+                    "device":       sec.device,
+                    "mode":         sec.mode,
+                    "encryption":   sec.encryption,
+                    "key":          sec.key,
+                    "ssid":         sec.ssid,
+                    "radios":       []
+                }
+            };
+
+            // if current UCI section is disabled, inject config.disabled also
+            // here if sec.disabled is null means that it is enabled in config
+            complete_ifaces[key].config.disabled = sec.disabled;
+
+            log.debug(`[Setup] Restored disabled interface from UCI: ${sec['.name']}`);
+        }
+    });
+
+    // replace the data.interfaces
+    data.interfaces = complete_ifaces;
 
     /*****      PREPARE PREFIXES AND COUNTINGS     *******/
 

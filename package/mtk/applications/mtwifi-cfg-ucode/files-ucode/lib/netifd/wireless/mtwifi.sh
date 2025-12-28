@@ -28,6 +28,8 @@ import * as netifd from 'mtwifi.netifd';
 import * as cfg from 'mtwifi.config';
 import { log } from 'mtwifi.utils';
 
+const LOCK_FILE = "/var/lock/mtwifi.lock";
+
 log.debug(`[Setup] received cmd ${ARGV}`);
 
 let driver_name = ARGV[0];
@@ -196,6 +198,45 @@ function handle_teardown() {
     l1.close();
 }
 
+// lock helper
+function with_lock(func) {
+    // open file, create file if not exist
+    let fd = fs.open(LOCK_FILE, "w+");
+
+    if (!fd) {
+        let err = fs.error();
+        log.error(`[Setup] Could not open lock file ${LOCK_FILE}: ${err}`);
+        // just exit with 1 here, netifd will handle retry
+        exit(1);
+    }
+
+    // acquire exclusive lock
+    let locked = fd.lock("x");
+
+    if (!locked) {
+        let err = fs.error();
+        log.error(`[Setup] Failed to acquire exclusive lock on ${LOCK_FILE}: ${err}`);
+        // close the file to ensure safety
+        fd.close();
+        exit(1);
+    }
+    
+    log.debug(`[Setup] Exclusive lock acquired!!! (op: ${command} ${cur_devname})`);
+
+    try {
+        func();
+    } catch (e) {
+        log.error(`[Setup] Script crashed during locked operation: ${e}\n${e.stacktrace}`);
+
+        fd.close();
+        exit(1);
+    }
+
+    // release the lock, 
+    // but the lock will still be held if there is any forked process
+    fd.close();
+}
+
 switch (command) {
 	case "dump":
 		dump_options();
@@ -203,13 +244,17 @@ switch (command) {
 	case "setup":
 		let data = json(config_json_str);
 		if(cur_devname && data) {
-			handle_setup(data);
+            with_lock(() => {
+                handle_setup(data);
+            });
 		} else {
             log.error(`[Setup] UCI cfg data not valid!!! raw: ${config_json_str}, json parse: ${data}`);
 			exit(1);
 		}
 		break;
 	case "teardown":
-		handle_teardown();
+        with_lock(() => {
+            handle_teardown();
+        });
 		break;
 }

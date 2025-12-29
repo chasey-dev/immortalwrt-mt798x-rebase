@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=mtwifi-cfg-ucode
 PKG_LICENSE:=GPL-2.0
-PKG_VERSION:=2
+PKG_VERSION:=3
 PKG_RELEASE:=1
 
 include $(INCLUDE_DIR)/package.mk
@@ -39,12 +39,6 @@ define Package/mtwifi-cfg-ucode
   DEPENDS:=$(UCODE_DEPENDS) +wifi-scripts +iwinfo-ucode
 endef
 
-define Package/mtwifi-cfg-ucode-compat
-  $(call Package/mtwifi-cfg-ucode/Default)
-  TITLE+= (compat netifd shell)
-  DEPENDS:=$(UCODE_DEPENDS) +wifi-scripts +l1util @!PACKAGE_mtwifi-cfg-ucode
-endef
-
 define Build/Prepare
 endef
 
@@ -55,14 +49,7 @@ define Build/Compile
 endef
 
 define Package/mtwifi-cfg-ucode/install
-	$(CP) ./files-common/* $(1)/
-	$(CP) ./files-ucode/* $(1)/
-endef
-
-define Package/mtwifi-cfg-ucode-compat/install
-	$(CP) ./files-common/* $(1)/
-	$(CP) ./files-compat/* $(1)/
+	$(CP) ./files/* $(1)/
 endef
 
 $(eval $(call BuildPackage,mtwifi-cfg-ucode))
-$(eval $(call BuildPackage,mtwifi-cfg-ucode-compat))

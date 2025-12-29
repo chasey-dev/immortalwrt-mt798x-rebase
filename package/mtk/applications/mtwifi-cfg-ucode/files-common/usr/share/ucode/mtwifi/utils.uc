@@ -67,3 +67,42 @@ export function array_unique(arr) {
 	}
 	return out;
 };
+
+// lock helper
+export function with_lock(func, lock_file, event) {
+    // open file, create file if not exist
+    let fd = fs.open(lock_file, "w+");
+
+    if (!fd) {
+        let err = fs.error();
+        log.error(`[Lock] Could not open lock file ${lock_file}: ${err}`);
+        // just exit with 1 here, netifd will handle retry
+        exit(1);
+    }
+
+    // acquire exclusive lock
+    let locked = fd.lock("x");
+
+    if (!locked) {
+        let err = fs.error();
+        log.error(`[Lock] Failed to acquire exclusive lock on ${lock_file}: ${err}`);
+        // close the file to ensure safety
+        fd.close();
+        exit(1);
+    }
+    
+    log.debug(`[Lock] Exclusive lock acquired!!! (event: ${event})`);
+
+    try {
+        func();
+    } catch (e) {
+        log.error(`[Lock] Crashed during locked operation: ${e}\n${e.stacktrace}`);
+
+        fd.close();
+        exit(1);
+    }
+
+    // release the lock, 
+    // but the lock will still be held if there is any forked process
+    fd.close();
+};

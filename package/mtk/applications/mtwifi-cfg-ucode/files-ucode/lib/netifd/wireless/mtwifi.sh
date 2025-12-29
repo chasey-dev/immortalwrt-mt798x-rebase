@@ -183,6 +183,15 @@ function handle_setup(data) {
 
 
     /*****          SET VIFS IN NETIFD        *******/
+    
+    // netifd idx may mismatch with UCI idx, should maintain it seperately
+    let netifd_idx = (() => {
+        let i = 1;
+        return {
+            increase: () => { return ++i; },
+            get: () => { return sprintf("%02d", i); }
+        }
+    })();
 
     // keep iterating sequence for config.interfaces
     // we assume that UCI arrays are ordered
@@ -224,8 +233,14 @@ function handle_setup(data) {
             // mtwifi_vif_ap_config -> wireless_add_vif
             // NOTE: shell script checked config.disabled before wireless_add_vif
             if (!config.disabled) {
-                log.info(`[Setup] Add interface: ${idx} -> ${calc_ifname} (mode: ${mode})`);
-                netifd.set_vif(idx, calc_ifname);
+                // if previous ifaces were disabled, netifd idx may mismatch with UCI index
+                log.info(`[Setup] Add interface: ${idx} -> ${calc_ifname} (mode: ${mode}, netifd idx: ${netifd_idx.get()})`);
+                // here set vif with real netifd idx
+                netifd.set_vif(netifd_idx.get(), calc_ifname);
+                // increase the netifd idx
+                netifd_idx.increase();
+            } else {
+                log.info(`[Setup] Skipped disabled interface: ${calc_ifname}`);
             }
         }
     }

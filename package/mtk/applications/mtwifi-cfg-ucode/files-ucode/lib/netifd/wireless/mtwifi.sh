@@ -24,7 +24,7 @@ import * as fs from 'fs';
 import * as uci from 'uci';
 import * as l1parser from 'l1parser';
 
-import { device_schema, iface_schema, vlan_schema, station_schema } from 'mtwifi.defaults';
+import { schemas } from 'mtwifi.defaults';
 import * as netifd from 'mtwifi.netifd';
 import * as cfg from 'mtwifi.config';
 import { log } from 'mtwifi.utils';
@@ -46,13 +46,6 @@ const types = {
 	"string": 3,
 	"integer": 5,
 	"boolean": 7,
-};
-
-const schemas = {
-	device: device_schema.properties,
-	iface: iface_schema.properties,
-    vlan: vlan_schema.properties,
-    station: station_schema.properties,
 };
 
 // ==========================================

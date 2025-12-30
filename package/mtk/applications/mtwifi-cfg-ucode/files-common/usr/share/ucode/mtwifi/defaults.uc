@@ -27,17 +27,24 @@ const station = "wireless.station";
 
 const schema_path = "/usr/share/schema/mtwifi";
 
-const defs_dat_path = `${schema_path}/${dat_defs}.json`;
+const dat_defs_path = `${schema_path}/${dat_defs}.json`;
 const device_path = `${schema_path}/${device}.json`;
 const iface_path = `${schema_path}/${iface}.json`;
 const vlan_path = `${schema_path}/${vlan}.json`;
 const station_path = `${schema_path}/${station}.json`;
 
 // parse DAT config defaults
-export const defs = json(fs.readfile(defs_dat_path));
+export const defs = json(fs.readfile(dat_defs_path));
 
 // parse UCI config schema
-export const device_schema = json(fs.readfile(device_path));
-export const iface_schema = json(fs.readfile(iface_path));
-export const vlan_schema = json(fs.readfile(vlan_path));
-export const station_schema = json(fs.readfile(station_path));
+const device_schema = json(fs.readfile(device_path));
+const iface_schema = json(fs.readfile(iface_path));
+const vlan_schema = json(fs.readfile(vlan_path));
+const station_schema = json(fs.readfile(station_path));
+
+export const schemas = {
+    device:     device_schema.properties,
+    iface:      iface_schema.properties,
+    vlan:       vlan_schema.properties,
+    station:    station_schema.properties
+};

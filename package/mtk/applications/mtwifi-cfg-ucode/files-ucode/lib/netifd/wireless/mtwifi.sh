@@ -91,6 +91,13 @@ function dump_options() {
 //              SETUP
 // ==========================================
 function handle_setup(data) {
+    // we dont need to setup when device is disabled
+    if (data.config.disabled) {
+        // disable netifd retry 
+        netifd.set_retry(false);
+        return;
+    }
+
     let l1 = l1parser.open();
     
     // get all devices from L1 Profile

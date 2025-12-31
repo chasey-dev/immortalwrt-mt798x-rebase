@@ -147,8 +147,7 @@ export function setup(uci_cfg, all_devs) {
 
 	// collect down devs list
 	let down_devnames = [ cur_devname ];
-
-	// if it is DBDC card and DAT is changed, add all sibling devs to down dev list
+	
 	let is_dbdc = (index(cur_dev.profile_path, "dbdc") >= 0);
 	// only add sibling devs when DAT has changed
 	if (is_dbdc && diff_res.is_changed) {
@@ -189,17 +188,25 @@ export function setup(uci_cfg, all_devs) {
 	if (diff_res.need_reload) {
 		driver.reload();
 	}
+	
+	// no matter if it is DBDC card, we assume ifup main_vif is time-costy
+	// we dont want latter netifd setup sessions come up so early
+	// so we check here and decide whether we should sleep after creating the async task
+	let main_vif = "";
+	if (is_dbdc) {
+		// concat main dev name: ChipName_ChipIndex_1
+		let main_devname = `${cur_dev.INDEX}_${cur_dev.mainidx}_1`;
+		main_vif = all_devs[main_devname].main_ifname;
+	} else {
+		main_vif = cur_dev.main_ifname;
+	}
+	let is_inited = driver.is_vif_inited(main_vif);
 
 	// post setup may need ~20s
 	// netifd kills main process if it waits too long, create a async task to do that
 	const postTask = task(() => {
 		// for DBDC cards, you need to init main dev first
-		if (is_dbdc) {
-			// concat main dev name: ChipName_ChipIndex_1
-			let main_devname = `${cur_dev.INDEX}_${cur_dev.mainidx}_1`;
-			let main_vif = all_devs[main_devname].main_ifname;
-
-			log.debug(`[Main] main_dev: ${main_devname}, main_dev_info: ${all_devs[main_devname]}, vif: ${main_vif}`);
+		if (is_dbdc && !is_inited) {
 			// just init main vif !
 			driver.init_dbdc_card(main_vif);
 		}
@@ -220,13 +227,30 @@ export function setup(uci_cfg, all_devs) {
 				driver.apply_runtime_hooks(vif_cfg, vif);
 			}
 		}
+		
+		// for non DBDC cards, all set and return!
+		if (!is_dbdc) return;
 
-		// for DBDC cards, restore vifs of sibling devs (if they were added before)
-		if (is_dbdc) {
+		// for DBDC cards, restore sibling devs
+		if (diff_res.need_reload) {
+			// in driver reload situation, 
+			// let another process to handle sib devs setup
+			for (let idx, devname in down_devnames) {
+				if (!(devname == cur_devname)) {
+					// use `&` symbol to run in the background,
+					// netifd may handle duplicated `wifi up [dev]` calls
+					// current lock context will not pass to it
+					system(`/sbin/wifi up ${devname} &`);
+				}
+			}
+		} else {
+			// in normal situation,
+			// for DBDC cards, restore vifs of sibling devs (if they were added before)
+			// just restore them in no need for reload situation
 			for (let vif in restore_vifs) {
 				log.notice(`[Main] Restoring sibling vif: ${vif}`);
 				driver.ifup(vif);
-				
+
 				// for apcli vifs, do apcli triggers
 				if (index(vif, "apcli") >= 0) {
 					driver.trigger_apcli(vif);
@@ -237,6 +261,9 @@ export function setup(uci_cfg, all_devs) {
 
 	// after task is created, just return and notify netifd
 	log.info(`[Main] Recovering vifs, create a task to do so. Task PID: ${postTask.pid()}`);
+
+	// let caller script know that main vif is inited or not
+	return is_inited;
 };
 
 export function down(cur_devname, all_devs) {

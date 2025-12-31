@@ -65,6 +65,22 @@ export function get_vif_status(ifname) {
 	return (flags & 0x1);
 };
 
+// check if vif is inited
+export function is_vif_inited(ifname){
+	let vif_path = `/sys/class/net/${ifname}/address`;
+	if (!fs.access(vif_path)) {
+		// stay true if not exist, to prevent later operations
+		log.error(`[Driver] is_vif_inited: ${ifname} not found!!!`);
+		return true;
+	}
+
+	let mac = trim(fs.readfile(vif_path));
+	let is_inited = mac && mac != "00:00:00:00:00:00";
+
+	log.debug(`[Driver] is_vif_inited: ${ifname}, mac: ${mac}, is_inited: ${is_inited}`);
+	return is_inited;
+};
+
 // scan all active vifs belongs to current device
 // use to find vifs needed to be DOWN
 export function scan_related_vifs(dev) {
@@ -153,18 +169,11 @@ export function trigger_apcli(ifname) {
 // in DBDC cards, init main card first,
 // set main iface DOWN and UP
 export function init_dbdc_card(ifname) {
-	let mac = trim(fs.readfile(`/sys/class/net/${ifname}/address`));
-
-	let should_init = !mac || mac == "00:00:00:00:00:00";
-	log.debug(`[Driver] ifname: ${ifname}, mac: ${mac}, should init: ${should_init}`);
-	// MAC all zero, not initialized
-	if (should_init) {
-		log.notice(`[Driver] Init main vif of DBDC main card: ${ifname}...`);
-		ifup(ifname);
-		sleep(1000);
-		ifdown(ifname);
-		log.notice(`[Driver] Init main vif of DBDC main card done!!!`);
-	}
+	log.notice(`[Driver] Init main vif of DBDC main card: ${ifname}...`);
+	ifup(ifname);
+	sleep(1000);
+	ifdown(ifname);
+	log.notice(`[Driver] Init main vif of DBDC main card done!!!`);
 };
 
 // apply runtime Hooks

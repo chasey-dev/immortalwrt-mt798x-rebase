@@ -8,94 +8,89 @@
 'require uci';
 'require view';
 
-var getSystemFeatures = rpc.declare({
+let callSystemFeatures = rpc.declare({
 	object: 'luci.turboacc',
 	method: 'getSystemFeatures',
 	expect: { '': {} }
 });
 
-var getFastPathStat = rpc.declare({
+let callFastPathStat = rpc.declare({
 	object: 'luci.turboacc',
 	method: 'getFastPathStat',
 	expect: { '': {} }
 });
 
-var getFullConeStat = rpc.declare({
+let callFullConeStat = rpc.declare({
 	object: 'luci.turboacc',
 	method: 'getFullConeStat',
 	expect: { '': {} }
 });
 
-var getTCPCCAStat = rpc.declare({
+let callTCPCCAStat = rpc.declare({
 	object: 'luci.turboacc',
 	method: 'getTCPCCAStat',
 	expect: { '': {} }
 });
 
-var getMTKPPEStat = rpc.declare({
+let callMTKPPEStat = rpc.declare({
 	object: 'luci.turboacc',
 	method: 'getMTKPPEStat',
 	expect: { '': {} }
 });
 
-function getServiceStatus() {
-	return Promise.all([
-		L.resolveDefault(getFastPathStat(), {}),
-		L.resolveDefault(getFullConeStat(), {}),
-		L.resolveDefault(getTCPCCAStat(), {})
-	]);
-}
-
-function getMTKPPEStatus() {
-	return Promise.all([
-		L.resolveDefault(getMTKPPEStat(), {})
-	]);
-}
-
-function progressbar(value, max, byte) {
-	var vn = parseInt(value) || 0,
+function renderProgressBar(value, max, byte) {
+	let vn = parseInt(value) || 0,
 		mn = parseInt(max) || 100,
-		fv = byte ? String.format('%1024.2mB', value) : value,
-		fm = byte ? String.format('%1024.2mB', max) : max,
-		pc = Math.floor((100 / mn) * vn);
+		pc = Math.floor((100 / mn) * vn),
+		text_val = byte ? String.format('%1024.2mB', value) : value,
+		text_max = byte ? String.format('%1024.2mB', max) : max;
 
 	return E('div', {
 		'class': 'cbi-progressbar',
-		'title': '%s / %s (%d%%)'.format(fv, fm, pc)
+		'title': '%s / %s (%d%%)'.format(text_val, text_max, pc)
 	}, E('div', { 'style': 'width:%.2f%%'.format(pc) }));
 }
 
-function renderStatus(stats) {
-	var spanTemp = '<em><span style="color:%s"><strong>%s</strong></span></em>';
-	var renderHTML = [];
-	for (var stat of stats)
-		if (stat.type) {
-			if (stat.type.includes(' / ')) {
-				var types = stat.type.split(' / ');
-				var inner = spanTemp.format('green', types[0]);
-				for (var i of types.slice(1))
-					inner += spanTemp.format('none', ' / ') + spanTemp.format('red', i);
-				renderHTML.push(inner);
-			} else
-				renderHTML.push(spanTemp.format('green', stat.type));
-		} else
-			renderHTML.push(spanTemp.format('red', _('Disabled')));
-	return renderHTML;
+function renderStatusItem(stat) {
+	if (!stat || !stat.type) {
+		return E('em', { 'style': 'color:red; font-weight:bold' }, _('Disabled'));
+	}
+
+	if (stat.type.includes(' / ')) {
+		let parts = stat.type.split(' / ');
+		let elems = [];
+
+		elems.push(E('span', { 'style': 'color:green; font-weight:bold' }, parts[0]));
+
+		for (let i = 1; i < parts.length; i++) {
+			elems.push(document.createTextNode(' / '));
+			elems.push(E('span', { 'style': 'color:red; font-weight:bold' }, parts[i]));
+		}
+
+		return E('em', {}, elems);
+	}
+
+	return E('em', { 'style': 'color:green; font-weight:bold' }, stat.type);
 }
 
 return view.extend({
 	load: function() {
 		return Promise.all([
 			uci.load('turboacc'),
-			L.resolveDefault(getSystemFeatures(), {}),
-			L.resolveDefault(getMTKPPEStat(), {})
+			L.resolveDefault(callSystemFeatures(), {}),
+			L.resolveDefault(callMTKPPEStat(), {})
 		]);
 	},
 
 	render: function(data) {
-		var m, s, o;
-		var features = data[1];
-		var ppe_stats = data[2];
+		let features = data[1];
+		let ppe_stats = data[2];
+
+		/* only check ppe when mtk_hnat is enabled */
+		let current_fastpath = uci.get('turboacc', 'config', 'fastpath');
+		let has_ppe = (current_fastpath == 'mediatek_hnat') && ppe_stats && ppe_stats['PPE num'];
+
+		let m, s, o;
 
 		m = new form.Map('turboacc', _('TurboACC settings'),
 			_('Open source flow offloading engine (fast path or hardware NAT).'));
@@ -103,118 +98,116 @@ return view.extend({
 		s = m.section(form.TypedSection);
 		s.anonymous = true;
 		s.render = function () {
-			poll.add(function () {
-				return L.resolveDefault(getServiceStatus()).then(function (res) {
-					var stats = renderStatus(res);
-					var tds = [ 'fastpath_state', 'fullcone_state', 'tcpcca_state' ];
-					for (var i in tds) {
-						var view = document.getElementById(tds[i]);
-						view.innerHTML = stats[i];
-					}
-				});
-			});
-
-			var acc_status = E('table', { 'class': 'table', 'width': '100%', 'cellspacing': '10' }, [
+			/* Basic Status */
+			let table_rows = [
 				E('tr', {}, [
-					E('td', { 'width': '33%' }, _('FastPath Engine')),
+					E('td', { 'class': 'tdLeft', 'width': '33%' }, _('FastPath Engine')),
 					E('td', { 'id': 'fastpath_state' }, E('em', {}, _('Collecting data...')))
 				]),
 				E('tr', {}, [
-					E('td', { 'width': '33%' }, _('Full Cone NAT')),
+					E('td', { 'class': 'tdLeft' }, _('Full Cone NAT')),
 					E('td', { 'id': 'fullcone_state' }, E('em', {}, _('Collecting data...')))
 				]),
 				E('tr', {}, [
-					E('td', { 'width': '33%' }, _('TCP CCA')),
+					E('td', { 'class': 'tdLeft' }, _('TCP CCA')),
 					E('td', { 'id': 'tcpcca_state' }, E('em', {}, _('Collecting data...')))
 				])
-			]);
+			];
 
-			if (ppe_stats && ppe_stats['PPE num']) {
-				poll.add(function () {
-					return L.resolveDefault(getMTKPPEStatus()).then(function (res) {
-						var stats = res[0]; 
-
-						if (stats && stats['PPE num']) {
-							var ppe_num = parseInt(stats['PPE num']);
-							
-							for (var i = 0; i < ppe_num; i++) {
-								var ppe_bar = document.getElementById(`ppe${i}_entry`);
-								var ppe_key = 'PPE' + i;
-
-								if (ppe_bar && stats[ppe_key]) {
-									var bind_num = stats[ppe_key]['BIND state num'];
-									var total_num = stats[ppe_key]['entry num'];
-									
-									ppe_bar.innerHTML = E('td', {},
-										progressbar(bind_num, total_num)
-									).innerHTML;
-								}
-							}
-						}
-					});
-				}, 3);
-
-				var ppe_num = parseInt(ppe_stats['PPE num']);
-
-				for (var i = 0; i < ppe_num; i++) {
-					var ppe_key = 'PPE' + i;
-
+			/* PPE Stats */
+			if (has_ppe) {
+				let ppe_num = parseInt(ppe_stats['PPE num']);
+				for (let i = 0; i < ppe_num; i++) {
+					let ppe_key = 'PPE' + i;
 					if (ppe_stats[ppe_key]) {
-						var bind_num = ppe_stats[ppe_key]['BIND state num'];
-						var total_num = ppe_stats[ppe_key]['entry num'];
-
-						acc_status.appendChild(E('tr', {}, [
-							E('td', { 'width': '33%' }, `${ppe_key} ` + _('Bind Entries')),
-							
-							E('td', {'id': `ppe${i}_entry` },
-								progressbar(bind_num, total_num)
-							)
+						table_rows.push(E('tr', {}, [
+							E('td', { 'class': 'tdLeft' }, `${ppe_key} ` + _('Bind Entries')),
+							E('td', { 'id': `ppe${i}_entry` }, E('em', {}, _('Collecting data...')))
 						]));
 					}
 				}
 			}
 
-			return E('fieldset', { 'class': 'cbi-section' }, [
-				E('legend', {}, _('Acceleration Status')),
+			let acc_status = E('table', { 'class': 'table' }, table_rows);
+
+			poll.add(async function () {
+				let tasks = [
+					L.resolveDefault(callFastPathStat(), {}),
+					L.resolveDefault(callFullConeStat(), {}),
+					L.resolveDefault(callTCPCCAStat(), {})
+				];
+
+				if (has_ppe) {
+					tasks.push(L.resolveDefault(callMTKPPEStat(), {}));
+				}
+
+				let res = await Promise.all(tasks);
+
+				const dom_ids = ['fastpath_state', 'fullcone_state', 'tcpcca_state'];
+				for (let i = 0; i < 3; i++) {
+					let el = document.getElementById(dom_ids[i]);
+					if (el) {
+						L.dom.content(el, renderStatusItem(res[i]));
+					}
+				}
+
+				if (has_ppe) {
+					let mtk_res = res[3];
+					let ppe_num = parseInt(mtk_res['PPE num'] || 0);
+					for (let j = 0; j < ppe_num; j++) {
+						let ppe_key = 'PPE' + j;
+						let ppe_bar = document.getElementById(`ppe${j}_entry`);
+
+						if (ppe_bar && mtk_res[ppe_key]) {
+							let bind_num = mtk_res[ppe_key]['BIND state num'];
+							let total_num = mtk_res[ppe_key]['entry num'];
+							L.dom.content(ppe_bar, renderProgressBar(bind_num, total_num));
+						}
+					}
+				}
+			});
+
+			return E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Acceleration Status')),
 				acc_status
 			]);
-		}
+		};
 
 		/* Mark user edited */
 		s = m.section(form.NamedSection, 'global', 'turboacc');
 		o = s.option(form.HiddenValue, 'set');
-		o.load = (/* ... */) => { return 1 };
-		o.readonly = true;
-		o.rmempty = false;
+		o.default = '1'; 
+		o.forcewrite = true;
 
 		s = m.section(form.NamedSection, 'config', 'turboacc');
 
 		o = s.option(form.ListValue, 'fastpath', _('Fastpath engine'),
 			_('The offloading engine for routing/NAT.'));
 		o.value('disabled', _('Disable'));
-		if (features.hasFLOWOFFLOADING)
-			o.value('flow_offloading', _('Flow offloading'));
-		if (features.hasFASTCLASSIFIER)
-			o.value('fast_classifier', _('Fast classifier'));
-		if (features.hasSHORTCUTFECM)
-			o.value('shortcut_fe_cm', _('SFE connection manager'));
-		if (features.hasMEDIATEKHNAT)
-			o.value('mediatek_hnat', _('MediaTek HNAT'));
+
+		if (features.hasFLOWOFFLOADING) o.value('flow_offloading', _('Flow offloading'));
+		if (features.hasFASTCLASSIFIER) o.value('fast_classifier', _('Fast classifier'));
+		if (features.hasSHORTCUTFECM) o.value('shortcut_fe_cm', _('SFE connection manager'));
+		if (features.hasMEDIATEKHNAT) o.value('mediatek_hnat', _('MediaTek HNAT'));
+
 		o.default = 'disabled';
-		o.rmempty = false;
+
+		const descMap = {
+			'flow_offloading': _('Software based offloading for routing/NAT.'),
+			'fast_classifier': _('Fast classifier connection manager for the shortcut forwarding engine.'),
+			'shortcut_fe_cm': _('Simple connection manager for the shortcut forwarding engine.'),
+			'mediatek_hnat': _('MediaTek\'s open source hardware offloading engine.'),
+			'default': _('The offloading engine for routing/NAT.')
+		};
+
 		o.onchange = function(ev, section_id, value) {
-			var desc = ev.target.nextElementSibling;
-			if (value === 'flow_offloading')
-				desc.innerHTML = _('Software based offloading for routing/NAT.');
-			else if (value === 'fast_classifier')
-				desc.innerHTML = _('Fast classifier connection manager for the shortcut forwarding engine.');
-			else if (value === 'shortcut_fe_cm')
-				desc.innerHTML = _('Simple connection manager for the shortcut forwarding engine.');
-			else if (value === 'mediatek_hnat')
-				desc.innerHTML = _('MediaTek\'s open source hardware offloading engine.');
-			else
-				desc.innerHTML = _('The offloading engine for routing/NAT.');
-		}
+			let desc = descMap[value] || descMap['default'];
+			let el = this.getUIElement(section_id);
+			if (el && el.node && el.node.parentNode) {
+				let descEl = el.node.parentNode.querySelector('.cbi-value-description');
+				if (descEl) descEl.innerHTML = desc;
+			}
+		};
 
 		o = s.option(form.Flag, 'fastpath_fo_hw', _('Hardware flow offloading'),
 			_('Requires hardware NAT support. Implemented at least for mt7621.'));
@@ -252,8 +245,13 @@ return view.extend({
 
 		o = s.option(form.ListValue, 'tcpcca', _('TCP CCA'),
 			_('TCP congestion control algorithm.'));
-		for (var i of features.hasTCPCCA.split(' ').sort())
-			o.value(i);
+		
+		if (features.hasTCPCCA) {
+			let algos = features.hasTCPCCA.split(' ').sort();
+			for (let i = 0; i < algos.length; i++) {
+				o.value(algos[i]);
+			}
+		}
 		o.default = 'cubic';
 		o.rmempty = false;
 

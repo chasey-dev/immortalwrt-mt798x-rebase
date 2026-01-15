@@ -10,6 +10,8 @@ PKG_NAME:=warp
 
 PKG_VERSION:=20250408
 PKG_SOURCE:=warp_20250408-5f71ec.tar.xz
+PKG_SOURCE_URL:=https://raw.githubusercontent.com/hanwckf/immortalwrt-mt798x/refs/heads/openwrt-21.02/dl
+PKG_HASH:=0954055e165dcb71cd2703f07b0c2d521ca3e9c8968d2b17b68e8c9a7853f9b2
 
 PKG_BUILD_DIR:=$(KERNEL_BUILD_DIR)/$(PKG_NAME)
 PKG_KCONFIG:= \

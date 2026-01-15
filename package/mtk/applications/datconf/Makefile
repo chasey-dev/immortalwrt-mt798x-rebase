@@ -10,6 +10,8 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=datconf
 PKG_REVISION:=757f9679
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_REVISION).tar.bz2
+PKG_SOURCE_URL:=https://raw.githubusercontent.com/hanwckf/immortalwrt-mt798x/refs/heads/openwrt-21.02/dl
+PKG_HASH:=3cbb7489e3df1be52d184b600129a6081e7225981acdbcc5c2cb7149f11c37f1
 PKG_RELEASE:=1
 PKG_USE_NINJA:=0
 

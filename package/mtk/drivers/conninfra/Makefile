@@ -11,6 +11,8 @@ include $(INCLUDE_DIR)/kernel.mk
 PKG_NAME:=conninfra
 PKG_VERSION:=20231229
 PKG_SOURCE:=mt79xx_conninfra_20231229-f2fa25.tar.xz
+PKG_SOURCE_URL:=https://raw.githubusercontent.com/hanwckf/immortalwrt-mt798x/refs/heads/openwrt-21.02/dl
+PKG_HASH:=672929de84ff2828ab8caef7ae56b6b3aac91210d5700c568559ebfa2d3cd176
 PKG_BUILD_DIR:=$(KERNEL_BUILD_DIR)/$(PKG_NAME)
 PKG_MAINTAINER:=Kun-Ze Syue<kun-ze.syue@mediatek.com>
 

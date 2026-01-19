@@ -742,6 +742,7 @@ setup_model()
 	asus,tuf-ax6000 |\
 	bananapi,bpi-r3* |\
 	buffalo,wsr-6000ax8 |\
+	clx,s20p |\
 	dlink,aquila-pro-ai-m60-a1 |\
 	glinet,gl-mt6000 |\
 	iptime,ax7800m-6e |\

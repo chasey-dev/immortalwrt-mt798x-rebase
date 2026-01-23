@@ -1,3 +1,4 @@
+. /lib/functions.sh
 . /lib/functions/caldata.sh
 . /lib/functions/system.sh
 
@@ -17,11 +18,14 @@ caldata_validate() {
 do_extract_caldata() {
 	case $(board_name) in
 	# mt7981
-	cmcc,xr30-emmc |\
-	cmcc,rax3000m-emmc)
-		FIRMWARE=MT7981_iPAiLNA_EEPROM.bin
-		caldata_validate && exit 0
-		caldata_extract_mmc "factory" 0x0 0x1000
+	cmcc,rax3000m)
+		case "$(cmdline_get_var root)" in
+		/dev/mmc*)
+			FIRMWARE=MT7981_iPAiLNA_EEPROM.bin
+			caldata_validate && exit 0
+			caldata_extract_mmc "factory" 0x0 0x1000
+			;;
+		esac
 		;;
 	# mt7986
 	glinet,gl-mt6000 |\

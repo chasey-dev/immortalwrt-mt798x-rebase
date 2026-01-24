@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -1813,7 +1813,9 @@ static void mtk_tx_set_dma_desc_v2(struc
+@@ -1831,7 +1831,9 @@ static void mtk_tx_set_dma_desc_v2(struc
  	data |= TX_DMA_SWC_V2 | QID_BITS_V2(info->qid);
  
  	/* Set tport */
@@ -11,7 +11,7 @@
  	WRITE_ONCE(desc->txd4, data);
  
  	data = 0;
-@@ -1836,8 +1838,10 @@ static void mtk_tx_set_dma_desc_v2(struc
+@@ -1854,8 +1856,10 @@ static void mtk_tx_set_dma_desc_v2(struc
  	WRITE_ONCE(desc->txd7, 0);
  
  	data = 0;
@@ -24,45 +24,3 @@
  	WRITE_ONCE(desc->txd8, data);
  }
  
-@@ -1978,24 +1982,26 @@ next:
- 		.first = true,
- 	};
- 
--	if (mtk_get_tnl_netsys_params && !(skb->inner_protocol == IPPROTO_ESP)) {
--		params = mtk_get_tnl_netsys_params(skb);
--		txd_info.tops_entry = params & 0x000000FF;
--		txd_info.tport = (params & 0x0000FF00) >> 8;
--		txd_info.cdrt = (params & 0x00FF0000) >> 16;
--	}
-+	if (mtk_is_netsys_v3_or_greater(eth)) {
-+		if (mtk_get_tnl_netsys_params && !(skb->inner_protocol == IPPROTO_ESP)) {
-+			params = mtk_get_tnl_netsys_params(skb);
-+			txd_info.tops_entry = params & 0x000000FF;
-+			txd_info.tport = (params & 0x0000FF00) >> 8;
-+			txd_info.cdrt = (params & 0x00FF0000) >> 16;
-+		}
- #if defined(CONFIG_NET_MEDIATEK_HNAT) || defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
--	else if (unlikely(skb->inner_protocol == IPPROTO_ESP &&
--		skb_hnat_cdrt(skb) && is_magic_tag_valid(skb))) {
--		txd_info.cdrt = skb_hnat_cdrt(skb);
--		skb_hnat_magic_tag(skb) = 0;
-+		else if (unlikely(skb->inner_protocol == IPPROTO_ESP &&
-+			skb_hnat_cdrt(skb) && is_magic_tag_valid(skb))) {
-+			txd_info.cdrt = skb_hnat_cdrt(skb);
-+			skb_hnat_magic_tag(skb) = 0;
- #else
--	else if (unlikely(skb->inner_protocol == IPPROTO_ESP &&
--		skb_tnl_cdrt(skb) && is_tnl_tag_valid(skb))) {
--		txd_info.cdrt = skb_tnl_cdrt(skb);
--		skb_tnl_magic_tag(skb) = 0;
-+		else if (unlikely(skb->inner_protocol == IPPROTO_ESP &&
-+			skb_tnl_cdrt(skb) && is_tnl_tag_valid(skb))) {
-+			txd_info.cdrt = skb_tnl_cdrt(skb);
-+			skb_tnl_magic_tag(skb) = 0;
- #endif
--		txd_info.tport = EIP197_TPORT;
-+			txd_info.tport = EIP197_TPORT;
-+		}
- 	}
- 
- 	if (cur_skb != skb) {

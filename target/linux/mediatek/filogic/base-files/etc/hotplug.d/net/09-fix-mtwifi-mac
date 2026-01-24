@@ -1,0 +1,71 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /lib/functions/system.sh
+
+set_macs_to_dat()
+{
+    local b0_mac="$1"
+    local b1_mac="$2"
+
+    local b0_dat="$(l1util if2dat ra0)"
+    local b1_dat="$(l1util if2dat rax0)"
+
+    if [ -f "$b0_dat" ] && ! grep -q "MacAddress=" "$b0_dat"; then
+        echo "MacAddress=$b0_mac" >> "$b0_dat"
+    fi
+    if [ -f "$b1_dat" ] && ! grep -q "MacAddress=" "$b1_dat"; then
+        echo "MacAddress=$b1_mac" >> "$b1_dat"
+    fi
+}
+
+mtwifi_set_macs()
+{
+    case $(board_name) in
+	acer,predator-w6x-stock|\
+	acer,predator-w6x-ubootmod)
+		local base_mac="$(mtd_get_mac_ascii u-boot-env ethaddr)"
+        local b0_mac="$(macaddr_add $base_mac 2)"
+        local b1_mac="$(macaddr_add $base_mac 3)"
+
+        set_macs_to_dat "$b0_mac" "$b1_mac"
+		;;
+    cudy,ap3000outdoor-v1|\
+	cudy,ap3000-v1|\
+	cudy,m3000-v1|\
+	cudy,re3000-v1|\
+	cudy,tr3000-256mb-v1|\
+	cudy,tr3000-v1|\
+	cudy,tr3000-v1-ubootmod|\
+	cudy,wbr3000uax-v1|\
+	cudy,wbr3000uax-v1-ubootmod|\
+	cudy,wr3000e-v1|\
+	cudy,wr3000s-v1|\
+	cudy,wr3000h-v1|\
+	cudy,wr3000p-v1|\
+	cudy,wr3000-v1)
+		local b0_mac="$(mtd_get_mac_binary bdinfo 0xde00)"
+        local b1_mac="$(macaddr_setbit_la $(macaddr_add $b0_mac 1))"
+
+        set_macs_to_dat "$b0_mac" "$b1_mac"
+		;;
+    h3c,magic-nx30-pro)
+        local base_mac="$(mtd_get_mac_ascii pdt_data_1 ethaddr)"
+        local b0_mac="$(macaddr_add $base_mac 2)"
+        local b1_mac="$(macaddr_add $base_mac 3)"
+
+        set_macs_to_dat "$b0_mac" "$b1_mac"
+        ;;
+    qihoo,360t7)
+        local base_mac="$(mtd_get_mac_ascii factory lanMac)"
+        local b0_mac="$(macaddr_add $base_mac 2)"
+        local b1_mac="$(macaddr_add $base_mac 3)"
+
+        set_macs_to_dat "$b0_mac" "$b1_mac"
+        ;;
+    esac
+}
+
+[ "${ACTION}" = "add" ] && [ "${INTERFACE%%[0-9]}" = "ra" ] &&  {
+    mtwifi_set_macs
+}

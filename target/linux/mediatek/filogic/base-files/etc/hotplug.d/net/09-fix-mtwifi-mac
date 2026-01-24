@@ -49,7 +49,8 @@ mtwifi_set_macs()
 
         set_macs_to_dat "$b0_mac" "$b1_mac"
 		;;
-    h3c,magic-nx30-pro)
+    h3c,magic-nx30-pro|\
+    h3c,magic-nx30-pro-mtkuboot)
         local base_mac="$(mtd_get_mac_ascii pdt_data_1 ethaddr)"
         local b0_mac="$(macaddr_add $base_mac 2)"
         local b1_mac="$(macaddr_add $base_mac 3)"

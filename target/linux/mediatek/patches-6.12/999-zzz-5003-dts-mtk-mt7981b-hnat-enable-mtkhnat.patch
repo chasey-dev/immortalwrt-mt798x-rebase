@@ -1,0 +1,15 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
+@@ -546,7 +546,11 @@
+ 			reg = <0 0x15100000 0 0x80000>;
+ 			resets = <&ethsys 0>;
+ 			reset-names = "mtketh";
+-			status = "disabled";
++			status = "okay";
++			mtketh-wan = "wan";
++			mtketh-lan = "lan";
++			mtketh-max-gmac = <2>;
++			mtketh-ppe-num = <2>;
+ 		};
+ 
+ 		ap2woccif: ap2woccif@151a5000 {

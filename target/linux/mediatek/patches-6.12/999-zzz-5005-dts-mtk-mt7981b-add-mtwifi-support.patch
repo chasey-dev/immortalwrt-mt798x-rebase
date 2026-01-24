@@ -1,8 +1,6 @@
-diff --git a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
-index 048d6a86b4c7..89e631ce3bde 100644
 --- a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
 +++ b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
-@@ -85,18 +85,23 @@ secmon_reserved: secmon@43000000 {
+@@ -93,18 +93,23 @@
  		};
  
  		wmcpu_emi: wmcpu-reserved@47c80000 {
@@ -26,7 +24,7 @@ index 048d6a86b4c7..89e631ce3bde 100644
  		};
  	};
  
-@@ -431,18 +436,15 @@ ethsysrst: reset-controller {
+@@ -451,18 +456,15 @@
          };
  
  		wed: wed@15010000 {
@@ -53,7 +51,7 @@ index 048d6a86b4c7..89e631ce3bde 100644
  		};
  
  		eth: ethernet@15100000 {
-@@ -541,27 +543,24 @@ ap2woccif: ap2woccif@151a5000 {
+@@ -573,27 +575,24 @@
  		};
  
  		wo_dlm0: syscon@151e8000 {
@@ -86,10 +84,10 @@ index 048d6a86b4c7..89e631ce3bde 100644
 -			interrupts = <GIC_SPI 211 IRQ_TYPE_LEVEL_HIGH>;
 -		};
 -
- 		hnat: hnat@15000000 {
- 			compatible = "mediatek,mtk-hnat_v4";
- 			reg = <0 0x15100000 0 0x80000>;
-@@ -637,6 +636,10 @@ consys: consys@10000000 {
+ 		sgmiisys0: syscon@10060000 {
+ 			compatible = "mediatek,mt7981-sgmiisys_0", "mediatek,mt7986-sgmiisys_0", "syscon";
+ 			reg = <0 0x10060000 0 0x1000>;
+@@ -657,6 +656,10 @@
  			compatible = "mediatek,mt7981-consys";
  			reg = <0 0x10000000 0 0x8600000>;
  			memory-region = <&wmcpu_emi>;
@@ -100,7 +98,7 @@ index 048d6a86b4c7..89e631ce3bde 100644
  		};
  
  		xhci: usb@11200000 {
-@@ -723,7 +726,8 @@ ice: ice_debug {
+@@ -743,7 +746,8 @@
  		};
  
  		wifi: wifi@18000000 {
@@ -110,7 +108,7 @@ index 048d6a86b4c7..89e631ce3bde 100644
  			pinctrl-0 = <&wifi_dbdc_pins>;
  			pinctrl-names = "dbdc";
  			reg = <0 0x18000000 0 0x1000000>,
-@@ -738,6 +742,7 @@ wifi: wifi@18000000 {
+@@ -758,6 +762,7 @@
  			clock-names = "mcu", "ap2conn";
  			resets = <&watchdog MT7986_TOPRGU_CONSYS_SW_RST>;
  			reset-names = "consys";

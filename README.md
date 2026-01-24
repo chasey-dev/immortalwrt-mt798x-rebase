@@ -6,33 +6,28 @@ This repository is worked on ImmortalWrt with MTK OpenWrt Feeds patches imported
 
 ## Commit Cutoff Revisions
 
-### ImmortalWrt: [21a2c44](https://github.com/immortalwrt/immortalwrt/commit/21a2c44c7a936d4eb68dd9ca3c0de99f47567f4f) - near OpenWrt 25.12.0-rc2
+### ImmortalWrt: [02d7fe0](https://github.com/immortalwrt/immortalwrt/commit/02d7fe0a15cebec1b515d2faef1631092d1effc1) - OpenWrt 25.12.0-rc3
 
 ```
-qualcommax: disable initramfs-factory generation for asus ax89x by default
-
-The image is too big to be handled by asusuimage.
+rtl8188eu: fix build with mac80211 6.18
 
 Signed-off-by: Tianling Shen <cnsztl@immortalwrt.org>
+(cherry picked from commit f9de3d3f09808886ea88998a52660f98c962246b)
 ```
 
-### MTK OpenWrt Feeds: [c28d401](https://git01.mediatek.com/plugins/gitiles/openwrt/feeds/mtk-openwrt-feeds/+/c28d401845042036048f023c2b936c5f036ad791)
+### MTK OpenWrt Feeds: [e61cd02](https://git01.mediatek.com/plugins/gitiles/openwrt/feeds/mtk-openwrt-feeds/+/e61cd0204ebe34f8936832d29c87f1d373be9ff5)
 
 ```
-[][kernel-6.12][common][net][bypass seq check of pptp data packet]
+[][kernel-6.12][mt7981][dts][Add Wi-Fi device node]
 
 [Description]
-Fix for PPTP sw path issues. In multi-core scenario, checking seq num
-of pptp data packets causes severe packet drop. Several issues such as
-low downlink throughput, unexpected disconnections under multi-pair
-setup, fluctuating throughput are all related to it. Currently, we bypass
-the seq check to avoid these issues.
+Add Wi-Fi device node for MT7981 Wi-Fi 6 kernel 6.12 codebase.
 
 [Release-log]
 N/A
 
-Change-Id: Ie3d8566b809d12571172ad64ba87fde18e44a2a6
-Reviewed-on: https://gerrit.mediatek.inc/c/openwrt/feeds/mtk_openwrt_feeds/+/11631556
+Change-Id: Idbc4c5d0729a7edef80905a821d1b2ebba8b6c39
+Reviewed-on: https://gerrit.mediatek.inc/c/openwrt/feeds/mtk_openwrt_feeds/+/11677401
 ```
 
 ### l1parser: [081bb31](https://github.com/chasey-dev/l1parser/commit/081bb31211efc74594d25bfd1bb5811f3408a205)

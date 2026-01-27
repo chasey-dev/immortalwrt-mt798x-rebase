@@ -32,6 +32,16 @@ define Device/netcore_n60-pro-mtkuboot
 endef
 TARGET_DEVICES += netcore_n60-pro-mtkuboot
 
+define Device/clx_s20p
+  DEVICE_VENDOR := CLX
+  DEVICE_MODEL := S20P
+  DEVICE_DTS := mt7986a-clx-s20p
+  DEVICE_DTS_DIR := ../dts-ext
+  DEVICE_PACKAGES := kmod-usb3 automount f2fsck mkf2fs
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += clx_s20p
+
 define Device/h3c_magic-nx30-pro-mtkuboot
   DEVICE_VENDOR := H3C
   DEVICE_MODEL := Magic NX30 Pro

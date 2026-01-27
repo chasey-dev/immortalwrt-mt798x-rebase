@@ -6,7 +6,7 @@
  			reset-names = "mtketh";
 -			status = "disabled";
 +			status = "okay";
-+			mtketh-wan = "wan";
++			mtketh-wan = "eth1";
 +			mtketh-lan = "lan";
 +			mtketh-max-gmac = <2>;
 +			mtketh-ppe-num = <2>;

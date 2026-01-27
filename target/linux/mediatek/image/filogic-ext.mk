@@ -42,3 +42,19 @@ define Device/clx_s20p
 endef
 TARGET_DEVICES += clx_s20p
 
+define Device/h3c_magic-nx30-pro-mtkuboot
+  DEVICE_VENDOR := H3C
+  DEVICE_MODEL := Magic NX30 Pro
+  DEVICE_VARIANT := (MTK U-Boot layout)
+  DEVICE_DTS := mt7981b-h3c-magic-nx30-pro-mtkuboot
+  DEVICE_DTS_DIR := ../dts-ext
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE_SIZE := 65536k
+  KERNEL_IN_UBI := 1
+  IMAGES += factory.bin
+  IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += h3c_magic-nx30-pro-mtkuboot

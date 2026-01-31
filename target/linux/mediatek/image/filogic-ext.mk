@@ -8,6 +8,23 @@ define Device/clx_s20p
 endef
 TARGET_DEVICES += clx_s20p
 
+define Device/cudy_tr3000-v1-mtkuboot
+  DEVICE_VENDOR := Cudy
+  DEVICE_MODEL := TR3000
+  DEVICE_VARIANT := v1 (MTK U-Boot layout)
+  DEVICE_DTS := mt7981b-cudy-tr3000-v1-mtkuboot
+  DEVICE_DTS_DIR := ../dts-ext
+  SUPPORTED_DEVICES += R47
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE_SIZE := 114688k
+  KERNEL_IN_UBI := 1
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  DEVICE_PACKAGES := kmod-usb3 automount
+endef
+TARGET_DEVICES += cudy_tr3000-v1-mtkuboot
+
 define Device/h3c_magic-nx30-pro-mtkuboot
   DEVICE_VENDOR := H3C
   DEVICE_MODEL := Magic NX30 Pro

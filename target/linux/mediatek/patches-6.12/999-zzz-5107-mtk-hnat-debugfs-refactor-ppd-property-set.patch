@@ -9,21 +9,25 @@
  	char *p, *tmp;
  
  	if (count >= IFNAMSIZ)
-@@ -2499,32 +2499,42 @@ static ssize_t hnat_ppd_if_write(struct
+@@ -2499,32 +2499,44 @@ static ssize_t hnat_ppd_if_write(struct
  
  	tmp = buf;
  	p = strsep(&tmp, "\n\r ");
 +	if (!p || !*p)
 +		return -EINVAL;
 +
-+	rtnl_lock();
-+	/* only update when the name actually changed */
-+	if (!strncmp(hnat_priv->ppd, p, IFNAMSIZ) && hnat_priv->g_ppdev)
-+		goto unlock;
-+
  	dev = dev_get_by_name(&init_net, p);
 +	if (!dev) {
++		pr_err("%s : no such device: %s !\n", __func__, p);
++		return -ENODEV;
++	}
++
++	rtnl_lock();
++	/* only update when the dev actually changed */
++	if (hnat_priv->g_ppdev == dev &&
++		!strncmp(hnat_priv->ppd, p, IFNAMSIZ)) {
 +		rtnl_unlock();
++		dev_put(dev);
  
 -	if (dev) {
 -		if (hnat_priv->g_ppdev)
@@ -34,20 +38,18 @@
 -		pr_info("hnat_priv ppd = %s\n", hnat_priv->ppd);
 -	} else {
 -		pr_info("no such device!\n");
-+		pr_err("%s : no such device: %s !\n", __func__, p);
-+		return -ENODEV;
++		goto end;
  	}
  
 +	old_dev = hnat_priv->g_ppdev;
 +	hnat_priv->g_ppdev = dev;
-+	if (old_dev)
-+		dev_put(old_dev);
 +
 +	strscpy(hnat_priv->ppd, p, IFNAMSIZ);
-+
-+unlock:
 +	rtnl_unlock();
 +
++	if (old_dev)
++		dev_put(old_dev);
++end:
 +	pr_info("hnat_priv ppd = %s\n", hnat_priv->ppd);
 +
  	return count;

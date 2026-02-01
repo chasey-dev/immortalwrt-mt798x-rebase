@@ -23,6 +23,9 @@ import * as fs from 'fs';
 import { log, read_first_line } from 'hnat.utils.common';
 
 const HNAT_PATH = '/sys/kernel/debug/hnat';
+
+const HNAT_PATH_HOOK_TOOGLE = `${HNAT_PATH}/hook_toggle`;
+
 const HNAT_PATH_PPD_IF = `${HNAT_PATH}/hnat_ppd_if`;
 const HNAT_PATH_WAN_IF = `${HNAT_PATH}/hnat_wan_if`;
 const HNAT_PATH_LAN_IF = `${HNAT_PATH}/hnat_lan_if`;
@@ -32,42 +35,30 @@ export function is_hnat_present() {
     return fs.access(HNAT_PATH);
 };
 
-function write_if_changed(path, value) {
-    if (!path || value == null || value == '')
-        return false;
+const rw = (path) => {
+    let _path = path;
+    return {
+        read: () => read_first_line(_path),
+        write: (value) => {
+            if (value == null || value == '')
+                return false;
 
-    /* debugfs may print multiple lines; only compare the first token */
-    let cur = read_first_line(path);
-    let next = value;
+            /* fs.writefile returns written bytes or null on error */
+            let n = fs.writefile(_path, value + '\n');
+            if (n == null) {
+                log.error(`write failed: ${_path} err= ${fs.error()}`);
+                return false;
+            }
 
-    if (cur == next) {
-        log.debug('no-change: ' + path + '=' + next);
-        return false;
+            log.info(`write: ${_path} = ${value}`);
+            return true;
+        }
     }
-
-    /* fs.writefile returns written bytes or null on error */
-    let n = fs.writefile(path, next + '\n');
-    if (n == null) {
-        log.error(`write failed: ${path} err= ${fs.error()}`);
-        return false;
-    }
-
-    log.info(`write: ${path} = ${next}`);
-    return true;
 };
 
-export function write_ppd(value) {
-    return write_if_changed(HNAT_PATH_PPD_IF, value);
-};
+export const hook_toggle = rw(HNAT_PATH_HOOK_TOOGLE);
 
-export function write_wan(value) {
-    return write_if_changed(HNAT_PATH_WAN_IF, value);
-};
-
-export function write_lan(value) {
-    return write_if_changed(HNAT_PATH_LAN_IF, value);
-};
-
-export function write_lan2(value) {
-    return write_if_changed(HNAT_PATH_LAN2_IF, value);
-};
+export const ppd = rw(HNAT_PATH_PPD_IF);
+export const wan = rw(HNAT_PATH_WAN_IF);
+export const lan = rw(HNAT_PATH_LAN_IF);
+export const lan2 = rw(HNAT_PATH_LAN2_IF);

@@ -198,20 +198,45 @@ log.info(`chosen: ppd = ${ppd_name || '(keep)'}, wan = ${wan_name || '(keep)'}, 
  * - WAN: only write when we resolved a GMAC/switch endpoint (never apcli0/aplicx0).
  * - LAN/LAN2: always write the safe result.
  */
-let changed = false;
 
-if (ppd_name)
-	changed = debugfs.write_ppd(ppd_name) || changed;
-else
+const hook_toggle = () => debugfs.hook_toggle.read() == 'enabled' ? true : false;
+
+let cur_state = {
+	hook_toggle: hook_toggle(),
+	ppd: debugfs.ppd.read(),
+	wan: debugfs.wan.read(),
+	lan: debugfs.lan.read(),
+	lan2: debugfs.lan2.read(),
+};
+
+let changed = (ppd_name && ppd_name != cur_state.ppd) ||
+	(wan_name && wan_name != cur_state.wan) ||
+	(lan_name && lan_name != cur_state.lan) ||
+	(lan2_name && lan2_name != cur_state.lan2);
+
+/* if changed, disable hook first */
+if (changed && cur_state.hook_toggle) {
+	debugfs.hook_toggle.write("0");
+}
+
+if (!ppd_name)
 	log.debug('skip PPD write: cannot safely resolve a GMAC device for Ping-Pong Device');
+else if (ppd_name != cur_state.ppd)
+	debugfs.ppd.write(ppd_name);
 
-if (wan_name)
-	changed = debugfs.write_wan(wan_name) || changed;
-else
+if (!wan_name)
 	log.debug('skip WAN write: NAT endpoint not on GMAC/switch (likely Wi-Fi/apcli)');
+else if (wan_name != cur_state.wan)
+	debugfs.wan.write(wan_name);
 
-changed = debugfs.write_lan(lan_name)  || changed;
-changed = debugfs.write_lan2(lan2_name) || changed;
+if (lan_name != cur_state.lan)
+	debugfs.lan.write(lan_name);
 
-log.info(`done: changed= ${(changed ? '1' : '0')}`);
+if (lan2_name != cur_state.lan2)
+	debugfs.lan2.write(lan2_name);
+
+if (cur_state.hook_toggle && !hook_toggle()) {
+	debugfs.hook_toggle.write("1");
+}
+
 exit(0);

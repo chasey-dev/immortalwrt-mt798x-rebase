@@ -815,6 +815,7 @@ setup_model()
 	wavlink,wl-wn586x3* |\
 	wavlink,wl-wn573hx3 |\
 	widelantech,wap430x |\
+	wirelesstag,zx7981pd-ubootmod|\
 	xiaomi,mi-router-ax3000t* |\
 	xiaomi,mi-router-wr30u* |\
 	yuncore,ax835 |\

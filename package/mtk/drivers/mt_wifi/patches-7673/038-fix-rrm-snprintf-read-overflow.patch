@@ -1,0 +1,20 @@
+--- a/mt_wifi/embedded/common/rrm.c
++++ b/mt_wifi/embedded/common/rrm.c
+@@ -833,7 +833,7 @@ VOID RRM_PeerNeighborReqAction(
+ 	} else {
+ 		if (RRM_PeerNeighborReqSanity(pAd, Elem->Msg, Elem->MsgLen, &DialogToken, &pSsid, &SsidLen)) {
+ 			MTWF_DBG(pAd, DBG_CAT_PROTO, CATPROTO_RRM, DBG_LVL_INFO, "DialogToken=%x\n", DialogToken);
+-			ret = snprintf(ssidbuf, sizeof(ssidbuf), "%s", pSsid);
++			ret = snprintf(ssidbuf, sizeof(ssidbuf), "%.*s", SsidLen, pSsid);
+ 			if (os_snprintf_error(sizeof(ssidbuf), ret)) {
+ 				MTWF_DBG(pAd, DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
+ 					"snprintf error!\n");
+@@ -2649,7 +2649,7 @@ VOID RRM_PeerMeasureReqAction(
+ 		memcpy(&pBcnReqData->MeasureReqInfo_scan, &MeasureReqInfo, sizeof(MEASURE_REQ_INFO));
+ 		memcpy(pBcnReqData->Addr1Req, pFr->Hdr.Addr1, 6);
+ 		memcpy(pBcnReqData->Addr2Req, pFr->Hdr.Addr2, 6);
+-		ret = snprintf(pBcnReqData->ReqSsid, SsidLen+1, "%s", pSsid);
++		ret = snprintf(pBcnReqData->ReqSsid, sizeof(pBcnReqData->ReqSsid), "%.*s", SsidLen, pSsid);
+ 		if (os_snprintf_error(sizeof(pBcnReqData->ReqSsid), ret)) {
+ 			MTWF_DBG(pAd, DBG_CAT_PROTO, CATPROTO_RRM, DBG_LVL_ERROR, "%s : snprintf error\n", __func__);
+ 			return;

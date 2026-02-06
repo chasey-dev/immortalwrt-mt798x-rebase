@@ -123,6 +123,7 @@ platform_do_upgrade() {
 	tplink,tl-xdr6086|\
 	tplink,tl-xdr6088|\
 	tplink,tl-xtr8488|\
+	wirelesstag,zx7981pd-ubootmod|\
 	xiaomi,mi-router-ax3000t-ubootmod|\
 	xiaomi,redmi-router-ax6000-ubootmod|\
 	xiaomi,mi-router-wr30u-ubootmod|\
@@ -323,6 +324,7 @@ platform_check_image() {
 	xiaomi,mi-router-ax3000t-ubootmod|\
 	xiaomi,redmi-router-ax6000-ubootmod|\
 	xiaomi,mi-router-wr30u-ubootmod|\
+	wirelesstag,zx7981pd-ubootmod|\
 	zyxel,ex5601-t0-ubootmod)
 		fit_check_image "$1"
 		return $?

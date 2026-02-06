@@ -337,6 +337,7 @@ wavlink,wl-wn586x3b)
 	ucidef_set_led_netdev "wan" "wan" "blue:wan" "eth1" "link tx rx"
 	;;
 xiaomi,mi-router-wr30u-stock|\
+xiaomi,mi-router-wr30u-mtkuboot|\
 xiaomi,mi-router-wr30u-ubootmod)
 	ucidef_set_led_netdev "wan" "wan" "blue:wan" "wan" "link tx rx"
 	;;

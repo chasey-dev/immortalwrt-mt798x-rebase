@@ -11,7 +11,6 @@
 
 	aliases {
 		ethernet0 = &gmac0;
-		ethernet1 = &gmac1;
 		serial0 = &uart0;
 	};
 
@@ -132,14 +131,6 @@
 			full-duplex;
 			pause;
 		};
-	};
-
-	// FAKE ETH1 interface dedicated to USB Offload
-	gmac1: mac@1 {
-		compatible = "mediatek,eth-mac";
-		reg = <1>;
-		phy-mode = "gmii";
-		phy-handle = <&int_gbe_phy>;
 	};
 };
 

@@ -1,0 +1,97 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c
+@@ -1662,6 +1662,18 @@ static int hnat_probe(struct platform_de
+ 		dev_info(&pdev->dev, "ext devices = %s\n", ext_entry->name);
+ 	}
+ 
++	prop = of_find_property(np, "ext-devices-prefix", NULL);
++	for (index = 0, name = of_prop_next_string(prop, NULL); name;
++	     name = of_prop_next_string(prop, name), index++) {
++		if (index < MAX_EXT_PREFIX_NUM)
++			hnat_priv->ext_if_prefix[index] = name;
++		else
++			break;
++	}
++
++	for (i = 0; i < MAX_EXT_PREFIX_NUM && hnat_priv->ext_if_prefix[i]; i++)
++		dev_info(&pdev->dev, "ext devices prefix = %s\n", hnat_priv->ext_if_prefix[i]);
++
+ 	hnat_priv->lvid = 1;
+ 	hnat_priv->wvid = 2;
+ 
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
+@@ -229,6 +229,7 @@
+  */
+ #define MAX_EXT_DEVS		(0x3fU)
+ #define MAX_IF_NUM		64
++#define MAX_EXT_PREFIX_NUM	8
+ 
+ #if defined(CONFIG_MEDIATEK_NETSYS_V3)
+ #define MAX_PPE_NUM		3
+@@ -996,6 +997,7 @@ struct mtk_hnat {
+ 	struct net_device *g_wandev;
+ 	struct net_device *wifi_hook_if[MAX_IF_NUM];
+ 	struct extdev_entry *ext_if[MAX_EXT_DEVS];
++	const char *ext_if_prefix[MAX_EXT_PREFIX_NUM];
+ 	struct timer_list hnat_sma_build_entry_timer;
+ 	struct timer_list hnat_reset_timestamp_timer;
+ 	struct timer_list hnat_mcast_check_timer;
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
+@@ -119,14 +119,32 @@ static inline struct net_device *get_wan
+ 	return NULL;
+ }
+ 
++static inline bool extif_prefix_match(const char *name)
++{
++	int i;
++	int len;
++
++	for (i = 0; i < MAX_EXT_PREFIX_NUM && hnat_priv->ext_if_prefix[i]; i++) {
++		len = strlen(hnat_priv->ext_if_prefix[i]);
++		if (len && !strncmp(name, hnat_priv->ext_if_prefix[i], len))
++			return true;
++	}
++
++	return false;
++}
++
+ static inline int extif_set_dev(struct net_device *dev)
+ {
+ 	int i;
+ 	struct extdev_entry *ext_entry;
+ 
++	/* find from existing ext_if first */
+ 	for (i = 0; i < MAX_EXT_DEVS && hnat_priv->ext_if[i]; i++) {
+ 		ext_entry = hnat_priv->ext_if[i];
+-		if (!strcmp(dev->name, ext_entry->name) && !ext_entry->dev) {
++		if (!strcmp(dev->name, ext_entry->name)) {
++			if (ext_entry->dev)
++				return -1;
++
+ 			dev_hold(dev);
+ 			ext_entry->dev = dev;
+ 			pr_info("%s(%s)\n", __func__, dev->name);
+@@ -135,6 +153,21 @@ static inline int extif_set_dev(struct n
+ 		}
+ 	}
+ 
++	/* fallback to match rules */
++	if (extif_prefix_match(dev->name)) {
++		ext_entry = kzalloc(sizeof(*ext_entry), GFP_KERNEL);
++		if (!ext_entry)
++			return -1;
++
++		strscpy(ext_entry->name, dev->name, IFNAMSIZ);
++		dev_hold(dev);
++		ext_entry->dev = dev;
++		ext_if_add(ext_entry);
++
++		pr_info("%s prefix match (%s)\n", __func__, dev->name);
++		return dev->ifindex;
++	}
++
+ 	return -1;
+ }
+ 

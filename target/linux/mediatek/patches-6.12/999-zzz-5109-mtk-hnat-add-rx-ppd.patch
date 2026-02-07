@@ -1,0 +1,110 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
+@@ -354,6 +354,19 @@ static void gmac_ppe_fwd_enable(struct n
+ 		set_gmac_ppe_fwd(NR_GMAC3_PORT, 1);
+ }
+ 
++static struct net_device *find_rx_ppd(void)
++{
++	struct net_device *dev;
++
++	dev = __dev_get_by_name(&init_net, hnat_priv->rx_ppd);
++	if (!dev || !(dev->flags & IFF_UP) || !netif_carrier_ok(dev))
++		return NULL;
++
++	pr_info("%s: %s, ifindex: %d",
++			__func__, dev->name, dev->ifindex);
++	return dev;
++}
++
+ int nf_hnat_netdevice_event(struct notifier_block *unused, unsigned long event,
+ 			    void *ptr)
+ {
+@@ -367,8 +380,14 @@ int nf_hnat_netdevice_event(struct notif
+ 
+ 		extif_set_dev(dev);
+ 
++		if (IS_RX_PPD(dev))
++			WRITE_ONCE(g_rx_ppdev, find_rx_ppd());
++
+ 		break;
+ 	case NETDEV_CHANGE:
++		if (IS_RX_PPD(dev))
++			WRITE_ONCE(g_rx_ppdev, find_rx_ppd());
++
+ 		/* Clear PPE entries if the slave of bond device physical link down */
+ 		if (!netif_is_bond_slave(dev) ||
+ 		    (!IS_LAN_GRP(dev) && !IS_WAN(dev)))
+@@ -388,6 +407,9 @@ int nf_hnat_netdevice_event(struct notif
+ 		    !dev->netdev_ops->ndo_flow_offload_check)
+ 			break;
+ 
++		if (IS_RX_PPD(dev))
++			WRITE_ONCE(g_rx_ppdev, find_rx_ppd());
++
+ 		foe_clear_all_bind_entries();
+ 
+ 		break;
+@@ -401,6 +423,9 @@ int nf_hnat_netdevice_event(struct notif
+ 			dev_put(dev);
+ 		}
+ 
++		if (g_rx_ppdev == dev)
++			WRITE_ONCE(g_rx_ppdev, NULL);
++
+ 		break;
+ 	case NETDEV_REGISTER:
+ 		if (IS_PPD(dev) && !hnat_priv->g_ppdev)
+@@ -408,6 +433,9 @@ int nf_hnat_netdevice_event(struct notif
+ 		if (IS_WAN(dev) && !hnat_priv->g_wandev)
+ 			hnat_priv->g_wandev = dev_get_by_name(&init_net, hnat_priv->wan);
+ 
++		if (IS_RX_PPD(dev) && !g_rx_ppdev)
++			WRITE_ONCE(g_rx_ppdev, find_rx_ppd());
++
+ 		break;
+ 	default:
+ 		break;
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
+@@ -980,6 +980,7 @@ struct mtk_hnat {
+ 	char lan[IFNAMSIZ];
+ 	char lan2[IFNAMSIZ];
+ 	char ppd[IFNAMSIZ];
++	char rx_ppd[IFNAMSIZ];
+ 	u16 lvid;
+ 	u16 wvid;
+ 
+@@ -1261,6 +1262,7 @@ enum FoeIpAct {
+ 	 (get_wifi_hook_if_index_from_dev(dev) != 0)) ? 1 : 0)
+ #define IS_EXT(dev) ((get_index_from_dev(dev) != 0) ? 1 : 0)
+ #define IS_PPD(dev) (!strcmp(dev->name, hnat_priv->ppd))
++#define IS_RX_PPD(dev) (!strcmp(dev->name, hnat_priv->rx_ppd))
+ #define IS_L2_BRIDGE(x) (((x)->bfib1.pkt_type == L2_BRIDGE) ? 1 : 0)
+ #define IS_IPV4_HNAPT(x) (((x)->bfib1.pkt_type == IPV4_HNAPT) ? 1 : 0)
+ #define IS_IPV4_HNAT(x) (((x)->bfib1.pkt_type == IPV4_HNAT) ? 1 : 0)
+@@ -1357,6 +1359,8 @@ enum FoeIpAct {
+ extern const struct of_device_id of_hnat_match[];
+ extern struct mtk_hnat *hnat_priv;
+ 
++extern struct net_device *g_rx_ppdev;
++
+ int hnat_dsa_fill_stag(const struct net_device *netdev,
+ 		       struct foe_entry *entry,
+ 		       u16 eth_proto, int mape);
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c
+@@ -1574,6 +1574,13 @@ static int hnat_probe(struct platform_de
+ 		strncpy(hnat_priv->ppd, (char *)name, IFNAMSIZ - 1);
+ 	dev_info(&pdev->dev, "ppd = %s\n", hnat_priv->ppd);
+ 
++	err = of_property_read_string(np, "mtketh-rx-ppd", &name);
++	if (err < 0)
++		strscpy(hnat_priv->rx_ppd, "rxppd", IFNAMSIZ);
++	else
++		strscpy(hnat_priv->rx_ppd, name, IFNAMSIZ);
++	dev_info(&pdev->dev, "rx-ppd = %s\n", hnat_priv->rx_ppd);
++
+ 	/*get total gmac num in hnat*/
+ 	err = of_property_read_u32_index(np, "mtketh-max-gmac", 0, &val);
+ 

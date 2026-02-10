@@ -576,7 +576,7 @@ get_eth_if_name()
 # Try to get Wi-Fi interface name from l1profile
 get_wifi_if_name()
 {
-	l1dat_exist=`l1dat 2>/dev/null`
+	l1dat_exist=`l1dat 2>&1`
 	if [ -z "$l1dat_exist" ]; then
 		dbg "Layer 1 profile does not exist."
 		dbg "Please check l1dat "

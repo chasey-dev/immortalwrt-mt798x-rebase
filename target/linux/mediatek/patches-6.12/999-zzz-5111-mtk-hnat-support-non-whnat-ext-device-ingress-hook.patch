@@ -23,17 +23,23 @@
  		skb_hnat_iface(skb) = FOE_MAGIC_GE_PPD;
  	} else if (IS_EXT(state->in)) {
  		skb_hnat_iface(skb) = FOE_MAGIC_EXT;
-@@ -1174,6 +1174,19 @@ mtk_hnat_ipv6_nf_pre_routing(void *priv,
+@@ -1174,6 +1174,25 @@ mtk_hnat_ipv6_nf_pre_routing(void *priv,
  	if (!skb)
  		goto drop;
  
-+	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in)) &&
-+		IS_SPACE_AVAILABLE_HEAD(skb)) {
++	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in))) {
 +		if (unlikely(!g_rx_ppdev)) {
 +			if (debug_level >= 7)
 +				pr_debug("%s:from %s, but g_rx_ppdev not ready!", __func__, state->in->name);
 +			return NF_ACCEPT;
 +		}
++
++		if (unlikely(skb_shinfo(skb)->frag_list))
++			return NF_ACCEPT;
++
++		if (unlikely(skb_headroom(skb) < (FOE_INFO_LEN + ETH_HLEN)) &&
++			 unlikely(skb_cow(skb, FOE_INFO_LEN + ETH_HLEN)))
++			return NF_ACCEPT;
 +
 +		skb_hnat_alg(skb) = 0;
 +		skb_hnat_filled(skb) = 0;
@@ -43,17 +49,23 @@
  	if (!is_magic_tag_valid(skb))
  		return NF_ACCEPT;
  
-@@ -1253,6 +1266,19 @@ mtk_hnat_ipv4_nf_pre_routing(void *priv,
+@@ -1253,6 +1273,25 @@ mtk_hnat_ipv4_nf_pre_routing(void *priv,
  	if (!skb)
  		goto drop;
  
-+	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in)) &&
-+		IS_SPACE_AVAILABLE_HEAD(skb)) {
++	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in))) {
 +		if (unlikely(!g_rx_ppdev)) {
 +			if (debug_level >= 7)
 +				pr_debug("%s:from %s, but g_rx_ppdev not ready!", __func__, state->in->name);
 +			return NF_ACCEPT;
 +		}
++
++		if (unlikely(skb_shinfo(skb)->frag_list))
++			return NF_ACCEPT;
++
++		if (unlikely(skb_headroom(skb) < (FOE_INFO_LEN + ETH_HLEN)) &&
++			 unlikely(skb_cow(skb, FOE_INFO_LEN + ETH_HLEN)))
++			return NF_ACCEPT;
 +
 +		skb_hnat_alg(skb) = 0;
 +		skb_hnat_filled(skb) = 0;
@@ -63,17 +75,23 @@
  	if (!is_magic_tag_valid(skb))
  		return NF_ACCEPT;
  
-@@ -1329,6 +1355,19 @@ mtk_hnat_br_nf_local_in(void *priv, stru
+@@ -1329,6 +1369,25 @@ mtk_hnat_br_nf_local_in(void *priv, stru
  	if (!skb)
  		goto drop;
  
-+	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in)) &&
-+		IS_SPACE_AVAILABLE_HEAD(skb)) {
++	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in))) {
 +		if (unlikely(!g_rx_ppdev)) {
 +			if (debug_level >= 7)
 +				pr_debug("%s:from %s, but g_rx_ppdev not ready!", __func__, state->in->name);
 +			return NF_ACCEPT;
 +		}
++
++		if (unlikely(skb_shinfo(skb)->frag_list))
++			return NF_ACCEPT;
++
++		if (unlikely(skb_headroom(skb) < (FOE_INFO_LEN + ETH_HLEN)) &&
++			 unlikely(skb_cow(skb, FOE_INFO_LEN + ETH_HLEN)))
++			return NF_ACCEPT;
 +
 +		skb_hnat_alg(skb) = 0;
 +		skb_hnat_filled(skb) = 0;
@@ -83,7 +101,7 @@
  	if (!is_magic_tag_valid(skb))
  		return NF_ACCEPT;
  
-@@ -2618,7 +2657,7 @@ hnat_entry_bind:
+@@ -2618,7 +2678,7 @@ hnat_entry_bind:
  			entry.ipv4_hnapt.act_dp |= dev->ifindex & UDF_PINGPONG_IFIDX;
  		}
  	} else if (IS_EXT(dev) && (FROM_GE_PPD(skb) || FROM_GE_LAN_GRP(skb) ||

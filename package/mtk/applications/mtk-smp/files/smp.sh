@@ -676,7 +676,7 @@ scan_usbnet()
 		[ -d "$dev" ] || continue
 		dev_name=$(basename $dev)
 		dev_prefix="${dev_name%%[0-9]*}"
-		if [ "$dev_prefix" = "usb" ] || [ "$dev_prefix" = "wwan" ]; then
+		if [ "$dev_prefix" = "usb" ] || [ "$dev_prefix" = "wwan" ] || [ "$dev_name" = "eth2" ]; then
 			IS_USBNET=1
 			return
 		fi

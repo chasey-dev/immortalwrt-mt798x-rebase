@@ -92,3 +92,14 @@
  		if (!hnat_priv->data->whnat && IS_GMAC1_MODE) {
  			entry.bfib1.vpm = 1;
  			entry.bfib1.vlan_layer = 1;
+@@ -3782,6 +3839,10 @@ static unsigned int mtk_hnat_nf_post_rou
+ 		 && (hw_path.flags & BIT(DEV_PATH_TNL))))
+ 		return 0;
+ 
++	/* block ge -> external device learning */
++	if (!IS_WHNAT(out) && IS_EXT(out) && !FROM_WED(skb))
++		return 0;
++
+ 	if (debug_level >= 7)
+ 		trace_printk("[%s] case hit, %x-->%s, reason=%x\n", __func__,
+ 			     skb_hnat_iface(skb), out->name, skb_hnat_reason(skb));

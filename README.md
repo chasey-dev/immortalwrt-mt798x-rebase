@@ -35,3 +35,18 @@ Reviewed-on: https://gerrit.mediatek.inc/c/openwrt/feeds/mtk_openwrt_feeds/+/116
 ```
 feat(ucode): add get all device map support
 ```
+## About External Devices HNAT
+> [!WARNING]
+> Current HNAT support for external devices is basic and lack of complete test for various types. Please use with caution.
+
+> [!IMPORTANT]
+> Please keep interface `rxppd` in your bridge device (e.g. `br-lan`) while using external device HNAT.
+
+### Support Matrix:
+|               |  Ext as WAN   | Ext as LAN                |
+|   :----:      |   :----:      | :----:                    |
+|  **Ethernet** |      ✔️       |   ❌                     |
+| **AP/ApCli**  |      ✔️       |   ⚠️(**Untested**)       |
+
+## Acknowledgements
+HNAT support for external devices is adapted from [Padavanonly's repo](https://github.com/padavanonly/immortalwrt-mt798x-6.6). 

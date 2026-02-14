@@ -30,7 +30,7 @@ endef
 
 define Package/hnat-detect
   $(call Package/hnat-detect/Default)
-  DEPENDS:=$(UCODE_DEPENDS)
+  DEPENDS:=$(UCODE_DEPENDS) +kmod-dummy
 endef
 
 define Build/Prepare

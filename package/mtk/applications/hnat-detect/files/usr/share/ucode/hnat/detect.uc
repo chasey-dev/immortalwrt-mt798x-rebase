@@ -30,9 +30,6 @@
 
 'use strict';
 
-import * as fs from 'fs';
-import * as uci from 'uci';
-
 import { log, merge } from 'hnat.utils.common';
 import * as debugfs from 'hnat.utils.debugfs';
 import * as sysnet from 'hnat.utils.sysnet';
@@ -193,6 +190,54 @@ if (has_sw) {
 }
 
 log.info(`chosen: ppd = ${ppd_name || '(keep)'}, wan = ${wan_name || '(keep)'}, lan = ${lan_name}, lan2 = ${lan2_name}`);
+
+/* Rx PPD detect logic:
+ * Rx PPD is used for Ext devices (such as USB, WWAN) HNAT
+ * If NAT zone physical device is ext device, add Rx PPD to bridge device in src zone.
+ * Else delete Rx PPD from bridge device in src zone.
+ */
+
+const RX_PPD_NAME = "rxppd";
+const is_ext = (name) => {
+    return match(name, /^(usb|wwan|eth2)/); 
+};
+let ext_devs = filter(nat_zone.related_physdevs, d => is_ext(d));
+
+/* remove useless "dummy0" created by default */
+if (sysnet.dev_exist("dummy0")) {
+	system(`ip link delete dummy0`);
+}
+
+if (length(ext_devs) > 0) {
+	/* find bridge device in lan zone */
+	let br_dev = null;
+	let lan_devs = z[lan_zone_name].related_physdevs || [];
+	for (let dev in lan_devs) {
+		if (sysnet.is_bridge(dev)) {
+			br_dev = dev;
+			break;
+		}
+	}
+
+	if (br_dev) {
+		log.info(`ext devices: ${ext_devs}, enable ${RX_PPD_NAME} on ${br_dev}`);
+		/* add Rx PPD */
+		if (!sysnet.dev_exist(RX_PPD_NAME)) {
+			system(`ip link add ${RX_PPD_NAME} type dummy`);
+			system(`ip link set ${RX_PPD_NAME} up`);
+		}
+		/* add Rx PPD to bridge */
+		if (index(sysnet.br_members(br_dev), RX_PPD_NAME) < 0) {
+			system(`ip link set ${RX_PPD_NAME} master ${br_dev}`);
+		}
+    }
+} else {
+	/* no ext devices, remove Rx PPD */
+	if (sysnet.dev_exist(RX_PPD_NAME)) {
+		system(`ip link delete ${RX_PPD_NAME}`);
+		log.info(`No ext devices, removing ${RX_PPD_NAME}`);
+	}
+}
 
 /* Apply:
  * - WAN: only write when we resolved a GMAC/switch endpoint (never apcli0/aplicx0).

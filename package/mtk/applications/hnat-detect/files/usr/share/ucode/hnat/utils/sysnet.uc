@@ -44,17 +44,21 @@ export function get_gmac_roots() {
     return _roots;
 };
 
+export function dev_exist(dev) {
+    return fs.stat(p(dev)) != null;
+};
+
 function get_lower_devs(dev) {
     let ents = fs.lsdir(p(dev)) || [];
     let lowers = filter(ents, n => index(n, 'lower_') == 0);
     return uniq(map(lowers, n => substr(n, 6)));
 };
 
-function is_bridge(dev) {
+export function is_bridge(dev) {
     return fs.stat(p(dev, 'bridge')) != null;
 };
 
-function br_members(br) {
+export function br_members(br) {
     return fs.lsdir(p(br, 'brif')) || [];
 };
 

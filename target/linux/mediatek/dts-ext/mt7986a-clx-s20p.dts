@@ -13,7 +13,7 @@
 
 	aliases {
 		serial0 = &uart0;
-		label-mac-device = &gmac1;
+		label-mac-device = &gmac0;
 		led-boot = &sys_led;
 		led-failsafe = &sys_led;
 		led-running = &sys_led;
@@ -183,7 +183,7 @@
 
 				port@4 {
 					reg = <4>;
-				    label = "lan1";
+					label = "lan1";
 				};
 
 				port@5 {

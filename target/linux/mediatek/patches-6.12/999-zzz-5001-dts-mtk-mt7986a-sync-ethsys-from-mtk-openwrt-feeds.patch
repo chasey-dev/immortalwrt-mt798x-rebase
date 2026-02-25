@@ -1,15 +1,14 @@
-diff --git a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
-index 46bc2d2676a9..4cfd49cf0008 100644
 --- a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
 +++ b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
-@@ -9,6 +9,7 @@
- #include <dt-bindings/clock/mt7986-clk.h>
- #include <dt-bindings/reset/mt7986-resets.h>
+@@ -11,6 +11,8 @@
  #include <dt-bindings/phy/phy.h>
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/input/input.h>
 +#include <dt-bindings/reset/ti-syscon.h>
- 
++
  / {
  	compatible = "mediatek,mt7986a";
+ 	interrupt-parent = <&gic>;
 @@ -506,12 +507,20 @@ u2port1: usb-phy@1000 {
  		};
  

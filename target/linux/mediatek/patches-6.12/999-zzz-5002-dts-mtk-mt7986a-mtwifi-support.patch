@@ -1,6 +1,6 @@
 --- a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
 +++ b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
-@@ -92,23 +92,30 @@
+@@ -94,23 +94,30 @@
  		};
  
  		wmcpu_emi: wmcpu-reserved@4fc00000 {
@@ -31,7 +31,7 @@
  		};
  	};
  
-@@ -131,6 +138,16 @@
+@@ -133,6 +140,16 @@
  			#interrupt-cells = <3>;
  		};
  
@@ -48,7 +48,7 @@
  		infracfg: infracfg@10001000 {
  			compatible = "mediatek,mt7986-infracfg", "syscon";
  			reg = <0 0x10001000 0 0x1000>;
-@@ -139,7 +156,8 @@
+@@ -141,7 +158,8 @@
  		};
  
  		wed_pcie: wed-pcie@10003000 {
@@ -58,7 +58,7 @@
  				     "syscon";
  			reg = <0 0x10003000 0 0x10>;
  		};
-@@ -516,32 +534,26 @@
+@@ -524,32 +542,26 @@
  			};
          };
  
@@ -107,7 +107,7 @@
  		};
  
  		eth: ethernet@15100000 {
-@@ -585,7 +597,7 @@
+@@ -593,7 +605,7 @@
  			mediatek,ethsys = <&ethsys>;
  			mediatek,sgmiisys = <&sgmiisys0>, <&sgmiisys1>;
  			mediatek,wed-pcie = <&wed_pcie>;
@@ -116,8 +116,8 @@
  			status = "disabled";
  		};
  
-@@ -601,47 +613,51 @@
- 			mtketh-ppe-num = <2>;
+@@ -610,47 +622,51 @@
+ 			ext-devices-prefix = "wwan", "usb", "eth2";
  		};
  
 -		wo_ccif0: syscon@151a5000 {
@@ -190,7 +190,7 @@
  			reg = <0 0x18000000 0 0x1000000>,
  			      <0 0x10003000 0 0x1000>,
  			      <0 0x11d10000 0 0x1000>;
-@@ -654,6 +670,7 @@
+@@ -663,6 +679,7 @@
  				     <GIC_SPI 214 IRQ_TYPE_LEVEL_HIGH>,
  				     <GIC_SPI 215 IRQ_TYPE_LEVEL_HIGH>,
  				     <GIC_SPI 216 IRQ_TYPE_LEVEL_HIGH>;

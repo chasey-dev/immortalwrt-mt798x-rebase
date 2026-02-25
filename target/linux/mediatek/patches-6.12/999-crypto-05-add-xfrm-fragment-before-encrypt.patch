@@ -1,0 +1,37 @@
+--- a/net/xfrm/xfrm_device.c
++++ b/net/xfrm/xfrm_device.c
+@@ -427,6 +427,12 @@ bool xfrm_dev_offload_ok(struct sk_buff
+ 			goto ok;
+ 	}
+ 
++	if (x->props.family == AF_INET && x->xso.type == XFRM_DEV_OFFLOAD_PACKET) {
++		skb_gso_reset(skb);
++		IPCB(skb)->frag_max_size = mtu;
++		if (!ip_do_fragment(dev_net(skb_dst(skb)->dev), skb->sk, skb, xfrm4_output))
++			return true;
++	}
+ 	return false;
+ 
+ ok:
+--- a/net/xfrm/xfrm_output.c
++++ b/net/xfrm/xfrm_output.c
+@@ -583,7 +583,18 @@ out:
+ 
+ int xfrm_output_resume(struct sock *sk, struct sk_buff *skb, int err)
+ {
+-	struct net *net = xs_net(skb_dst(skb)->xfrm);
++	struct dst_entry *dst = skb_dst(skb);
++	struct net *net = NULL;
++
++	/* If a IPSec tunnel is HW offloaded, all packets should send to eip.
++	 * However, eip cannot fragment packets, so we perform ip_do_fragment()
++	 * in xfrm_dev_offload_ok(). If ip_do_fragment() failed, the original skb
++	 * will reach here and need to be returned.
++	 */
++	if (unlikely(!dst || !(dst->xfrm)))
++		return -EINVAL;
++
++	net = xs_net(dst->xfrm);
+ 
+ 	while (likely((err = xfrm_output_one(skb, err)) == 0)) {
+ 		nf_reset_ct(skb);

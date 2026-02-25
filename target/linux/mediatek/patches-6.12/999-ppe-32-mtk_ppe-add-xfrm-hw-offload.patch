@@ -1,0 +1,104 @@
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
+@@ -620,6 +620,28 @@ int mtk_foe_entry_set_pppoe(struct mtk_e
+ 	return 0;
+ }
+ 
++int mtk_foe_entry_set_tport(struct mtk_eth *eth, struct mtk_foe_entry *entry,
++			    int tport)
++{
++	struct mtk_foe_mac_info *l2 = mtk_foe_entry_l2(eth, entry);
++
++	l2->tport &= ~MTK_FOE_TPORT_IDX;
++	l2->tport |= FIELD_PREP(MTK_FOE_TPORT_IDX, tport);
++
++	return 0;
++}
++
++int mtk_foe_entry_set_cdrt(struct mtk_eth *eth, struct mtk_foe_entry *entry,
++			   int cdrt)
++{
++	struct mtk_foe_mac_info *l2 = mtk_foe_entry_l2(eth, entry);
++
++	l2->tinfo &= ~MTK_FOE_CDRT_IDX;
++	l2->tinfo |= FIELD_PREP(MTK_FOE_CDRT_IDX, cdrt);
++
++	return 0;
++}
++
+ int mtk_foe_entry_set_wdma(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 			   int wdma_idx, int txq, int bss, int wcid,
+ 			   int tid, bool amsdu_en)
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.h
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.h
+@@ -101,6 +101,10 @@ enum {
+ #define MTK_FOE_UDF_KEEP_DSCP		BIT(10)
+ 
+ #define MTK_FOE_TPORT_IDX		GENMASK(3, 0)
++#define MTK_FOE_CDRT_IDX		GENMASK(7, 0)
++#define MTK_FOE_TOPS_ENTRY		GENMASK(13, 8)
++
++extern int (*mtk_flow_offload_get_cdrt)(struct xfrm_state *xs);
+ 
+ enum {
+ 	MTK_FOE_STATE_INVALID,
+@@ -408,6 +412,10 @@ int mtk_foe_entry_set_vlan(struct mtk_et
+ 			   int vid);
+ int mtk_foe_entry_set_pppoe(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 			    int sid);
++int mtk_foe_entry_set_tport(struct mtk_eth *eth, struct mtk_foe_entry *entry,
++			    int tport);
++int mtk_foe_entry_set_cdrt(struct mtk_eth *eth, struct mtk_foe_entry *entry,
++			   int cdrt);
+ int mtk_foe_entry_set_wdma(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 			   int wdma_idx, int txq, int bss, int wcid,
+ 			   int tid, bool amsdu_en);
+--- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
+@@ -46,6 +46,9 @@ struct mtk_flow_data {
+ 		u16 sid;
+ 		u8 num;
+ 	} pppoe;
++	struct {
++		u16 cdrt_id;
++	} ipsec;
+ };
+ 
+ static const struct rhashtable_params mtk_flow_ht_params = {
+@@ -55,6 +58,9 @@ static const struct rhashtable_params mt
+ 	.automatic_shrinking = true,
+ };
+ 
++int (*mtk_flow_offload_get_cdrt)(struct xfrm_state *xs) = NULL;
++EXPORT_SYMBOL(mtk_flow_offload_get_cdrt);
++
+ static int
+ mtk_flow_set_ipv4_addr(struct mtk_eth *eth, struct mtk_foe_entry *foe,
+ 		       struct mtk_flow_data *data, bool egress)
+@@ -508,6 +514,14 @@ mtk_flow_offload_replace(struct mtk_eth
+ 			data.pppoe.sid = act->pppoe.sid;
+ 			data.pppoe.num++;
+ 			break;
++		case FLOW_ACTION_IPSEC_PUSH:
++			if (!mtk_flow_offload_get_cdrt)
++				return -EOPNOTSUPP;
++
++			data.ipsec.cdrt_id = mtk_flow_offload_get_cdrt(&act->ipsec.xs);
++			if (data.ipsec.cdrt_id == 0)
++				return -EOPNOTSUPP;
++			break;
+ 		default:
+ 			return -EOPNOTSUPP;
+ 		}
+@@ -606,6 +620,11 @@ mtk_flow_offload_replace(struct mtk_eth
+ 	if (data.pppoe.num == 1)
+ 		mtk_foe_entry_set_pppoe(eth, &foe, data.pppoe.sid);
+ 
++	if (data.ipsec.cdrt_id) {
++		mtk_foe_entry_set_cdrt(eth, &foe, data.ipsec.cdrt_id);
++		mtk_foe_entry_set_tport(eth, &foe, TPORT_EIP197_QDMA);
++	}
++
+ 	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+ 	if (!entry)
+ 		return -ENOMEM;

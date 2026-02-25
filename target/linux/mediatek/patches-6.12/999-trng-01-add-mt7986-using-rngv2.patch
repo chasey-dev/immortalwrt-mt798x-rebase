@@ -1,0 +1,67 @@
+From 90ff5bdd24e37d647eec7a9992c42bbc1298c5d2 Mon Sep 17 00:00:00 2001
+From: "guan-gm.lin" <guan-gm.lin@mediatek.com>
+Date: Tue, 20 Jan 2026 15:03:13 +0800
+Subject: [PATCH] mtk rng v2
+
+---
+ drivers/char/hw_random/mtk-rng-v2.c | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/drivers/char/hw_random/mtk-rng-v2.c b/drivers/char/hw_random/mtk-rng-v2.c
+index 8c506a789..f29cfd286 100644
+--- a/drivers/char/hw_random/mtk-rng-v2.c
++++ b/drivers/char/hw_random/mtk-rng-v2.c
+@@ -16,6 +16,7 @@
+ #include <linux/of_device.h>
+ #include <linux/platform_device.h>
+ #include <linux/soc/mediatek/mtk_sip_svc.h>
++#include <linux/clk.h>
+ 
+ #define MTK_SIP_KERNEL_GET_RND		MTK_SIP_SMC_CMD(0x550)
+ 
+@@ -39,6 +40,27 @@ static int mtk_rng_v2_read(struct hwrng *rng, void *buf, size_t max, bool wait)
+ 	return retval || !wait ? retval : -EIO;
+ }
+ 
++static int enable_trng_clk(struct platform_device *pdev)
++{
++	struct clk *trng_clk;
++	int ret = 0;
++
++	trng_clk = devm_clk_get(&pdev->dev, "trng");
++	if (IS_ERR(trng_clk)) {
++		dev_info(&pdev->dev, "Failed to get clk.\n");
++		return PTR_ERR(trng_clk);
++	}
++
++	ret = clk_prepare_enable(trng_clk);
++	if (ret) {
++		dev_info(&pdev->dev, "Failed to enable trng clk.\n");
++		return ret;
++	}
++
++	return ret;
++
++}
++
+ static int mtk_rng_v2_probe(struct platform_device *pdev)
+ {
+ 	struct hwrng *trng;
+@@ -47,6 +69,8 @@ static int mtk_rng_v2_probe(struct platform_device *pdev)
+ 	if (!trng)
+ 		return -ENOMEM;
+ 
++	enable_trng_clk(pdev);
++
+ 	trng->name = pdev->name;
+ 	trng->read = mtk_rng_v2_read;
+ 	trng->quality = 900;
+@@ -58,6 +82,7 @@ static const struct of_device_id mtk_rng_v2_match[] = {
+ 	{ .compatible = "mediatek,mt7981-rng" },
+ 	{ .compatible = "mediatek,mt7987-rng" },
+ 	{ .compatible = "mediatek,mt7988-rng" },
++	{ .compatible = "mediatek,mt7986-rng" },
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, mtk_rng_v2_match);
+

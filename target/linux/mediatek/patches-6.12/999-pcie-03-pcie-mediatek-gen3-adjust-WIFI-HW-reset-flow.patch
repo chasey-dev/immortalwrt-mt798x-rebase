@@ -1,0 +1,64 @@
+--- a/drivers/pci/controller/pcie-mediatek-gen3.c
++++ b/drivers/pci/controller/pcie-mediatek-gen3.c
+@@ -201,6 +201,7 @@ struct mtk_pcie_irq {
+  * @max_link_width: PCIe slot max supported link width
+  * @wifi_reset: reset pin for WIFI chip
+  * @wifi_reset_delay_ms: delay time for WIFI chip reset
++ * @wifi_deassert_delay_ms: delaty time after WIFI chip reset
+  * @irq: PCIe controller interrupt number
+  * @num_irqs: PCIe irqs count
+  * @irqs: PCIe controller interrupts information
+@@ -228,6 +229,7 @@ struct mtk_gen3_pcie {
+ 
+ 	struct gpio_desc *wifi_reset;
+ 	u32 wifi_reset_delay_ms;
++	u32 wifi_deassert_delay_ms;
+ 
+ 	int irq;
+ 	int num_irqs;
+@@ -492,10 +494,11 @@ static int mtk_pcie_startup_port(struct
+ 	val |= PCIE_DISABLE_DVFSRC_VLT_REQ;
+ 	writel_relaxed(val, pcie->base + PCIE_MISC_CTRL_REG);
+ 
+-	if (pcie->wifi_reset) {
++	if (!IS_ERR_OR_NULL(pcie->wifi_reset)) {
+ 		gpiod_set_value_cansleep(pcie->wifi_reset, 1);
+ 		msleep(pcie->wifi_reset_delay_ms);
+ 		gpiod_set_value_cansleep(pcie->wifi_reset, 0);
++		msleep(pcie->wifi_deassert_delay_ms);
+ 	}
+ 
+ 	/* Assert all reset signals */
+@@ -1129,15 +1132,30 @@ static int mtk_pcie_parse_port(struct mt
+ 	if (!ret) {
+ 		pcie->wifi_reset = devm_gpiod_get_optional(dev, "wifi-reset",
+ 							   GPIOD_OUT_LOW);
++
+ 		if (IS_ERR(pcie->wifi_reset)) {
+ 			ret = PTR_ERR(pcie->wifi_reset);
+-			if (ret != -EPROBE_DEFER)
++
++			/* Allow other modules to control the WiFi reset GPIO */
++			if (ret == -EBUSY) {
++				dev_warn(dev,
++					"WiFi reset GPIO source is external\n");
++			} else if (ret != -EPROBE_DEFER) {
+ 				dev_err(dev,
+ 					"failed to request WIFI reset gpio\n");
+-			return ret;
++				return ret;
++			} else {
++				return ret;
++			}
+ 		}
+ 	}
+ 
++	ret = of_property_read_u32(dev->of_node, "wifi-deassert-msleep",
++				   &pcie->wifi_deassert_delay_ms);
++
++	if (ret)
++		pcie->wifi_deassert_delay_ms = 0;
++
+ 	pcie->max_link_width = of_pci_get_max_link_width(dev->of_node);
+ 	if (pcie->max_link_width < 0)
+ 		dev_err(dev, "failed to get max link width\n");

@@ -1,0 +1,54 @@
+From 7f76fb447585ed365c6d1f453061c65acaa813f5 Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Wed, 24 Sep 2025 14:09:05 +0800
+Subject: [PATCH] dts: mediatek: add mt7987 multiple thermal zones
+
+---
+ arch/arm64/boot/dts/mediatek/mt7987.dtsi | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987.dtsi b/arch/arm64/boot/dts/mediatek/mt7987.dtsi
+index f036128..953a28f 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7987.dtsi
+@@ -12,6 +12,7 @@
+ #include <dt-bindings/pinctrl/mt65xx.h>
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/thermal/thermal.h>
++#include <dt-bindings/thermal/mediatek,lvts-thermal.h>
+ #include <dt-bindings/reset/mediatek,mt7987-resets.h>
+ #include <dt-bindings/regulator/richtek,rt5190a-regulator.h>
+ 
+@@ -266,7 +267,7 @@ thermal-zones {
+ 		cpu_thermal: cpu-thermal {
+ 			polling-delay-passive = <1000>;
+ 			polling-delay = <1000>;
+-			thermal-sensors = <&lvts 0>;
++			thermal-sensors = <&lvts MT7987_CPU>;
+ 
+ 			trips {
+ 				cpu_trip_crit: crit {
+@@ -276,6 +277,20 @@ cpu_trip_crit: crit {
+ 				};
+ 			};
+ 		};
++
++		eth2p5g_thermal: eth2p5g-thermal {
++			polling-delay-passive = <1000>;
++			polling-delay = <1000>;
++			thermal-sensors = <&lvts MT7987_ETH2P5G>;
++
++			trips {
++				eth2p5g_trip_crit: crit {
++					temperature = <125000>;
++					hysteresis = <2000>;
++					type = "critical";
++				};
++			};
++		};
+ 	};
+ 
+ 	timer {
+-- 
+2.45.2
+

@@ -1,0 +1,157 @@
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -1817,6 +1817,9 @@ static void mtk_tx_set_dma_desc_v2(struc
+ 	}
+ 
+ 	data |= TX_DMA_SWC_V2 | QID_BITS_V2(info->qid);
++
++	/* Set tport */
++	data |= FIELD_PREP(TX_DMA_TPORT_MASK, info->tport);
+ 	WRITE_ONCE(desc->txd4, data);
+ 
+ 	data = 0;
+@@ -1837,7 +1840,11 @@ static void mtk_tx_set_dma_desc_v2(struc
+ 	WRITE_ONCE(desc->txd6, data);
+ 
+ 	WRITE_ONCE(desc->txd7, 0);
+-	WRITE_ONCE(desc->txd8, 0);
++
++	data = 0;
++	data |= FIELD_PREP(TX_DMA_TOPS_ENTRY_MASK, info->tops_entry);
++	data |= FIELD_PREP(TX_DMA_CDRT_MASK, info->cdrt);
++	WRITE_ONCE(desc->txd8, data);
+ }
+ 
+ static void mtk_tx_set_dma_desc(struct net_device *dev, void *txd,
+@@ -1970,12 +1977,22 @@ next:
+ 	txd_info = (struct mtk_tx_dma_desc_info){
+ 		.gso = gso,
+ 		.qid = queue,
++		.cdrt = 0,
++		.tport = 0,
++		.tops_entry = 0,
+ 		.csum = cur_skb->ip_summed == CHECKSUM_PARTIAL || gso,
+ 		.vlan = skb_vlan_tag_present(skb),
+ 		.vlan_tci = skb_vlan_tag_get(skb),
+ 		.first = true,
+ 	};
+ 
++	if (mtk_is_netsys_v3_or_greater(eth) &&
++	    unlikely(skb->inner_protocol == IPPROTO_ESP &&
++	    skb_tnl_cdrt(skb) && is_tnl_tag_valid(skb))) {
++		txd_info.cdrt = skb_tnl_cdrt(skb);
++		txd_info.tport = TPORT_EIP197_QDMA;
++	}
++
+ 	if (cur_skb != skb) {
+ 		struct tcphdr *th, *th2;
+ 
+@@ -2050,6 +2067,14 @@ next_frag:
+ 		memset(&txd_info, 0, sizeof(struct mtk_tx_dma_desc_info));
+ 		txd_info.qid = queue;
+ 		offset = 0;
++
++		if (mtk_is_netsys_v3_or_greater(eth) &&
++		    unlikely(skb->inner_protocol == IPPROTO_ESP &&
++		    skb_tnl_cdrt(skb) && is_tnl_tag_valid(skb))) {
++			txd_info.cdrt = skb_tnl_cdrt(skb);
++			txd_info.tport = TPORT_EIP197_QDMA;
++		}
++
+ 		while (frag_size) {
+ 			txd_info.size = min_t(unsigned int, frag_size,
+ 					      soc->tx.dma_max_len);
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -23,6 +23,7 @@
+ #include <net/page_pool/types.h>
+ #include <linux/bpf_trace.h>
+ #include "mtk_ppe.h"
++#include "mtk_tnl.h"
+ 
+ #define MTK_MAX_DSA_PORTS	7
+ #define MTK_DSA_PORT_MASK	GENMASK(2, 0)
+@@ -448,6 +449,10 @@
+ 
+ #define MTK_TX_DMA_BUF_SHIFT	8
+ 
++/* QDMA V2 descriptor txd8 */
++#define TX_DMA_CDRT_MASK           GENMASK(7, 0)
++#define TX_DMA_TOPS_ENTRY_MASK     GENMASK(13, 8)
++
+ /* QDMA V2 descriptor txd6 */
+ #define TX_DMA_INS_VLAN_V2	BIT(16)
+ /* QDMA V2 descriptor txd5 */
+@@ -457,6 +462,10 @@
+ #define TX_DMA_SPTAG_V3         BIT(27)
+ 
+ /* QDMA V2 descriptor txd4 */
++#define TPORT_QDMA			1
++#define TPORT_EIP197			2
++#define TPORT_EIP197_QDMA		3
++#define TX_DMA_TPORT_MASK       GENMASK(3, 0)
+ #define TX_DMA_FPORT_SHIFT_V2	8
+ #define TX_DMA_FPORT_MASK_V2	0xf
+ #define TX_DMA_SWC_V2		BIT(30)
+@@ -539,6 +548,10 @@
+ /* PDMA V2 descriptor rxd6 */
+ #define RX_DMA_GET_FLUSH_RSN_V2	GENMASK(2, 0)
+ #define RX_DMA_GET_AGG_CNT_V2	GENMASK(23, 16)
++#define RX_DMA_GET_TOPS_CRSN(x)	(((x) >> 24) & 0xff)
++
++/* PDMA V2 descriptor rxd7 */
++#define RX_DMA_GET_CDRT(x)	(((x) >> 8) & 0xff)
+ 
+ /* PHY Polling and SMI Master Control registers */
+ #define MTK_PPSC		0x10000
+@@ -1497,6 +1510,9 @@ struct mtk_tx_dma_desc_info {
+ 	u32		size;
+ 	u16		vlan_tci;
+ 	u16		qid;
++	u8		cdrt;
++	u8		tport;
++	u8		tops_entry;
+ 	u8		gso:1;
+ 	u8		csum:1;
+ 	u8		vlan:1;
+--- /dev/null
++++ b/drivers/net/ethernet/mediatek/mtk_tnl.h
+@@ -0,0 +1,37 @@
++#ifndef MTK_TNL_H
++#define MTK_TNL_H
++
++struct mtk_tnl_desc {
++	u32 entry : 15;
++	u32 filled : 3;
++	u32 crsn : 5;
++	u32 resv1 : 3;
++	u32 sport : 4;
++	u32 resv2 : 1;
++	u32 alg : 1;
++	u32 iface : 8;
++	u32 wdmaid : 2;
++	u32 rxid : 2;
++	u32 wcid : 16;
++	u32 bssid : 8;
++	u32 usr_info : 16;
++	u32 tid : 4;
++	u32 is_fixedrate : 1;
++	u32 is_prior : 1;
++	u32 is_sp : 1;
++	u32 hf : 1;
++	u32 amsdu : 1;
++	u32 tops : 6;
++	u32 is_decap : 1;
++	u32 cdrt : 8;
++	u32 resv3 : 4;
++	u32 magic_tag_protect : 16;
++} __packed;
++
++#define TNL_MAGIC_TAG 0x6789
++#define skb_tnl_cdrt(skb) (((struct mtk_tnl_desc *)((skb)->head))->cdrt)
++#define skb_tnl_set_cdrt(skb, cdrt) ((skb_tnl_cdrt(skb)) = (cdrt))
++#define skb_tnl_magic_tag(skb) (((struct mtk_tnl_desc *)((skb)->head))->magic_tag_protect)
++#define is_tnl_tag_valid(skb) (skb_tnl_magic_tag(skb) == TNL_MAGIC_TAG)
++
++#endif /* MTK_TNL_H */
+\ No newline at end of file

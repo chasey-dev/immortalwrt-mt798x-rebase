@@ -1,0 +1,10 @@
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -836,6 +836,7 @@ enum net_device_path_type {
+ 	DEV_PATH_BRIDGE,
+ 	DEV_PATH_PPPOE,
+ 	DEV_PATH_DSA,
++	DEV_PATH_MACVLAN,
+ 	DEV_PATH_MTK_WDMA,
+ };
+ 

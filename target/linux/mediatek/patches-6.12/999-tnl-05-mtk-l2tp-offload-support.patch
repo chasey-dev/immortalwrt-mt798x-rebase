@@ -1,0 +1,23 @@
+--- a/net/l2tp/l2tp_core.c
++++ b/net/l2tp/l2tp_core.c
+@@ -1068,6 +1068,10 @@ int l2tp_xmit_skb(struct l2tp_session *s
+ 	int udp_len;
+ 	int ret = NET_XMIT_SUCCESS;
+ 
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++	skb_reset_inner_headers(skb);
++#endif
++
+ 	/* Check that there's enough headroom in the skb to insert IP,
+ 	 * UDP and L2TP headers. If not enough, expand it to
+ 	 * make room. Adjust truesize.
+--- a/net/l2tp/l2tp_ppp.c
++++ b/net/l2tp/l2tp_ppp.c
+@@ -356,6 +356,7 @@ static int l2tp_ppp_flow_offload_check(s
+ 		return -EINVAL;
+ 
+ 	path->flags |= BIT(DEV_PATH_TNL);
++	path->tnl_type = FLOW_OFFLOAD_TNL_L2TP_V2;
+ 
+ 	sock_put(sk);
+ 

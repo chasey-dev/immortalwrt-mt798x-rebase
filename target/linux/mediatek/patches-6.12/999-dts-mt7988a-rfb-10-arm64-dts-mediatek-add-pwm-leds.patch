@@ -1,0 +1,62 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
+@@ -45,6 +45,48 @@
+ 		regulator-boot-on;
+ 		regulator-always-on;
+ 	};
++
++	pwm_led: pwm-led {
++		compatible = "pwm-leds";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pwm_pins>;
++		status = "disabled";
++
++		led {
++			pwms = <&pwm 1 50000 0>;
++			max-brightness = <255>;
++			active-low;
++			linux,default-trigger = "default-on";
++		};
++	};
++
++	pwm_rgb: pwm-rgb {
++		compatible = "pwm-leds-multicolor";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pwm_rgb_pins>;
++		status = "disabled";
++
++		multi-led {
++			color = <LED_COLOR_ID_RGB>;
++			function = LED_FUNCTION_INDICATOR;
++			max-brightness = <255>;
++
++			led-red {
++				pwms = <&pwm 1 50000>;
++				color = <LED_COLOR_ID_RED>;
++			};
++
++			led-green {
++				pwms = <&pwm 2 50000>;
++				color = <LED_COLOR_ID_GREEN>;
++			};
++
++			led-blue {
++				pwms = <&pwm 3 50000>;
++				color = <LED_COLOR_ID_BLUE>;
++			};
++		};
++	};
+ };
+ 
+ &gmac0 {
+@@ -211,6 +253,10 @@
+ 	status = "okay";
+ };
+ 
++&pwm {
++	status = "okay";
++};
++
+ &ssusb0 {
+ 	status = "okay";
+ };

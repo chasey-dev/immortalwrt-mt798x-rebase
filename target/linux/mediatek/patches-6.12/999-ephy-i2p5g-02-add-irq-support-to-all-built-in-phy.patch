@@ -1,0 +1,159 @@
+--- a/drivers/net/phy/mediatek/mtk-2p5ge.c
++++ b/drivers/net/phy/mediatek/mtk-2p5ge.c
+@@ -697,49 +697,16 @@ static int mt798x_2p5ge_phy_get_features
+ 	return 0;
+ }
+ 
+-static irqreturn_t mt798x_2p5ge_phy_handle_interrupt(struct phy_device *phydev)
+-{
+-	int irq_status;
+-
+-	/* Read interrupt status register to clear interrupt */
+-	irq_status = phy_read(phydev, 0x1a);
+-	if (irq_status < 0) {
+-		phy_error(phydev);
+-		return IRQ_NONE;
+-	}
+-
+-	if (irq_status == 0)
+-		return IRQ_NONE;
+-
+-	phy_trigger_machine(phydev);
+-
+-	return IRQ_HANDLED;
+-}
+-
+ static int mt798x_2p5ge_phy_config_intr(struct phy_device *phydev)
+ {
+ 	struct mtk_i2p5ge_phy_priv *priv = phydev->priv;
+-	int ret;
+ 
+-	if (phydev->interrupts == PHY_INTERRUPT_ENABLED) {
++	if (phydev->interrupts == PHY_INTERRUPT_ENABLED)
+ 		reg_clear_bits(priv, MTK_2P5GPHY_CHIP_SCU + IRQ_MASK, PHY_IRQ_MASK);
+-		ret = phy_write(phydev, MTK_PHY_IRQ_MASK, MDINT_MASK | LINK_STATUS_MASK);
+-		if (ret < 0)
+-			return ret;
+-
+-		/* Clear any pending interrupts */
+-		ret = phy_read(phydev, 0x1a);
+-		if (ret < 0)
+-			return ret;
+-	} else {
+-		/* Disable PHY interrupts */
++	else
+ 		reg_set_bits(priv, MTK_2P5GPHY_CHIP_SCU + IRQ_MASK, PHY_IRQ_MASK);
+-		ret = phy_write(phydev, MTK_PHY_IRQ_MASK, 0);
+-		if (ret < 0)
+-			return ret;
+-	}
+ 
+-	return 0;
++	return mtk_phy_config_intr(phydev);
+ }
+ 
+ static int mt798x_2p5ge_phy_read_status(struct phy_device *phydev)
+@@ -1057,7 +1024,7 @@ static struct phy_driver mtk_2p5gephy_dr
+ 		.config_aneg = mt798x_2p5ge_phy_config_aneg,
+ 		.get_features = mt798x_2p5ge_phy_get_features,
+ 		.config_intr = mt798x_2p5ge_phy_config_intr,
+-		.handle_interrupt = mt798x_2p5ge_phy_handle_interrupt,
++		.handle_interrupt = mtk_phy_handle_interrupt,
+ 		.read_status = mt798x_2p5ge_phy_read_status,
+ 		.get_rate_matching = mt798x_2p5ge_phy_get_rate_matching,
+ 		.suspend = genphy_suspend,
+@@ -1079,7 +1046,7 @@ static struct phy_driver mtk_2p5gephy_dr
+ 		.config_aneg = mt798x_2p5ge_phy_config_aneg,
+ 		.get_features = mt798x_2p5ge_phy_get_features,
+ 		.config_intr = mt798x_2p5ge_phy_config_intr,
+-		.handle_interrupt = mt798x_2p5ge_phy_handle_interrupt,
++		.handle_interrupt = mtk_phy_handle_interrupt,
+ 		.read_status = mt798x_2p5ge_phy_read_status,
+ 		.get_rate_matching = mt798x_2p5ge_phy_get_rate_matching,
+ 		.suspend = genphy_suspend,
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.c
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
+@@ -1553,8 +1553,8 @@ static struct phy_driver mtk_socphy_driv
+ 		PHY_ID_MATCH_EXACT(MTK_GPHY_ID_MT7988),
+ 		.name		= "MediaTek MT7988 PHY",
+ 		.config_init	= mt798x_phy_config_init,
+-		.config_intr	= genphy_no_config_intr,
+-		.handle_interrupt = genphy_handle_interrupt_no_ack,
++		.config_intr	= mtk_phy_config_intr,
++		.handle_interrupt = mtk_phy_handle_interrupt,
+ 		.probe		= mt7988_phy_probe,
+ 		.suspend	= genphy_suspend,
+ 		.resume		= genphy_resume,
+--- a/drivers/net/phy/mediatek/mtk-phy-lib.c
++++ b/drivers/net/phy/mediatek/mtk-phy-lib.c
+@@ -118,6 +118,43 @@ int mtk_phy_write_page(struct phy_device
+ }
+ EXPORT_SYMBOL_GPL(mtk_phy_write_page);
+ 
++irqreturn_t mtk_phy_handle_interrupt(struct phy_device *phydev)
++{
++	int irq_status;
++
++	/* Read interrupt status register to clear interrupt */
++	irq_status = phy_read(phydev, 0x1a);
++	if (irq_status < 0) {
++		phy_error(phydev);
++		return IRQ_NONE;
++	}
++
++	if (irq_status == 0)
++		return IRQ_NONE;
++
++	phy_trigger_machine(phydev);
++
++	return IRQ_HANDLED;
++}
++EXPORT_SYMBOL_GPL(mtk_phy_handle_interrupt);
++
++int mtk_phy_config_intr(struct phy_device *phydev)
++{
++	int ret = 0;
++
++	if (phydev->interrupts == PHY_INTERRUPT_ENABLED) {
++		phy_write(phydev, MTK_PHY_IRQ_MASK, MDINT_MASK | LINK_STATUS_MASK);
++		/* Clear pending interrupts */
++		ret = phy_read(phydev, MTK_PHY_IRQ_STATUS);
++	} else {
++		/* Disable PHY interrupts */
++		phy_write(phydev, MTK_PHY_IRQ_MASK, 0);
++	}
++
++	return (ret < 0) ? ret : 0;
++}
++EXPORT_SYMBOL_GPL(mtk_phy_config_intr);
++
+ int mtk_phy_led_hw_is_supported(struct phy_device *phydev, u8 index,
+ 				unsigned long rules,
+ 				unsigned long supported_triggers)
+--- a/drivers/net/phy/mediatek/mtk.h
++++ b/drivers/net/phy/mediatek/mtk.h
+@@ -17,6 +17,14 @@
+ /* suprv_media_select_RefClk */
+ #define   MTK_PHY_ENABLE_DOWNSHIFT		BIT(4)
+ 
++/* Registers on CL22 page 0 */
++#define MTK_PHY_IRQ_MASK		0x19
++#define   MDINT_MASK			BIT(15)
++#define   LINK_STATUS_MASK		BIT(13)
++
++#define MTK_PHY_IRQ_STATUS		0x1a
++#define   INT_LINK_CHANGE		BIT(13)
++
+ /* Registers on MDIO_MMD_VEND2 */
+ #define MTK_PHY_LED0_ON_CTRL			0x24
+ #define MTK_PHY_LED1_ON_CTRL			0x26
+@@ -85,6 +93,9 @@ void __mtk_tr_clr_bits(struct phy_device
+ int mtk_phy_read_page(struct phy_device *phydev);
+ int mtk_phy_write_page(struct phy_device *phydev, int page);
+ 
++irqreturn_t mtk_phy_handle_interrupt(struct phy_device *phydev);
++int mtk_phy_config_intr(struct phy_device *phydev);
++
+ int mtk_phy_led_hw_is_supported(struct phy_device *phydev, u8 index,
+ 				unsigned long rules,
+ 				unsigned long supported_triggers);

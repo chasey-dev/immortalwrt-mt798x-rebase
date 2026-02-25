@@ -1,0 +1,1296 @@
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-an8831x.dtso
+@@ -0,0 +1,71 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clock-frequency = <12500000>;
++			reset-gpios = <&pio 71 GPIO_ACTIVE_LOW>;
++			reset-delay-us = <200000>;
++			reset-post-delay-us = <350000>;
++
++			/* external Airoha AN8831X */
++			phy28: ethernet-phy@28 {
++				reg = <28>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "as21x1x_fw.bin";
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy28_led0: an8831x_phy28_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++
++					phy28_led1: an8831x_phy28_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gmac1>;
++		__overlay__ {
++			phy-mode = "usxgmii";
++			phy-connection-type = "usxgmii";
++			phy = <&phy28>;
++			status = "okay";
++		};
++	};
++
++	fragment@2 {
++		target = <&eth>;
++		__overlay__ {
++			pinctrl-0 = <&mdio0_pins>;
++			pinctrl-names = "default";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-cux3410.dtso
+@@ -0,0 +1,66 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/leds/common.h>
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			/* external Aquantia CUX3410 */
++			phy0: ethernet-phy@0 {
++				reg = <0>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "AQR-G4_v5.7.0-AQR_EVB_Generic_X3410_StdCfg_MDISwap_USX_ID46316_VER2148.cld";
++				reset-gpios = <&pio 72 GPIO_ACTIVE_LOW>;
++				reset-assert-us = <100000>;
++				reset-deassert-us = <221000>;
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy0_led0: aqr_phy0_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++
++					phy0_led1: aqr_phy0_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++
++					phy0_led2: aqr_phy0_led2@2 {
++						reg = <2>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gmac1>;
++		__overlay__ {
++			phy-mode = "usxgmii";
++			phy-connection-type = "usxgmii";
++			phy = <&phy0>;
++			status = "okay";
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-sfp-an8831x.dtso
+@@ -0,0 +1,117 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&i2c2>;
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&i2c2_0_pins>;
++			status = "okay";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/";
++		__overlay__ {
++			sfp_esp1: sfp@1 {
++				compatible = "sff,sfp";
++				i2c-bus = <&i2c2>;
++				mod-def0-gpios = <&pio 82 GPIO_ACTIVE_LOW>;
++				los-gpios = <&pio 81 GPIO_ACTIVE_HIGH>;
++				tx-disable-gpios = <&pio 36 GPIO_ACTIVE_HIGH>;
++				maximum-power-milliwatt = <3000>;
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&eth>;
++		__overlay__ {
++			mux: mux-bus {
++				mux1: ethernet-mux@1 {
++					compatible = "mediatek,eth-mux";
++					reg = <1>;
++
++					chan-sel-gpios = <&pio 33 GPIO_ACTIVE_HIGH>;
++					mod-def0-gpios = <&pio 82 GPIO_ACTIVE_LOW>;
++					sfp-connected-channel = <0>;
++
++					channel0: channel@0 {
++						reg = <0>;
++						phy-mode = "10gbase-r";
++						phy-connection-type = "10gbase-r";
++						managed = "in-band-status";
++						sfp = <&sfp_esp1>;
++					};
++
++					channel1: channel@1 {
++						reg = <1>;
++						phy-mode = "usxgmii";
++						phy-connection-type = "usxgmii";
++						phy-handle = <&phy28>;
++					};
++				};
++			};
++		};
++	};
++
++	fragment@3 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clock-frequency = <12500000>;
++			reset-gpios = <&pio 71 GPIO_ACTIVE_LOW>;
++			reset-delay-us = <200000>;
++			reset-post-delay-us = <350000>;
++
++			/* external Airoha AN8831X */
++			phy28: ethernet-phy@28 {
++				reg = <28>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "as21x1x_fw.bin";
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy28_led0: an8831x_phy28_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++
++					phy28_led1: an8831x_phy28_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++				};
++			};
++		};
++	};
++
++	fragment@4 {
++		target = <&gmac1>;
++		__overlay__ {
++			phy-mode = "usxgmii";
++			phy-connection-type = "usxgmii";
++			phy = <&phy28>;
++			status = "okay";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-sfp-aqr.dtso
+@@ -0,0 +1,97 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&i2c2>;
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&i2c2_0_pins>;
++			status = "okay";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/";
++		__overlay__ {
++			sfp_esp1: sfp@1 {
++				compatible = "sff,sfp";
++				i2c-bus = <&i2c2>;
++				mod-def0-gpios = <&pio 82 GPIO_ACTIVE_LOW>;
++				los-gpios = <&pio 81 GPIO_ACTIVE_HIGH>;
++				tx-disable-gpios = <&pio 36 GPIO_ACTIVE_HIGH>;
++				maximum-power-milliwatt = <3000>;
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&eth>;
++		__overlay__ {
++			mux: mux-bus {
++				mux1: ethernet-mux@1 {
++					compatible = "mediatek,eth-mux";
++					reg = <1>;
++
++					chan-sel-gpios = <&pio 30 GPIO_ACTIVE_HIGH>;
++					mod-def0-gpios = <&pio 82 GPIO_ACTIVE_LOW>;
++					sfp-connected-channel = <1>;
++
++					channel0: channel@0 {
++						reg = <0>;
++						phy-mode = "usxgmii";
++						phy-connection-type = "usxgmii";
++						phy-handle = <&phy0>;
++					};
++
++					channel1: channel@1 {
++						reg = <1>;
++						phy-mode = "10gbase-r";
++						phy-connection-type = "10gbase-r";
++						managed = "in-band-status";
++						sfp = <&sfp_esp1>;
++					};
++				};
++			};
++		};
++	};
++
++	fragment@3 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clock-frequency = <12500000>;
++
++			/* external Aquantia AQR113C */
++			phy0: ethernet-phy@0 {
++				reg = <0>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "Rhe-05.06-Candidate9-AQR_Mediatek_23B_P5_ID45824_LCLVER1.cld";
++				eee-broken-10gt;
++				eee-broken-1000t;
++			};
++		};
++	};
++
++	fragment@4 {
++		target = <&gmac1>;
++		__overlay__ {
++			phy-mode = "usxgmii";
++			phy-connection-type = "usxgmii";
++			phy = <&phy0>;
++			status = "okay";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-an8831x.dtso
+@@ -0,0 +1,71 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clock-frequency = <12500000>;
++			reset-gpios = <&pio 71 GPIO_ACTIVE_LOW>;
++			reset-delay-us = <200000>;
++			reset-post-delay-us = <350000>;
++
++			/* external Airoha AN8831X */
++			phy24: ethernet-phy@24 {
++				reg = <24>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "as21x1x_fw.bin";
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy24_led0: an8831x_phy24_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++
++					phy24_led1: an8831x_phy24_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gmac2>;
++		__overlay__ {
++			phy-mode = "usxgmii";
++			phy-connection-type = "usxgmii";
++			phy = <&phy24>;
++			status = "okay";
++		};
++	};
++
++	fragment@2 {
++		target = <&eth>;
++		__overlay__ {
++			pinctrl-0 = <&mdio0_pins>;
++			pinctrl-names = "default";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-cux3410.dtso
+@@ -0,0 +1,65 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			/* external Aquantia CUX3410 */
++			phy8: ethernet-phy@8 {
++				reg = <8>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "AQR-G4_v5.7.0-AQR_EVB_Generic_X3410_StdCfg_MDISwap_USX_ID46316_VER2148.cld";
++				reset-gpios = <&pio 71 GPIO_ACTIVE_LOW>;
++				reset-assert-us = <100000>;
++				reset-deassert-us = <221000>;
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy8_led0: aqr_phy8_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++
++					phy8_led1: aqr_phy8_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++
++					phy8_led2: aqr_phy8_led2@2 {
++						reg = <2>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gmac2>;
++		__overlay__ {
++			phy-mode = "usxgmii";
++			phy-connection-type = "usxgmii";
++			phy = <&phy8>;
++			status = "okay";
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-mxl86252-an8831x.dtso
+@@ -0,0 +1,168 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	fragment@0 {
++		target-path = "/";
++		__overlay__ {
++			compatible = "mediatek,mt7988a-mxl86252-rfb",
++						 "mediatek,mt7988a",
++						 "mediatek,mt7988";
++		};
++	};
++
++	fragment@1 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clock-frequency = <12500000>;
++			reset-gpios = <&pio 71 GPIO_ACTIVE_LOW>;
++			reset-delay-us = <200000>;
++			reset-post-delay-us = <350000>;
++
++			/* external Airoha AN8831X is connected to Mxl 2.5G switch */
++			phy24: ethernet-phy@24 {
++				reg = <24>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "as21x1x_fw.bin";
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy24_led0: an8831x_phy24_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++
++					phy24_led1: an8831x_phy24_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++				};
++			};
++
++			switch16: switch@16 {
++				compatible = "mxl,86252";
++				reg = <16>;
++				dsa,member = <0 0>;
++
++				ports {
++					port0: port@0 {
++						reg = <0>;
++						label = "mxl_lan0";
++						phy-handle = <&switchphy0>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port1: port@1 {
++						reg = <1>;
++						label = "mxl_lan1";
++						phy-handle = <&switchphy1>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port2: port@2 {
++						reg = <2>;
++						label = "mxl_lan2";
++						phy-handle = <&switchphy2>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port3: port@3 {
++						reg = <3>;
++						label = "mxl_lan3";
++						phy-handle = <&switchphy3>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port4: port@4 {
++						reg = <4>;
++						label = "mxl_lan4";
++						phy-handle = <&switchphy4>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port5: port@5 {
++						reg = <8>;
++						label = "cpu";
++						phy-mode = "10gbase-r";
++						ethernet = <&gmac2>;
++						dsa-tag-protocol = "mxl862_8021q";
++
++						fixed-link {
++							speed = <10000>;
++							full-duplex;
++						};
++					};
++
++					port6: port@6 {
++						reg = <12>;
++						label = "mxl_lan5";
++						phy-mode = "usxgmii";
++						phy-handle = <&phy24>;
++						status = "okay";
++					};
++				};
++
++				mdio {
++					switchphy0:switchphy@0 {
++						reg= <0>;
++					};
++					switchphy1:switchphy@1 {
++						reg= <1>;
++					};
++					switchphy2:switchphy@2 {
++						reg= <2>;
++					};
++					switchphy3:switchphy@3 {
++						reg= <3>;
++					};
++					switchphy4:switchphy@4 {
++						reg= <4>;
++					};
++				};
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&gmac2>;
++		__overlay__ {
++			phy-mode = "10gbase-r";
++			phy-connection-type = "10gbase-r";
++			status = "okay";
++
++			fixed-link {
++				speed = <10000>;
++				full-duplex;
++				pause;
++			};
++		};
++	};
++
++	fragment@3 {
++		target = <&switch>;
++		__overlay__ {
++			dsa,member = <1 0>;
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-mxl86252-aqr.dtso
+@@ -0,0 +1,148 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	fragment@0 {
++		target-path = "/";
++		__overlay__ {
++			compatible = "mediatek,mt7988a-mxl86252-rfb",
++						 "mediatek,mt7988a",
++						 "mediatek,mt7988";
++		};
++	};
++
++	fragment@1 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clock-frequency = <10500000>;
++
++			/* external Aquantia AQR113C on mxl 2.5G switch */
++			phy8: ethernet-phy@8 {
++				reg = <8>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "Rhe-05.06-Candidate9-AQR_Mediatek_23B_P5_ID45824_LCLVER1.cld";
++				eee-broken-10gt;
++				eee-broken-1000t;
++			};
++
++			switch16: switch@16 {
++				compatible = "mxl,86252";
++				reg = <16>;
++				dsa,member = <0 0>;
++
++				ports {
++					port0: port@0 {
++						reg = <0>;
++						label = "mxl_lan0";
++						phy-handle = <&switchphy0>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port1: port@1 {
++						reg = <1>;
++						label = "mxl_lan1";
++						phy-handle = <&switchphy1>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port2: port@2 {
++						reg = <2>;
++						label = "mxl_lan2";
++						phy-handle = <&switchphy2>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port3: port@3 {
++						reg = <3>;
++						label = "mxl_lan3";
++						phy-handle = <&switchphy3>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port4: port@4 {
++						reg = <4>;
++						label = "mxl_lan4";
++						phy-handle = <&switchphy4>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port5: port@5 {
++						reg = <8>;
++						label = "cpu";
++						phy-mode = "10gbase-r";
++						ethernet = <&gmac2>;
++						dsa-tag-protocol = "mxl862_8021q";
++
++						fixed-link {
++							speed = <10000>;
++							full-duplex;
++						};
++					};
++
++					port6: port@6 {
++						reg = <12>;
++						label = "mxl_lan5";
++						phy-mode = "usxgmii";
++						phy-handle = <&phy8>;
++						status = "okay";
++					};
++				};
++
++				mdio {
++					switchphy0:switchphy@0 {
++						reg= <0>;
++					};
++					switchphy1:switchphy@1 {
++						reg= <1>;
++					};
++					switchphy2:switchphy@2 {
++						reg= <2>;
++					};
++					switchphy3:switchphy@3 {
++						reg= <3>;
++					};
++					switchphy4:switchphy@4 {
++						reg= <4>;
++					};
++				};
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&gmac2>;
++		__overlay__ {
++			phy-mode = "10gbase-r";
++			phy-connection-type = "10gbase-r";
++			status = "okay";
++
++			fixed-link {
++				speed = <10000>;
++				full-duplex;
++				pause;
++			};
++		};
++	};
++
++	fragment@3 {
++		target = <&switch>;
++		__overlay__ {
++			dsa,member = <1 0>;
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-2pcie.dtso
+@@ -0,0 +1,38 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	/*
++	 * On this MT7988A settings, only 2-lane PCIe is enabled.
++	 * All 1-lane PCIe devices are disabled, Due to MT7990/MT7992/MT7996
++	 * WiFi PCIe card only uses 2-lane PCIe on MT7988A. So this can keep
++	 * the testing environment clean and simplifies PCIe debugging.
++	 * Enabled PCIe slots:
++	 * - pcie0: pcie@11300000 (Gen3, 2 lanes)
++	 * - pcie1: pcie@11310000 (Gen3, 2 lanes)
++	 * Disabled PCIe slots:
++	 * - pcie2: pcie@11280000 (Gen3, 1 lane)
++	 * - pcie3: pcie@11290000 (Gen3, 1 lane)
++	 */
++
++	fragment@0 {
++		target-path = "/soc/pcie@11280000";
++		__overlay__ {
++			status = "disabled";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc/pcie@11290000";
++		__overlay__ {
++			status = "disabled";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-4pcie.dtso
+@@ -0,0 +1,41 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/phy/phy.h>
++
++/ {
++	fragment@0 {
++		target-path = "/soc/pcie@11280000";
++		__overlay__ {
++			status = "okay";
++		};
++	};
++
++	/*
++	 * Enable 4 PCIe slots on MT7988a RFB. To enable the PCIe2 slot, use
++	 * only the P0 U2 port, as the P0 U3 port's serdes is shared with PCIe2
++	 */
++	fragment@1 {
++		target-path = "/soc/usb@11190000";
++		__overlay__ {
++			phys = <&xphyu2port0 PHY_TYPE_USB2>;
++			mediatek,u3p-dis-msk = <1>;
++			/*
++			 * The delete-property syntax isn't recognized in DTSO,
++			 * so 'mediatek, p0_speed_fixup' remains in the final DTS.
++			 * This property is specifically for USB U3 and doesn't
++			 * affect USB U2. It is intentionally retained to remind
++			 * users for future development.
++			 */
++			/delete-property/ mediatek,p0_speed_fixup;
++			status = "okay";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth0-gsw.dtso
+@@ -0,0 +1,177 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Neal.Yen <neal.yen@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++#include <dt-bindings/interrupt-controller/irq.h>
++#include <dt-bindings/leds/common.h>
++
++/ {
++
++	fragment@0 {
++		target-path = "/";
++		__overlay__ {
++			compatible = "mediatek,mt7988a-rfb-gsw",
++						 "mediatek,mt7988a",
++						 "mediatek,mt7988";
++		};
++	};
++
++	fragment@1 {
++		target = <&switch>;
++		__overlay__ {
++			status = "disabled";
++		};
++	};
++
++	fragment@2 {
++		target = <&ethwarp>;
++		__overlay__ {
++			compatible = "mediatek,mt7988-ethwarp", "syscon";
++		};
++	};
++
++	fragment@3 {
++		target = <&gsw>;
++		__overlay__ {
++			compatible = "mediatek,mt753x", "mediatek,mt7988-gsw-switch", "syscon";
++			mediatek,sysctrl = <&ethwarp>;
++			mediatek,mdio = <&mdio_bus>;
++			mediatek,portmap = "llllw";
++			mediatek,mdio_master_pinmux = <1>;
++			interrupt-parent = <&gic>;
++			interrupts = <GIC_SPI 209 IRQ_TYPE_LEVEL_HIGH>;
++			status = "okay";
++
++			port6: port@6 {
++				compatible = "mediatek,mt753x-port";
++				mediatek,ssc-on;
++				phy-mode = "10gbase-kr";
++				reg = <6>;
++				fixed-link {
++					speed = <10000>;
++					full-duplex;
++				};
++			};
++
++			mdio1: mdio-bus {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				mediatek,pio = <&pio>;
++
++				gsw_phy0: ethernet-phy@0 {
++					compatible = "ethernet-phy-ieee802.3-c22";
++					reg = <0>;
++					phy-mode = "internal";
++					pinctrl-names = "gbe-led";
++					pinctrl-0 = <&gbe0_led0_pins>;
++					nvmem-cells = <&phy_calibration_p0>;
++					nvmem-cell-names = "phy-cal-data";
++
++					leds {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						gsw_phy0_led0: gsw-phy0-led0@0 {
++							reg = <0>;
++							function = LED_FUNCTION_LAN;
++							status = "disabled";
++						};
++
++						gsw_phy0_led1: gsw-phy0-led1@1 {
++							reg = <1>;
++							function = LED_FUNCTION_LAN;
++							status = "disabled";
++						};
++					};
++				};
++
++				gsw_phy1: ethernet-phy@1 {
++					compatible = "ethernet-phy-ieee802.3-c22";
++					reg = <1>;
++					phy-mode = "internal";
++					pinctrl-names = "gbe-led";
++					pinctrl-0 = <&gbe1_led0_pins>;
++					nvmem-cells = <&phy_calibration_p1>;
++					nvmem-cell-names = "phy-cal-data";
++
++					leds {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						gsw_phy1_led0: gsw-phy1-led0@0 {
++							reg = <0>;
++							function = LED_FUNCTION_LAN;
++							status = "disabled";
++						};
++
++						gsw_phy1_led1: gsw-phy1-led1@1 {
++							reg = <1>;
++							function = LED_FUNCTION_LAN;
++							status = "disabled";
++						};
++					};
++				};
++
++				gsw_phy2: ethernet-phy@2 {
++					compatible = "ethernet-phy-ieee802.3-c22";
++					reg = <2>;
++					phy-mode = "internal";
++					pinctrl-names = "gbe-led";
++					pinctrl-0 = <&gbe2_led0_pins>;
++					nvmem-cells = <&phy_calibration_p2>;
++					nvmem-cell-names = "phy-cal-data";
++
++					leds {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						gsw_phy2_led0: gsw-phy2-led0@0 {
++							reg = <0>;
++							function = LED_FUNCTION_LAN;
++							status = "disabled";
++						};
++
++						gsw_phy2_led1: gsw-phy2-led1@1 {
++							reg = <1>;
++							function = LED_FUNCTION_LAN;
++							status = "disabled";
++						};
++					};
++				};
++
++				gsw_phy3: ethernet-phy@3 {
++					compatible = "ethernet-phy-ieee802.3-c22";
++					reg = <3>;
++					phy-mode = "internal";
++					pinctrl-names = "gbe-led";
++					pinctrl-0 = <&gbe3_led0_pins>;
++					nvmem-cells = <&phy_calibration_p3>;
++					nvmem-cell-names = "phy-cal-data";
++
++					leds {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						gsw_phy3_led0: gsw-phy3-led0@0 {
++							reg = <0>;
++							function = LED_FUNCTION_LAN;
++							status = "disabled";
++						};
++
++						gsw_phy3_led1: gsw-phy3-led1@1 {
++							reg = <1>;
++							function = LED_FUNCTION_LAN;
++							status = "disabled";
++						};
++					};
++				};
++			};
++		};
++	};
++};
+\ No newline at end of file
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spidev.dtso
+@@ -0,0 +1,27 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Tim.Kuo <Tim.Kuo@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@1 {
++		target = <&spi1>;
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spi1_pins>;
++			status = "okay";
++
++			spi_dev1: spi@0 {
++				compatible = "rohm,dh2228fv";
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++			};
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nand-nmbm.dtso
+@@ -0,0 +1,136 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&spi0>;
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spi0_flash_pins>;
++			status = "okay";
++
++			flash@0 {
++				compatible = "spi-nand";
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++				spi-tx-bus-width = <4>;
++				spi-rx-bus-width = <4>;
++				mediatek,nmbm;
++				mediatek,bmt-max-ratio = <1>;
++				mediatek,bmt-max-reserved-blocks = <64>;
++
++				partitions {
++					compatible = "fixed-partitions";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					partition@0 {
++						label = "BL2";
++						reg = <0x00000 0x0100000>;
++						read-only;
++					};
++
++					partition@100000 {
++						label = "u-boot-env";
++						reg = <0x0100000 0x0080000>;
++					};
++
++					factory: partition@180000 {
++						label = "Factory";
++						reg = <0x180000 0x0400000>;
++
++						nvmem-layout {
++							compatible = "fixed-layout";
++							#address-cells = <1>;
++							#size-cells = <1>;
++
++							gmac2_mac: eeprom@fffee {
++								reg = <0xfffee 0x6>;
++							};
++
++							gmac1_mac: eeprom@ffffa {
++								reg = <0xffffa 0x6>;
++							};
++
++							gmac0_mac: eeprom@ffff4 {
++								reg = <0xffff4 0x6>;
++							};
++						};
++					};
++
++					partition@580000 {
++						label = "FIP";
++						reg = <0x580000 0x0200000>;
++					};
++
++					partition@780000 {
++						label = "ubi";
++						reg = <0x780000 0x7080000>;
++						compatible = "linux,ubi";
++
++						volumes {
++							ubi_rootfs: ubi-volume-fit {
++								volname = "firmware";
++							};
++						};
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&pcie0>;
++		__overlay__ {
++			slot0: pcie@0,0 {
++				reg = <0x0000 0 0 0 0>;
++
++				mt7996@0,0 {
++					compatible = "mediatek,mt76";
++					reg = <0x0000 0 0 0 0>;
++					device_type = "pci";
++					mediatek,mtd-eeprom = <&factory 0x0>;
++				};
++			};
++		};
++	};
++
++	fragment@2 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-spim-nand = <&ubi_rootfs>;
++		};
++	};
++
++	fragment@3 {
++		target = <&gmac0>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac0_mac>;
++		};
++	};
++
++	fragment@4 {
++		target = <&gmac1>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac1_mac>;
++		};
++	};
++
++	fragment@5 {
++		target = <&gmac2>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac2_mac>;
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988d-rfb-2pcie.dtso
+@@ -0,0 +1,31 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	/*
++	 * Making MT7988A PCIE working like MT7988D, which only support 2 pcies:
++	 * -pcie0: pcie@11300000 - Gen3 2 lanes
++	 * -pcie3: pcie@11290000 - Gen3 1 lane
++	 */
++
++	fragment@0 {
++		target-path = "/soc/pcie@11280000";
++		__overlay__ {
++			status = "disabled";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc/pcie@11310000";
++		__overlay__ {
++			status = "disabled";
++		};
++	};
++};
++

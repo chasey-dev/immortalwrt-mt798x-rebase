@@ -1,0 +1,56 @@
+--- a/drivers/net/ppp/ppp_generic.c
++++ b/drivers/net/ppp/ppp_generic.c
+@@ -1911,6 +1911,41 @@ ppp_send_frame(struct ppp *ppp, struct s
+ 	++ppp->dev->stats.tx_errors;
+ }
+ 
++struct sock *ppp_netdev_get_sock(struct net_device *dev)
++{
++	struct list_head *list;
++	struct channel *pch;
++	struct ppp *ppp;
++	struct sock *sk;
++
++	if (!dev)
++		return ERR_PTR(-EINVAL);
++
++	ppp = netdev_priv(dev);
++
++	list = &ppp->channels;
++	if (list_empty(list))
++		 /* nowhere to send the packet */
++		return ERR_PTR(-EINVAL);
++
++	if (ppp->flags & SC_MULTILINK)
++		/* not doing multilink: send it down the first channel */
++		return ERR_PTR(-EPERM);
++
++	list = list->next;
++	pch = list_entry(list, struct channel, clist);
++
++	spin_lock(&pch->downl);
++	if (pch->chan)
++		sk = (struct sock *)pch->chan->private;
++	else
++		sk = ERR_PTR(-EINVAL);
++	spin_unlock(&pch->downl);
++
++	return sk;
++}
++EXPORT_SYMBOL(ppp_netdev_get_sock);
++
+ /*
+  * Try to send the frame in xmit_pending.
+  * The caller should have the xmit path locked.
+--- a/include/linux/ppp_channel.h
++++ b/include/linux/ppp_channel.h
+@@ -78,6 +78,9 @@ extern int ppp_unit_number(struct ppp_ch
+ /* Get the device name associated with a channel, or NULL if none */
+ extern char *ppp_dev_name(struct ppp_channel *);
+ 
++/* Get the socket structure of a given ppp netdev */
++extern struct sock *ppp_netdev_get_sock(struct net_device *dev);
++
+ /*
+  * SMP locking notes:
+  * The channel code must ensure that when it calls ppp_unregister_channel,

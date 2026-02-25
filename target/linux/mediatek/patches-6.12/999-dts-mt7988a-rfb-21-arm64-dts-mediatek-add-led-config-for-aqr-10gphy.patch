@@ -1,0 +1,81 @@
+From 08ffe0bbe320a8ce67b2be4238c42f29018d7e74 Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Wed, 28 Jan 2026 11:13:33 +0800
+Subject: [PATCH] arm64: dts: mt7988: add led config for aqr 10gphy
+
+---
+ .../dts/mediatek/mt7988a-rfb-eth1-aqr.dtso    | 23 +++++++++++++++++++
+ .../dts/mediatek/mt7988a-rfb-eth2-aqr.dtso    | 23 +++++++++++++++++++
+ 2 files changed, 46 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-aqr.dtso b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-aqr.dtso
+index f998750..a15ade6 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-aqr.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-aqr.dtso
+@@ -26,6 +26,29 @@ phy0: ethernet-phy@0 {
+ 				firmware-name = "Rhe-05.06-Candidate9-AQR_Mediatek_23B_P5_ID45824_LCLVER1.cld";
+ 				eee-broken-10gt;
+ 				eee-broken-1000t;
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy0_led0: aqr_phy0_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++
++					phy0_led1: aqr_phy0_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++
++					phy0_led2: aqr_phy0_led2@2 {
++						reg = <2>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++				};
+ 			};
+ 		};
+ 	};
+diff --git a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-aqr.dtso b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-aqr.dtso
+index 7aef64f..2b03b2b 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-aqr.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-aqr.dtso
+@@ -26,6 +26,29 @@ phy8: ethernet-phy@8 {
+ 				firmware-name = "Rhe-05.06-Candidate9-AQR_Mediatek_23B_P5_ID45824_LCLVER1.cld";
+ 				eee-broken-10gt;
+ 				eee-broken-1000t;
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy8_led0: aqr_phy8_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++
++					phy8_led1: aqr_phy8_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++
++					phy8_led2: aqr_phy8_led2@2 {
++						reg = <2>;
++						linux,default-trigger = "netdev";
++						status = "okay";
++					};
++				};
+ 			};
+ 		};
+ 	};
+-- 
+2.45.2
+

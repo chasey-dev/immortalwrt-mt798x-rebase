@@ -1,0 +1,485 @@
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-lite-mikrobus.dtsi
+@@ -0,0 +1,134 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++#include <dt-bindings/gpio/gpio.h>
++
++/*
++ * --------------- Bananapi Bpi R4 Lite MikroBus ----------------
++ * | 9  |                           GPIO7/PWM1              | 8 |
++ * | 10 | GPIO6/PCM_FS/UART1_RTS    GPIO5/PCM_CLK/UART1_CTS | 7 |
++ * | 11 | GPIO49/SPI1_CS            GPIO3/PCM_DTX/UART1_RXD | 6 |
++ * | 12 | GPIO46/SPI1_CLK           GPIO4/PCM_DRX/UART1_TXD | 5 |
++ * | 13 | GPIO48/SPI1_MISO          I2C3 SCL (PCA9548)      | 4 |
++ * | 14 | GPIO47/SPI1_MOSI          I2C3 SDA (PCA9548)      | 3 |
++ * | 15 | +3.3V                     +5V                     | 2 |
++ * | 16 | GND                       GND                     | 1 |
++ * --------------------------------------------------------------
++ */
++
++/ {
++	mikrobus: MikroBus {
++		compatible = "simple-bus";
++
++		/* MikroBus pins 5,6,7,8 as GPIOs */
++		mikrobus_gpios_0: gpio-export@0 {
++			compatible = "gpio-export";
++			status = "disabled";
++
++			gpio-3 {
++				gpio-export,name = "mikrobus-gpio-RX";
++				gpio-export,output = <1>;
++				gpios = <&pio 3 GPIO_ACTIVE_HIGH>;
++			};
++
++			gpio-4 {
++				gpio-export,name = "mikrobus-gpio-TX";
++				gpio-export,output = <1>;
++				gpios = <&pio 4 GPIO_ACTIVE_HIGH>;
++			};
++
++			gpio-5 {
++				gpio-export,name = "mikrobus-gpio-INT";
++				gpio-export,output = <1>;
++				gpios = <&pio 5 GPIO_ACTIVE_HIGH>;
++			};
++
++			gpio-6 {
++				gpio-export,name = "mikrobus-gpio-INT";
++				gpio-export,output = <1>;
++				gpios = <&pio 5 GPIO_ACTIVE_HIGH>;
++			};
++		};
++
++		/* MikroBus pins 11,12,13,14 as GPIOs */
++		mikrobus_gpios_1: gpio-export@1 {
++			compatible = "gpio-export";
++			status = "disabled";
++
++			gpio-46 {
++				gpio-export,name = "mikrobus-gpio-CS";
++				gpio-export,output = <1>;
++				gpios = <&pio 46 GPIO_ACTIVE_HIGH>;
++			};
++
++			gpio-47 {
++				gpio-export,name = "mikrobus-gpio-MOSI";
++				gpio-export,output = <1>;
++				gpios = <&pio 47 GPIO_ACTIVE_HIGH>;
++			};
++
++			gpio-48 {
++				gpio-export,name = "mikrobus-gpio-MISO";
++				gpio-export,output = <1>;
++				gpios = <&pio 48 GPIO_ACTIVE_HIGH>;
++			};
++
++			gpio-49 {
++				gpio-export,name = "mikrobus-gpio-SCK";
++				gpio-export,output = <1>;
++				gpios = <&pio 49 GPIO_ACTIVE_HIGH>;
++			};
++		};
++	};
++};
++
++/* MikroBus pins 3,4 as I2C3 (Provided by PCA9548 i2c-mux) */
++/* Please refer to &imux2_MikroBus device tree node */
++
++/* MikroBus pins 5,6,7,10 as PCM function */
++&afe {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pcm_pins>;
++	status = "disabled";
++};
++
++&pcm_pins {
++	mux {
++		function = "pcm";
++		groups = "pcm0_0";
++	};
++};
++
++/* MikroBus pins 5,6,7,10 as UART1 function */
++&uart1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart1_pins>;
++	status = "okay";
++};
++
++&uart1_pins {
++	mux {
++		function = "uart";
++		groups = "uart1_0";
++	};
++};
++
++/* MikroBus pins 8 as PWM1 */
++/* Please refer to &pwm device tree node */
++
++/* MikroBus pins 11,12,13,14 as SPI1 function */
++&spi1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spic_pins>;
++	status = "okay";
++};
++
++&spic_pins {
++	mux {
++		function = "spi";
++		groups = "spi1_1";
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-lite-1pcie-2L.dtso
+@@ -0,0 +1,38 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	fragment@0 {
++		target-path = "/soc/pinctrl@1001f000";
++		__overlay__ {
++			pcie_sel: aw35710qnr_sel {
++				gpio-hog;
++				gpios = <11 GPIO_ACTIVE_HIGH>;
++				output-high;
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc/pcie@11290000";
++		__overlay__ {
++			status = "disabled";
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc/phy@11e4a000";
++		__overlay__ {
++			mediatek,1port-2lane;
++			status = "okay";
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-lite-2pcie-1L.dtso
+@@ -0,0 +1,39 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	fragment@0 {
++		target-path = "/soc/pinctrl@1001f000";
++		__overlay__ {
++			pcie_sel: aw35710qnr_sel {
++				gpio-hog;
++				gpios = <11 GPIO_ACTIVE_HIGH>;
++				output-low;
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc/pcie@11290000";
++		__overlay__ {
++			status = "okay";
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc/phy@11e4a000";
++		__overlay__ {
++			mediatek,2port-1lane;
++			status = "okay";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-lite.dts
+@@ -0,0 +1,262 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++#include "mt7987a.dtsi"
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/leds/common.h>
++#include "mt7987a-bananapi-bpi-r4-lite-mikrobus.dtsi"
++
++/ {
++	model = "Bananapi BPI-R4-LITE";
++	compatible = "bananapi,bpi-r4-lite",
++		     "mediatek,mt7987a", "mediatek,mt7987";
++
++	aliases {
++		/* mt7987 I2C0 */
++		i2c0 = &i2c0;
++		/* PCA9548 (0-0070) provides 4 i2c channels */
++		i2c1 = &imux0_rtc;
++		i2c2 = &imux1_sfp;
++		i2c3 = &imux2_MikroBus;
++		i2c4 = &imux3;
++	};
++
++	chosen {
++		bootargs = "console=ttyS0,115200n1 loglevel=6  \
++			    earlycon=uart8250,mmio32,0x11000000 \
++			    pci=pcie_bus_perf ubi.block=0,firmware \
++			    root=/dev/fit0 rootwait";
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		reset {
++			label = "reset";
++			linux,code = <KEY_RESTART>;
++			gpios = <&pio 1 GPIO_ACTIVE_LOW>;
++			debounce-interval = <10>;
++		};
++
++		wps {
++			label = "wps";
++			linux,code = <KEY_WPS_BUTTON>;
++			gpios = <&pio 0 GPIO_ACTIVE_LOW>;
++			debounce-interval = <10>;
++		};
++	};
++
++	pwm-leds {
++		compatible = "pwm-leds";
++		status = "okay";
++
++		/* ACT LED on bpi-r4-lite */
++		sys-led {
++			color = <LED_COLOR_ID_BLUE>;
++			label = "act:blue";
++			pwms = <&pwm 0 50000>;
++			max-brightness = <255>;
++			active-high;
++			linux,default-trigger = "default-on";
++		};
++	};
++
++	sfp: sfp@0 {
++		compatible = "sff,sfp";
++		i2c-bus = <&imux1_sfp>;
++		los-gpios = <&pio 10 GPIO_ACTIVE_HIGH>;
++		mod-def0-gpios = <&pio 9 GPIO_ACTIVE_LOW>;
++		tx-disable-gpios = <&pio 8 GPIO_ACTIVE_HIGH>;
++		maximum-power-milliwatt = <3000>;
++	};
++};
++
++&fan {
++	pwms = <&pwm 2 50000>;
++	status = "okay";
++};
++
++&gmac0 {
++	phy-mode = "2500base-x";
++	status = "okay";
++	fixed-link {
++		speed = <2500>;
++		full-duplex;
++		pause;
++	};
++};
++
++&gmac1 {
++	phy-mode = "internal";
++	phy-handle = <&phy15>;
++	status = "okay";
++};
++
++&hnat {
++	mtketh-lan2 = "eth2";
++	mtketh-max-gmac = <3>;
++};
++
++&pwm {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pwm_pins>;
++	status = "okay";
++};
++
++&pwm_pins {
++	mux {
++		/*
++		 * - pwm0   : PWM0@PIN13
++		 * - pwm1_0 : PWM@PIN7  (share with JTAG)
++		 * - pwm2_0 : PWM2@PIN12 (share with PCM)
++		 */
++		function = "pwm";
++		groups = "pwm0", "pwm1_0", "pwm2_0";
++	};
++};
++
++&i2c0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c0_pins>;
++	status = "okay";
++
++	pca9545@70 {
++		compatible = "nxp,pca9545";
++		reg = <0x70>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		imux0_rtc: i2c@0 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <0x0>;
++
++			rtc@51 {
++				compatible = "nxp,pcf8563";
++				reg = <0x51>;
++			};
++
++			eeprom@57 {
++				compatible = "atmel,24c02";
++				reg = <0x57>;
++				address-bits = <8>;
++				page-size = <8>;
++				size = <256>;
++			};
++		};
++
++		imux1_sfp: i2c@1 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <0x1>;
++		};
++
++		imux2_MikroBus: i2c@2 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <0x2>;
++		};
++
++		imux3: i2c@3 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <0x3>;
++
++			pca9555: i2c-gpio-expander@20 {
++				compatible = "nxp,pca9555";
++				gpio-controller;
++				#gpio-cells = <2>;
++				reg = <0x20>;
++			};
++
++			wifi_eeprom@50 {
++				compatible = "atmel,24c02";
++				reg = <0x50>;
++
++				address-bits = <8>;
++				page-size = <8>;
++				size = <256>;
++			};
++		};
++	};
++};
++
++&mdio {
++	/* built-in 2.5G Ethernet PHY */
++	phy15: phy@15 {
++		pinctrl-names = "i2p5gbe-led";
++		pinctrl-0 = <&i2p5gbe_led0_pins>;
++		compatible = "ethernet-phy-ieee802.3-c45";
++		reg = <15>;
++		phy-mode = "internal";
++	};
++
++	switch31: switch@31 {
++		compatible = "mediatek,mt7531";
++		reg = <31>;
++		reset-gpios = <&pio 42 0>;
++		status = "okay";
++	};
++};
++
++&ssusb {
++	mediatek,u3p-dis-msk=<0>;
++	phys = <&tphyu2port0 PHY_TYPE_USB2>,
++	       <&tphyu3port0 PHY_TYPE_USB3>;
++};
++
++&switch31 {
++	ports {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		port@0 {
++			reg = <0>;
++			label = "lan0";
++		};
++
++		port@1 {
++			reg = <1>;
++			label = "lan1";
++		};
++
++		port@2 {
++			reg = <2>;
++			label = "lan2";
++		};
++
++		port@3 {
++			reg = <3>;
++			label = "lan3";
++		};
++
++		port@5 {
++			reg = <5>;
++			label = "sfp0";
++			phy-mode = "2500base-x";
++			sfp = <&sfp>;
++			managed = "in-band-status";
++		};
++
++		port@6 {
++			reg = <6>;
++			label = "cpu";
++			ethernet = <&gmac0>;
++			phy-mode = "2500base-x";
++
++			fixed-link {
++				speed = <2500>;
++				full-duplex;
++				pause;
++			};
++		};
++	};
++};
++
++&tphyu3port0 {
++	status = "okay";
++};

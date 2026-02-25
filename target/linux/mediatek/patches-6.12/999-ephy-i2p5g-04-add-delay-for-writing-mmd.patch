@@ -1,0 +1,51 @@
+--- a/drivers/net/phy/mediatek/mtk-2p5ge.c
++++ b/drivers/net/phy/mediatek/mtk-2p5ge.c
+@@ -801,6 +801,32 @@ static int mt798x_2p5ge_phy_get_rate_mat
+ 	return RATE_MATCH_PAUSE;
+ }
+ 
++static int mt798x_2p5ge_phy_write_mmd(struct phy_device *phydev, int devad,
++				      u16 regnum, u16 val)
++{
++	struct mii_bus *bus = phydev->mdio.bus;
++	int phy_addr = phydev->mdio.addr;
++	int ret;
++
++	/* Extend what's inside __phy_write_mmd() */
++	if (devad > 32)
++		return -EINVAL;
++
++	if (phydev->is_c45) {
++		ret = __mdiobus_c45_write(bus, phy_addr, devad, regnum, val);
++	} else {
++		__mdiobus_write(bus, phy_addr, MII_MMD_CTRL, devad);
++		__mdiobus_write(bus, phy_addr, MII_MMD_DATA, regnum);
++		__mdiobus_write(bus, phy_addr, MII_MMD_CTRL,
++				devad | MII_MMD_CTRL_NOINCR);
++		ret = __mdiobus_write(bus, phy_addr, MII_MMD_DATA, val);
++	}
++
++	usleep_range(7000, 8000);
++
++	return ret;
++}
++
+ static const unsigned long supported_triggers =
+ 	BIT(TRIGGER_NETDEV_FULL_DUPLEX) |
+ 	BIT(TRIGGER_NETDEV_LINK)        |
+@@ -1039,6 +1065,7 @@ static struct phy_driver mtk_2p5gephy_dr
+ 		.resume = genphy_resume,
+ 		.read_page = mtk_phy_read_page,
+ 		.write_page = mtk_phy_write_page,
++		.write_mmd = mt798x_2p5ge_phy_write_mmd,
+ 		.led_blink_set = mt798x_2p5ge_phy_led_blink_set,
+ 		.led_brightness_set = mt798x_2p5ge_phy_led_brightness_set,
+ 		.led_hw_is_supported = mt798x_2p5ge_phy_led_hw_is_supported,
+@@ -1061,6 +1088,7 @@ static struct phy_driver mtk_2p5gephy_dr
+ 		.resume = genphy_resume,
+ 		.read_page = mtk_phy_read_page,
+ 		.write_page = mtk_phy_write_page,
++		.write_mmd = mt798x_2p5ge_phy_write_mmd,
+ 		.led_blink_set = mt798x_2p5ge_phy_led_blink_set,
+ 		.led_brightness_set = mt798x_2p5ge_phy_led_brightness_set,
+ 		.led_hw_is_supported = mt798x_2p5ge_phy_led_hw_is_supported,

@@ -1,0 +1,115 @@
+From 8a27a1208f6799696dfc52312d31e24cb90513ef Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Thu, 6 Nov 2025 22:15:31 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add XGMACv2 support for MT7987
+
+Without this patch, the ETH driver is unable to control the link status
+and TX/RX flow control for the XGMACv2.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 59 +++++++++++++++------
+ 1 file changed, 44 insertions(+), 15 deletions(-)
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -778,14 +778,21 @@ static int mtk_mac_prepare(struct phylin
+ {
+ 	struct mtk_mac *mac = container_of(config, struct mtk_mac,
+ 					   phylink_config);
++	struct mtk_eth *eth = mac->hw;
+ 
+ 	if (mtk_is_netsys_v3_or_greater(mac->hw) && mtk_interface_mode_is_xgmii(iface)) {
+ 		if (mac->id != MTK_GMAC1_ID)
+ 			mtk_m32(mac->hw, XMAC_MCR_TRX_DISABLE,
+ 				XMAC_MCR_TRX_DISABLE, MTK_XMAC_MCR(mac->id));
+ 
+-		mtk_m32(mac->hw, MTK_XGMAC_FORCE_MODE(mac->id) | MTK_XGMAC_FORCE_LINK(mac->id),
+-			MTK_XGMAC_FORCE_MODE(mac->id), MTK_XGMAC_STS(mac->id));
++		if (MTK_HAS_CAPS(eth->soc->caps, MTK_XGMAC_V2))
++			mtk_m32(mac->hw, XMAC_FORCE_RX_FC_MODE | XMAC_FORCE_TX_FC_MODE |
++					 XMAC_FORCE_LINK_MODE | XMAC_FORCE_LINK,
++					 XMAC_FORCE_RX_FC_MODE | XMAC_FORCE_TX_FC_MODE |
++					 XMAC_FORCE_LINK_MODE, MTK_XMAC_STS_FRC(mac->id));
++		else
++			mtk_m32(mac->hw, MTK_XGMAC_FORCE_MODE(mac->id) | MTK_XGMAC_FORCE_LINK(mac->id),
++				MTK_XGMAC_FORCE_MODE(mac->id), MTK_XGMAC_STS(mac->id));
+ 	}
+ 
+ 	return 0;
+@@ -823,12 +830,16 @@ static void mtk_mac_link_down(struct phy
+ {
+ 	struct mtk_mac *mac = container_of(config, struct mtk_mac,
+ 					   phylink_config);
++	struct mtk_eth *eth = mac->hw;
+ 
+ 	if (!mtk_interface_mode_is_xgmii(interface)) {
+ 		mtk_m32(mac->hw, MAC_MCR_TX_EN | MAC_MCR_RX_EN | MAC_MCR_FORCE_LINK, 0, MTK_MAC_MCR(mac->id));
+ 	} else if (mtk_is_netsys_v3_or_greater(mac->hw) && mac->id != MTK_GMAC1_ID) {
+ 		mtk_m32(mac->hw, XMAC_MCR_TRX_DISABLE, XMAC_MCR_TRX_DISABLE, MTK_XMAC_MCR(mac->id));
+-		mtk_m32(mac->hw, MTK_XGMAC_FORCE_LINK(mac->id), 0, MTK_XGMAC_STS(mac->id));
++		if (MTK_HAS_CAPS(eth->soc->caps, MTK_XGMAC_V2))
++			mtk_m32(mac->hw, XMAC_FORCE_LINK, 0, MTK_XMAC_STS_FRC(mac->id));
++		else
++			mtk_m32(mac->hw, MTK_XGMAC_FORCE_LINK(mac->id), 0, MTK_XGMAC_STS(mac->id));
+ 	}
+ }
+ 
+@@ -1013,6 +1024,7 @@ static void mtk_xgdm_mac_link_up(struct
+ 				 unsigned int mode, phy_interface_t interface,
+ 				 int speed, int duplex, bool tx_pause, bool rx_pause)
+ {
++	struct mtk_eth *eth = mac->hw;
+ 	u32 mcr;
+ 
+ 	if (mac->id == MTK_GMAC1_ID)
+@@ -1023,20 +1035,37 @@ static void mtk_xgdm_mac_link_up(struct
+ 	mdelay(20);
+ 	mtk_m32(mac->hw, XMAC_GLB_CNTCLR, XMAC_GLB_CNTCLR, MTK_XMAC_CNT_CTRL(mac->id));
+ 
+-	mtk_m32(mac->hw, MTK_XGMAC_FORCE_LINK(mac->id),
+-		MTK_XGMAC_FORCE_LINK(mac->id), MTK_XGMAC_STS(mac->id));
++	if (MTK_HAS_CAPS(eth->soc->caps, MTK_XGMAC_V2)) {
++		mcr = mtk_r32(mac->hw, MTK_XMAC_STS_FRC(mac->id));
++		mcr |= XMAC_FORCE_LINK;
++		mcr &= ~(XMAC_FORCE_TX_FC | XMAC_FORCE_RX_FC);
++		/* Configure pause modes -
++		 * phylink will avoid these for half duplex
++		 */
++		if (tx_pause)
++			mcr |= XMAC_FORCE_TX_FC;
++		if (rx_pause)
++			mcr |= XMAC_FORCE_RX_FC;
+ 
+-	mcr = mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id));
+-	mcr &= ~(XMAC_MCR_FORCE_TX_FC | XMAC_MCR_FORCE_RX_FC | XMAC_MCR_TRX_DISABLE);
+-	/* Configure pause modes -
+-	 * phylink will avoid these for half duplex
+-	 */
+-	if (tx_pause)
+-		mcr |= XMAC_MCR_FORCE_TX_FC;
+-	if (rx_pause)
+-		mcr |= XMAC_MCR_FORCE_RX_FC;
++		mtk_w32(mac->hw, mcr, MTK_XMAC_STS_FRC(mac->id));
+ 
+-	mtk_w32(mac->hw, mcr, MTK_XMAC_MCR(mac->id));
++		mtk_m32(mac->hw, XMAC_MCR_TRX_DISABLE, 0, MTK_XMAC_MCR(mac->id));
++	} else {
++		mtk_m32(mac->hw, MTK_XGMAC_FORCE_LINK(mac->id),
++			MTK_XGMAC_FORCE_LINK(mac->id), MTK_XGMAC_STS(mac->id));
++
++		mcr = mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id));
++		mcr &= ~(XMAC_MCR_FORCE_TX_FC | XMAC_MCR_FORCE_RX_FC | XMAC_MCR_TRX_DISABLE);
++		/* Configure pause modes -
++		 * phylink will avoid these for half duplex
++		 */
++		if (tx_pause)
++			mcr |= XMAC_MCR_FORCE_TX_FC;
++		if (rx_pause)
++			mcr |= XMAC_MCR_FORCE_RX_FC;
++
++		mtk_w32(mac->hw, mcr, MTK_XMAC_MCR(mac->id));
++	}
+ }
+ 
+ static void mtk_mac_link_up(struct phylink_config *config,

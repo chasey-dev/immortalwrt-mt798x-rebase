@@ -1,0 +1,94 @@
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -342,6 +342,13 @@ static const char * const mtk_clks_sourc
+ 	"top_netsys_warp_sel",
+ };
+ 
++u32 (*mtk_get_tnl_netsys_params)(struct sk_buff *skb) = NULL;
++EXPORT_SYMBOL(mtk_get_tnl_netsys_params);
++struct net_device *(*mtk_get_tnl_dev)(u8 tops_crsn) = NULL;
++EXPORT_SYMBOL(mtk_get_tnl_dev);
++void (*mtk_set_tops_crsn)(struct sk_buff *skb, u8 tops_crsn) = NULL;
++EXPORT_SYMBOL(mtk_set_tops_crsn);
++
+ void mtk_w32(struct mtk_eth *eth, u32 val, unsigned reg)
+ {
+ 	__raw_writel(val, eth->base + reg);
+@@ -1967,6 +1974,7 @@ static int mtk_tx_map(struct sk_buff *sk
+ 	int i, frag_size = skb_headlen(skb);
+ 	bool gso_v4, gso_fraglist;
+ 	int offset = 0;
++	u32 params;
+ 
+ 	txq = netdev_get_tx_queue(dev, queue);
+ 	itxd = ring->next_free;
+@@ -1989,6 +1997,13 @@ next:
+ 		.first = true,
+ 	};
+ 
++	if (mtk_get_tnl_netsys_params && !(skb->inner_protocol == IPPROTO_ESP)) {
++		params = mtk_get_tnl_netsys_params(skb);
++		txd_info.tops_entry = params & 0x000000FF;
++		txd_info.tport = (params & 0x0000FF00) >> 8;
++		txd_info.cdrt = (params & 0x00FF0000) >> 16;
++	}
++
+ 	if (mtk_is_netsys_v3_or_greater(eth) &&
+ 		unlikely(skb->inner_protocol == IPPROTO_ESP &&
+ 		skb_tnl_cdrt(skb) && is_tnl_tag_valid(skb))) {
+@@ -2664,13 +2679,14 @@ static int mtk_poll_rx(struct napi_struc
+ 	int done = 0, bytes = 0;
+ 	dma_addr_t dma_addr = DMA_MAPPING_ERROR;
+ 	int ppe_idx = 0;
++	u8 tops_crsn = 0;
+ 
+ 	if (unlikely(!ring))
+ 		goto rx_done;
+ 
+ 	while (done < budget) {
+ 		unsigned int pktlen, *rxdcsum;
+-		struct net_device *netdev;
++		struct net_device *netdev = NULL;
+ 		u32 hash, reason;
+ 		int mac = 0;
+ 
+@@ -2705,7 +2721,15 @@ static int mtk_poll_rx(struct napi_struc
+ 			     !eth->netdev[mac]))
+ 			goto release_desc;
+ 
+-		netdev = eth->netdev[mac];
++		tops_crsn = RX_DMA_GET_TOPS_CRSN(trxd.rxd6);
++		if (mtk_get_tnl_dev && tops_crsn) {
++			netdev = mtk_get_tnl_dev(tops_crsn);
++			if (IS_ERR(netdev))
++				netdev = NULL;
++		}
++
++		if (!netdev)
++			netdev = eth->netdev[mac];
+ 		ppe_idx = eth->mac[mac]->ppe_idx;
+ 
+ 		if (unlikely(test_bit(MTK_RESETTING, &eth->state)))
+@@ -2815,6 +2839,8 @@ static int mtk_poll_rx(struct napi_struc
+ 				     __func__, skb_hnat_entry(skb), skb_hnat_sport(skb),
+ 				     skb_hnat_reason(skb), skb_hnat_alg(skb));
+ #endif
++			if (mtk_set_tops_crsn && skb && tops_crsn)
++				mtk_set_tops_crsn(skb, tops_crsn);
+ 		}
+ 
+ 		skb->dev = netdev;
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -1966,6 +1966,11 @@ static inline bool mtk_interface_mode_is
+ 	}
+ }
+ 
++/* tunnel offload related */
++extern u32 (*mtk_get_tnl_netsys_params)(struct sk_buff *skb);
++extern struct net_device *(*mtk_get_tnl_dev)(u8 tops_crsn);
++extern void (*mtk_set_tops_crsn)(struct sk_buff *skb, u8 tops_crsn);
++
+ /* read the hardware status register */
+ void mtk_stats_update_mac(struct mtk_mac *mac);
+ 

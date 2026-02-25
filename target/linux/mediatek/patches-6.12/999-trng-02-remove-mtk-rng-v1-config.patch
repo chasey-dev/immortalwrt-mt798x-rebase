@@ -1,0 +1,37 @@
+From ce9471bd56e36c7a014c07be6a37645cdf66b024 Mon Sep 17 00:00:00 2001
+From: "guan-gm.lin" <guan-gm.lin@mediatek.com>
+Date: Wed, 21 Jan 2026 16:56:32 +0800
+Subject: [PATCH] remove mtk rng v1 config
+
+---
+ drivers/char/hw_random/Kconfig | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/drivers/char/hw_random/Kconfig b/drivers/char/hw_random/Kconfig
+index fc19371e6..5a5f104c1 100644
+--- a/drivers/char/hw_random/Kconfig
++++ b/drivers/char/hw_random/Kconfig
+@@ -438,20 +438,6 @@ config HW_RANDOM_CAVIUM
+ 
+ 	  If unsure, say Y.
+ 
+-config HW_RANDOM_MTK
+-	tristate "Mediatek Random Number Generator support"
+-	depends on ARCH_MEDIATEK || COMPILE_TEST
+-	depends on HAS_IOMEM && OF
+-	default HW_RANDOM if ARCH_MEDIATEK
+-	help
+-	  This driver provides kernel-side support for the Random Number
+-	  Generator hardware found on Mediatek SoCs.
+-
+-	  To compile this driver as a module, choose M here. the
+-	  module will be called mtk-rng.
+-
+-	  If unsure, say Y.
+-
+ config HW_RANDOM_MTK_V2
+ 	tristate "Mediatek Random Number Generator support (v2/SMC)"
+ 	depends on HAVE_ARM_SMCCC
+-- 
+2.45.2
+

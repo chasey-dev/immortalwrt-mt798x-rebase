@@ -1,0 +1,33 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+@@ -50,11 +50,13 @@
+ 			label = "reset";
+ 			linux,code = <KEY_RESTART>;
+ 			gpios = <&pio 1 GPIO_ACTIVE_LOW>;
++			debounce-interval = <10>;
+ 		};
+ 		wps {
+ 			label = "wps";
+ 			linux,code = <KEY_WPS_BUTTON>;
+ 			gpios = <&pio 0 GPIO_ACTIVE_HIGH>;
++			debounce-interval = <10>;
+ 		};
+ 	};
+ };
+--- a/arch/arm64/boot/dts/mediatek/mt7981b-cudy-wr3000-v1.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7981b-cudy-wr3000-v1.dts
+@@ -23,12 +23,14 @@
+ 			label = "WPS";
+ 			gpios = <&pio 0 GPIO_ACTIVE_LOW>;
+ 			linux,code = <KEY_WPS_BUTTON>;
++			debounce-interval = <10>;
+ 		};
+ 
+ 		key-reset {
+ 			label = "RESET";
+ 			gpios = <&pio 1 GPIO_ACTIVE_LOW>;
+ 			linux,code = <KEY_RESTART>;
++			debounce-interval = <10>;
+ 		};
+ 	};
+ 

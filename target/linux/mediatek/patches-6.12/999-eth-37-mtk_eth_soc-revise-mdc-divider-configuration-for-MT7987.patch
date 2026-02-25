@@ -1,0 +1,75 @@
+From 46a8a8c6489376b68df5f71496cde2f0fb076a57 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Tue, 16 Dec 2025 21:19:23 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: revise mdc divider configuration
+ for MT7987
+
+Since the design of the MDC divider was changed in NETSYSv3.1, we
+need to implement a new calculation formula to obtain the correct
+divider setting.
+
+Without this patch, the user will see the MDC faster than expected
+on the MT7987.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 28 +++++++++++++++++----
+ 1 file changed, 23 insertions(+), 5 deletions(-)
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -1210,14 +1210,14 @@ static void mtk_mdio_config(struct mtk_e
+ 	if (mtk_is_netsys_v3_or_greater(eth))
+ 		mtk_m32(eth, 0, MISC_MDC_TURBO, MTK_MAC_MISC_V3);
+ 	else
+-		val |= PPSC_MDC_TURBO;
++		mtk_m32(eth, 0, PPSC_MDC_TURBO, MTK_PPSC);
+ 
+ 	mtk_m32(eth, PPSC_MDC_CFG, val, MTK_PPSC);
+ }
+ 
+ static int mtk_mdio_init(struct mtk_eth *eth)
+ {
+-	unsigned int max_clk = 2500000;
++	unsigned int max_clk = 2500000, min_clk, divider, output;
+ 	struct device_node *mii_np;
+ 	int ret;
+ 	u32 val;
+@@ -1250,16 +1250,34 @@ static int mtk_mdio_init(struct mtk_eth
+ 	snprintf(eth->mii_bus->id, MII_BUS_ID_SIZE, "%pOFn", mii_np);
+ 
+ 	if (!of_property_read_u32(mii_np, "clock-frequency", &val)) {
+-		if (val > MDC_MAX_FREQ || val < MDC_MAX_FREQ / MDC_MAX_DIVIDER) {
++		if (mtk_is_netsys_v3_or_greater(eth) &&
++		    (eth->soc->caps != MT7988_CAPS))
++			min_clk = (2 * MDC_MAX_FREQ) / (MDC_MAX_DIVIDER + 1);
++		else
++			min_clk = MDC_MAX_FREQ / MDC_MAX_DIVIDER;
++
++		if (val > MDC_MAX_FREQ || val < min_clk) {
+ 			dev_err(eth->dev, "MDIO clock frequency out of range");
+ 			ret = -EINVAL;
+ 			goto err_put_node;
+ 		}
+ 		max_clk = val;
+ 	}
+-	eth->mdc_divider = min_t(unsigned int, DIV_ROUND_UP(MDC_MAX_FREQ, max_clk), 63);
++
++	if (mtk_is_netsys_v3_or_greater(eth) &&
++	    (eth->soc->caps != MT7988_CAPS)) {
++		divider = min_t(unsigned int,
++				DIV_ROUND_UP(2 * MDC_MAX_FREQ, max_clk) - 1, 63);
++		output = (2 * MDC_MAX_FREQ) / (divider + 1);
++	} else {
++		divider = min_t(unsigned int,
++				DIV_ROUND_UP(MDC_MAX_FREQ, max_clk), 63);
++		output = MDC_MAX_FREQ / divider;
++	}
++
++	eth->mdc_divider = divider;
+ 	mtk_mdio_config(eth);
+-	dev_dbg(eth->dev, "MDC is running on %d Hz\n", MDC_MAX_FREQ / eth->mdc_divider);
++	dev_dbg(eth->dev, "MDC is running on %d Hz\n", output);
+ 	ret = of_mdiobus_register(eth->mii_bus, mii_np);
+ 
+ err_put_node:

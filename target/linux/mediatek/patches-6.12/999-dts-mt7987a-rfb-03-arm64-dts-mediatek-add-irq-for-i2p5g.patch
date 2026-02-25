@@ -1,0 +1,24 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth1-i2p5g.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth1-i2p5g.dtso
+@@ -3,6 +3,8 @@
+ /dts-v1/;
+ /plugin/;
+ 
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++
+ / {
+ 	fragment@0 {
+ 		target = <&gmac1>;
+@@ -21,10 +23,11 @@
+ 				pinctrl-names = "i2p5gbe-led";
+ 				pinctrl-0 = <&i2p5gbe_led0_pins>;
+ 				compatible = "ethernet-phy-ieee802.3-c45";
++				interrupts = <GIC_SPI 286 IRQ_TYPE_LEVEL_HIGH>;
++				interrupt-parent = <&gic>;
+ 				reg = <15>;
+ 				phy-mode = "internal";
+ 			};
+ 		};
+ 	};
+ };
+-

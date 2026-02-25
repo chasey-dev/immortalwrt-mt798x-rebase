@@ -1,0 +1,59 @@
+From 79ba7f4667a0848dbdf4546a361f8f74cdf1e6da Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Wed, 24 Sep 2025 12:52:33 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add roaming handler
+
+Without this patch, the traffic may stop over 30 seconds when the
+WiFi roams.
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c   |   7 +
+ drivers/net/ethernet/mediatek/mtk_eth_soc.h   |   5 +
+ 2 files changed, 12 insertions(+)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index 025ff77..929b489 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -4306,6 +4306,11 @@ static int mtk_open(struct net_device *dev)
+ 		for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+ 			mtk_ppe_start(eth->ppe[i]);
+ 
++		err = mtk_ppe_roaming_start(eth);
++		if (err)
++			netdev_err(dev, "%s: could not start ppe roaming work: %d\n",
++				   __func__, err);
++
+ 		for (i = 0; i < MTK_MAX_DEVS; i++) {
+ 			if (!eth->netdev[i])
+ 				continue;
+@@ -4458,6 +4463,8 @@ static int mtk_stop(struct net_device *dev)
+ 
+ 	mtk_dma_free(eth);
+ 
++	mtk_ppe_roaming_stop(eth);
++
+ 	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+ 		mtk_ppe_stop(eth->ppe[i]);
+ 
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.h b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+index 84a243a..5d07e3d 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -1709,9 +1709,14 @@ struct mtk_eth {
+ 
+ 	struct metadata_dst		*dsa_meta[MTK_MAX_DSA_PORTS];
+ 
++	u8				debug_level;
+ 	struct mtk_ppe			*ppe[3];
+ 	struct rhashtable		flow_table;
+ 
++	struct socket			*ppe_roam_sock;
++	struct work_struct		ppe_roam_work;
++	unsigned char			ppe_roam_buf[1024];
++
+ 	struct bpf_prog			__rcu *prog;
+ 
+ 	struct {
+-- 
+2.45.2
+

@@ -1,0 +1,70 @@
+From 99e5457a1512d8216b2e572137ee82159b6f1896 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 25 Nov 2025 19:28:10 +0800
+Subject: [PATCH] netfilter: add vlan egress qos learning flow to
+ nft_flow_offload
+
+Without this patch, the PPEs are unable to learn VLAN PCP field
+when the below command is configured.
+ - vconfig set_egress_map $dev $priority $pcp
+---
+ net/netfilter/nft_flow_offload.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/net/netfilter/nft_flow_offload.c b/net/netfilter/nft_flow_offload.c
+index a1a214e..f9e765b 100644
+--- a/net/netfilter/nft_flow_offload.c
++++ b/net/netfilter/nft_flow_offload.c
+@@ -166,6 +166,7 @@ struct nft_forward_info {
+ 	u8 ingress_vlans;
+ 	u8 h_source[ETH_ALEN];
+ 	u8 h_dest[ETH_ALEN];
++	u32 priority;
+ 	enum flow_offload_xmit_type xmit_type;
+ };
+ 
+@@ -199,6 +200,7 @@ static void nft_dev_path_info(const struct net_device_path_stack *stack,
+ {
+ 	const struct net_device_path *path;
+ 	int i;
++	u32 vlan_pcp;
+ 
+ 	memcpy(info->h_dest, ha, ETH_ALEN);
+ 
+@@ -229,6 +231,13 @@ static void nft_dev_path_info(const struct net_device_path_stack *stack,
+ 				info->outdev = path->dev;
+ 			info->encap[info->num_encaps].id = path->encap.id;
+ 			info->encap[info->num_encaps].proto = path->encap.proto;
++
++			if (path->type == DEV_PATH_VLAN) {
++				vlan_pcp = vlan_dev_get_egress_qos_mask(
++						(struct net_device *)(path->dev), info->priority);
++				info->encap[info->num_encaps].id |= vlan_pcp;
++			}
++
+ 			info->num_encaps++;
+ 			if (path->type == DEV_PATH_PPPOE)
+ 				memcpy(info->h_dest, path->encap.h_dest, ETH_ALEN);
+@@ -301,7 +310,10 @@ static int nft_dev_forward_path(const struct nft_pktinfo *pkt,
+ 	struct net_device_path_ctx ctx = {
+ 		.dev	= dst->dev,
+ 	};
+-	struct nft_forward_info info = {};
++	struct nf_conn_qos *qos = nf_conn_qos_find(ct);
++	struct nft_forward_info info = {
++		.priority = qos ? qos->priority[dir] : pkt->skb->priority,
++	};
+ 	struct ethhdr *eth;
+ 	enum ip_conntrack_dir skb_dir;
+ 	unsigned char ha[ETH_ALEN];
+@@ -591,6 +603,7 @@ static void nft_flow_offload_eval(const struct nft_expr *expr,
+ 
+ 		qos->tos[dir].value = tos;
+ 		atomic64_add(1, &qos->tos[dir].counter);
++		qos->priority[dir] = pkt->skb->priority;
+ 
+ 		if (atomic64_read(&qos->tos[dir].counter) < net->ct.sysctl_qos)
+ 			goto out;
+-- 
+2.45.2
+

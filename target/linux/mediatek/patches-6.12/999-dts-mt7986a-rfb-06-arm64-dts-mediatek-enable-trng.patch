@@ -1,0 +1,28 @@
+From 0aca8a23678d3e98290c8c2291998ea62ab304fe Mon Sep 17 00:00:00 2001
+From: "guan-gm.lin" <guan-gm.lin@mediatek.com>
+Date: Thu, 22 Jan 2026 10:54:09 +0800
+Subject: [PATCH] mt7986a deti
+
+---
+ arch/arm64/boot/dts/mediatek/mt7986a.dtsi | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
+index 6c69f431c..e02cf0145 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
+@@ -237,10 +237,8 @@ sgmiisys1: syscon@10070000 {
+ 		trng: rng@1020f000 {
+ 			compatible = "mediatek,mt7986-rng",
+ 				     "mediatek,mt7623-rng";
+-			reg = <0 0x1020f000 0 0x100>;
+ 			clocks = <&infracfg CLK_INFRA_TRNG_CK>;
+-			clock-names = "rng";
+-			status = "disabled";
++			clock-names = "trng";
+ 		};
+ 
+ 		crypto: crypto@10320000 {
+-- 
+2.45.2
+

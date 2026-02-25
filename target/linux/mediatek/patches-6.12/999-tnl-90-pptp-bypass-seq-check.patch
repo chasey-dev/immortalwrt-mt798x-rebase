@@ -1,0 +1,28 @@
+--- a/drivers/net/ppp/pptp.c
++++ b/drivers/net/ppp/pptp.c
+@@ -356,6 +356,15 @@ static int pptp_rcv_core(struct sock *sk
+ 				(PPP_PROTOCOL(payload) == PPP_LCP) &&
+ 				((payload[4] == PPP_LCP_ECHOREQ) || (payload[4] == PPP_LCP_ECHOREP)))
+ 			goto allow_packet;
++
++		/*
++		 * Updating seq_recv and checking seq of data packets causes
++		 * severe packet drop in multi-core scenario. It is bypassed
++		 * here as a workaround solution.
++		 */
++		if ((payload[0] == PPP_ALLSTATIONS) && (payload[1] == PPP_UI) &&
++				!PPP_PROTOCOL_CTRL(payload))
++			goto allow_packet;
+ 	} else {
+ 		opt->seq_recv = seq;
+ allow_packet:
+--- a/include/uapi/linux/ppp_defs.h
++++ b/include/uapi/linux/ppp_defs.h
+@@ -23,6 +23,7 @@
+ #define PPP_ADDRESS(p)	(((__u8 *)(p))[0])
+ #define PPP_CONTROL(p)	(((__u8 *)(p))[1])
+ #define PPP_PROTOCOL(p)	((((__u8 *)(p))[2] << 8) + ((__u8 *)(p))[3])
++#define PPP_PROTOCOL_CTRL(p)	(PPP_PROTOCOL(p) & 0xF000)
+ 
+ /*
+  * Significant octet values.

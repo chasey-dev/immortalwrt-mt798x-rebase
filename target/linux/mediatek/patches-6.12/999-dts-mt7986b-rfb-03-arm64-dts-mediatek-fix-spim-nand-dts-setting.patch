@@ -1,0 +1,19 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7986b-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986b-rfb.dts
+@@ -132,14 +132,14 @@
+ 
+ &spi0 {
+ 	pinctrl-names = "default";
+-	pinctrl-0 = <&spi_flash_pins>;
++	pinctrl-0 = <&spi_nand_pins>;
+ 	cs-gpios = <0>, <0>;
+ 	status = "okay";
+ 
+ 	spi_nand: flash@0 {
+ 		compatible = "spi-nand";
+ 		reg = <0>;
+-		spi-max-frequency = <10000000>;
++		spi-max-frequency = <52000000>;
+ 		spi-tx-bus-width = <4>;
+ 		spi-rx-bus-width = <4>;
+ 	};

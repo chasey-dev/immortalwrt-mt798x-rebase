@@ -1,0 +1,547 @@
+From d7834395e9c7edba3a7d6707def76ccf20f68d5f Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Wed, 26 Nov 2025 19:47:58 +0800
+Subject: [PATCH] thermal: mediatek: improve mt798x config
+
+---
+ drivers/thermal/mediatek/lvts_thermal.c | 154 ++++++++++++++++++++----
+ 1 file changed, 129 insertions(+), 25 deletions(-)
+
+diff --git a/drivers/thermal/mediatek/lvts_thermal.c b/drivers/thermal/mediatek/lvts_thermal.c
+index 0a4fa26..f356b20 100644
+--- a/drivers/thermal/mediatek/lvts_thermal.c
++++ b/drivers/thermal/mediatek/lvts_thermal.c
+@@ -58,11 +58,11 @@
+ #define LVTS_PROTTC(__base)		(__base + 0x00CC)
+ #define LVTS_CLKEN(__base)		(__base + 0x00E4)
+ 
+-#define LVTS_PERIOD_UNIT			0
+-#define LVTS_GROUP_INTERVAL			0
+-#define LVTS_FILTER_INTERVAL		0
+-#define LVTS_SENSOR_INTERVAL		0
+-#define LVTS_HW_FILTER				0x0
++#define LVTS_PERIOD_UNIT			0xc
++#define LVTS_GROUP_INTERVAL			0x1
++#define LVTS_FILTER_INTERVAL			0x1
++#define LVTS_SENSOR_INTERVAL			0x1
++#define LVTS_HW_FILTER				0x5
+ #define LVTS_TSSEL_CONF				0x13121110
+ #define LVTS_CALSCALE_CONF			0x300
+ 
+@@ -83,6 +83,8 @@
+ #define LVTS_SENSOR_MAX				4
+ #define LVTS_GOLDEN_TEMP_MAX		62
+ #define LVTS_GOLDEN_TEMP_DEFAULT	50
++#define LVTS_GOLDEN_TEMP_MT7987		60
++#define LVTS_GOLDEN_TEMP_MT7988		60
+ #define LVTS_COEFF_A_MT8195			-250460
+ #define LVTS_COEFF_B_MT8195			250460
+ #define LVTS_COEFF_A_MT7988			-204650
+@@ -93,22 +95,28 @@
+ #define LVTS_MSR_IMMEDIATE_MODE		0
+ #define LVTS_MSR_FILTERED_MODE		1
+ 
+-#define LVTS_MSR_READ_TIMEOUT_US	400
++#define LVTS_MSR_READ_TIMEOUT_US	4000
+ #define LVTS_MSR_READ_WAIT_US		(LVTS_MSR_READ_TIMEOUT_US / 2)
+ 
++#define LVTS_BUS_IDLE_TIMEOUT_US	200
++#define LVTS_BUS_IDLE_WAIT_US		2
++
+ #define LVTS_MINIMUM_THRESHOLD		20000
+ 
++#define LVTS_HW_RESET_TEMP		125000
++
+ static int golden_temp = LVTS_GOLDEN_TEMP_DEFAULT;
+ static int golden_temp_offset;
+ 
+ struct lvts_sensor_data {
+ 	int dt_id;
+-	u8 cal_offsets[3];
++	u8 cal_offsets[4];
+ };
+ 
+ struct lvts_ctrl_data {
+ 	struct lvts_sensor_data lvts_sensor[LVTS_SENSOR_MAX];
+ 	u8 valid_sensor_mask;
++	int cal_offset_num;
+ 	int offset;
+ 	int mode;
+ };
+@@ -135,6 +143,7 @@ struct lvts_data {
+ 	int num_init_cmd;
+ 	int temp_factor;
+ 	int temp_offset;
++	int golden_temp;
+ 	int gt_calib_bit_offset;
+ 	unsigned int def_calibration;
+ };
+@@ -153,6 +162,7 @@ struct lvts_ctrl {
+ 	struct lvts_sensor sensors[LVTS_SENSOR_MAX];
+ 	const struct lvts_data *lvts_data;
+ 	u32 calibration[LVTS_SENSOR_MAX];
++	u32 hw_reset_raw_temp;
+ 	u8 valid_sensor_mask;
+ 	int mode;
+ 	void __iomem *base;
+@@ -718,8 +728,8 @@ static int lvts_calibration_init(struct device *dev, struct lvts_ctrl *lvts_ctrl
+ 					u8 *efuse_calibration,
+ 					size_t calib_len)
+ {
+-	int i;
+-	u32 gt;
++	int i, j;
++	u32 gt, calib;
+ 
+ 	/* A zero value for gt means that device has invalid efuse data */
+ 	gt = (((u32 *)efuse_calibration)[0] >> lvts_ctrl->lvts_data->gt_calib_bit_offset) & 0xff;
+@@ -728,16 +738,18 @@ static int lvts_calibration_init(struct device *dev, struct lvts_ctrl *lvts_ctrl
+ 		const struct lvts_sensor_data *sensor =
+ 					&lvts_ctrl_data->lvts_sensor[i];
+ 
+-		if (sensor->cal_offsets[0] >= calib_len ||
+-		    sensor->cal_offsets[1] >= calib_len ||
+-		    sensor->cal_offsets[2] >= calib_len)
+-			return -EINVAL;
++		for (j = 0; j < lvts_ctrl_data->cal_offset_num; j++) {
++			if (sensor->cal_offsets[j] >= calib_len)
++				return -EINVAL;
++		}
+ 
+ 		if (gt) {
+-			lvts_ctrl->calibration[i] =
+-				(efuse_calibration[sensor->cal_offsets[0]] << 0) +
+-				(efuse_calibration[sensor->cal_offsets[1]] << 8) +
+-				(efuse_calibration[sensor->cal_offsets[2]] << 16);
++			calib = 0;
++
++			for (j = 0; j < lvts_ctrl_data->cal_offset_num; j++)
++				calib |= (efuse_calibration[sensor->cal_offsets[j]] << (8 * j));
++
++			lvts_ctrl->calibration[i] = calib;
+ 		} else if (lvts_ctrl->lvts_data->def_calibration) {
+ 			lvts_ctrl->calibration[i] = lvts_ctrl->lvts_data->def_calibration;
+ 		} else {
+@@ -806,13 +818,15 @@ static int lvts_golden_temp_init(struct device *dev, u8 *calib,
+ 
+ 	/*
+ 	 * The golden temp information is contained in the first 32-bit
+-	 * word  of efuse data at a specific bit offset.
++	 * word of efuse data at a specific bit offset.
+ 	 */
+ 	gt = (((u32 *)calib)[0] >> lvts_data->gt_calib_bit_offset) & 0xff;
+ 
+ 	/* A zero value for gt means that device has invalid efuse data */
+-	if (gt && gt < LVTS_GOLDEN_TEMP_MAX)
++	if (gt && gt <= LVTS_GOLDEN_TEMP_MAX)
+ 		golden_temp = gt;
++	else
++		golden_temp = lvts_data->golden_temp;
+ 
+ 	golden_temp_offset = golden_temp * 500 + lvts_data->temp_offset;
+ 
+@@ -866,6 +880,14 @@ static int lvts_ctrl_init(struct device *dev, struct lvts_domain *lvts_td,
+ 		 */
+ 		lvts_ctrl[i].mode = lvts_data->lvts_ctrl[i].mode;
+ 
++		/*
++		 * The temperature to raw temperature must be done
++		 * after initializing the calibration.
++		 */
++		lvts_ctrl[i].hw_reset_raw_temp =
++			lvts_temp_to_raw(LVTS_HW_RESET_TEMP,
++					 lvts_data->temp_factor);
++
+ 		lvts_ctrl[i].low_thresh = INT_MIN;
+ 		lvts_ctrl[i].high_thresh = INT_MIN;
+ 	}
+@@ -922,7 +944,7 @@ static void lvts_write_config(struct lvts_ctrl *lvts_ctrl, const u32 *cmds, int
+ 	 */
+ 	for (i = 0; i < nr_cmds; i++) {
+ 		writel(cmds[i], LVTS_CONFIG(lvts_ctrl->base));
+-		usleep_range(2, 4);
++		usleep_range(5, 15);
+ 	}
+ }
+ 
+@@ -963,8 +985,12 @@ static int lvts_irq_init(struct lvts_ctrl *lvts_ctrl)
+ 	 * The LVTS_MONINT register layout is the same as the LVTS_MONINTSTS
+ 	 * register, except we set the bits to enable the interrupt.
+ 	 */
+-	if (lvts_data->irq_enable)
++	if (lvts_data->irq_enable) {
+ 		writel(0, LVTS_MONINT(lvts_ctrl->base));
++	} else {
++		writel(BIT(16), LVTS_PROTCTL(lvts_ctrl->base));
++		writel(lvts_ctrl->hw_reset_raw_temp, LVTS_PROTTC(lvts_ctrl->base));
++	}
+ 
+ 	return 0;
+ }
+@@ -1051,6 +1077,38 @@ static int lvts_ctrl_calibrate(struct device *dev, struct lvts_ctrl *lvts_ctrl)
+ 	return 0;
+ }
+ 
++static int lvts_ctrl_wait_bus_idle(struct device *dev, struct lvts_ctrl *lvts_ctrl)
++{
++	const u32 status_mask = BIT(10) | BIT(7) | BIT(0);
++	u32 status, value;
++	int ret;
++
++	ret = readl_poll_timeout(LVTS_MSRCTL1(lvts_ctrl->base), value,
++				 !(value & status_mask),
++				 LVTS_BUS_IDLE_WAIT_US, LVTS_BUS_IDLE_TIMEOUT_US);
++
++	/*
++	 * Bus status:
++	 *
++	 * 000 : Idle
++	 * 001 : Write transaction
++	 * 010 : Waiting for read after write
++	 * 011 : Disable continue fetching on device
++	 * 100 : Read transaction
++	 * 101 : Set device special register for voltage threshold
++	 * 111 : Set TSMCU number for fetch
++	 */
++	status = ((value & BIT(10)) >> 8) | ((value & BIT(7)) >> 6) |
++		 (value & BIT(0));
++
++	if (status) {
++		dev_err(dev, "Bus not idle, error code 0x%x\n", status);
++		return -EBUSY;
++	}
++
++	return 0;
++}
++
+ static int lvts_ctrl_configure(struct device *dev, struct lvts_ctrl *lvts_ctrl)
+ {
+ 	u32 value;
+@@ -1071,8 +1129,8 @@ static int lvts_ctrl_configure(struct device *dev, struct lvts_ctrl *lvts_ctrl)
+ 	/*
+ 	 * LVTS_CALSCALE : ADC voltage round
+ 	 */
+-	value = 0x300;
+ 	value = LVTS_CALSCALE_CONF;
++	writel(value, LVTS_CALSCALE(lvts_ctrl->base));
+ 
+ 	/*
+ 	 * LVTS_MSRCTL0 : Sensor filtering strategy
+@@ -1300,6 +1358,12 @@ static int lvts_domain_init(struct device *dev, struct lvts_domain *lvts_td,
+ 			return ret;
+ 		}
+ 
++		ret = lvts_ctrl_wait_bus_idle(dev, lvts_ctrl);
++		if (ret) {
++			dev_dbg(dev, "Failed to wait for bus idle");
++			return ret;
++		}
++
+ 		ret = lvts_ctrl_configure(dev, lvts_ctrl);
+ 		if (ret) {
+ 			dev_dbg(dev, "Failed to configure controller");
+@@ -1391,12 +1455,14 @@ static const struct lvts_ctrl_data mt7987_lvts_ap_data_ctrl[] = {
+ 	{
+ 		.lvts_sensor = {
+ 			{ .dt_id = MT7987_CPU,
+-			  .cal_offsets = { 0x04, 0x05, 0x06 } },
++			  .cal_offsets = { 0x04, 0x05, 0x06, 0x07 } },
+ 			{ .dt_id = MT7987_ETH2P5G,
+-			  .cal_offsets = { 0x08, 0x09, 0x0a } },
++			  .cal_offsets = { 0x08, 0x09, 0x0a, 0x0b } },
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 4,
+ 		.offset = 0x0,
++		.mode = LVTS_MSR_FILTERED_MODE,
+ 	},
+ };
+ 
+@@ -1413,7 +1479,9 @@ static const struct lvts_ctrl_data mt7988_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 0x0c, 0x0d, 0x0e } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 1, 1),
++		.cal_offset_num = 3,
+ 		.offset = 0x0,
++		.mode = LVTS_MSR_FILTERED_MODE,
+ 	},
+ 	{
+ 		.lvts_sensor = {
+@@ -1427,7 +1495,9 @@ static const struct lvts_ctrl_data mt7988_lvts_ap_data_ctrl[] = {
+ 			   .cal_offsets = { 0x20, 0x21, 0x22 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 1, 1),
++		.cal_offset_num = 3,
+ 		.offset = 0x100,
++		.mode = LVTS_MSR_FILTERED_MODE,
+ 	}
+ };
+ 
+@@ -1522,6 +1592,7 @@ static const struct lvts_ctrl_data mt8186_lvts_data_ctrl[] = {
+ 			  .cal_offsets = { 12, 13, 14 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 1, 1),
++		.cal_offset_num = 3,
+ 		.offset = 0x0,
+ 	},
+ 	{
+@@ -1532,6 +1603,7 @@ static const struct lvts_ctrl_data mt8186_lvts_data_ctrl[] = {
+ 			  .cal_offsets = { 27, 20, 21 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x100,
+ 	},
+ 	{
+@@ -1544,6 +1616,7 @@ static const struct lvts_ctrl_data mt8186_lvts_data_ctrl[] = {
+ 			  .cal_offsets = { 39, 32, 33 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 1, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x200,
+ 	}
+ };
+@@ -1561,6 +1634,7 @@ static const struct lvts_ctrl_data mt8188_lvts_mcu_data_ctrl[] = {
+ 			  .cal_offsets = { 31, 32, 33 } },
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 1, 1),
++		.cal_offset_num = 3,
+ 		.offset = 0x0,
+ 	},
+ 	{
+@@ -1571,6 +1645,7 @@ static const struct lvts_ctrl_data mt8188_lvts_mcu_data_ctrl[] = {
+ 			  .cal_offsets = { 37, 38, 39 } },
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x100,
+ 	}
+ };
+@@ -1584,6 +1659,7 @@ static const struct lvts_ctrl_data mt8188_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 40, 41, 42 } },
+ 		},
+ 		VALID_SENSOR_MAP(0, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x0,
+ 	},
+ 	{
+@@ -1596,6 +1672,7 @@ static const struct lvts_ctrl_data mt8188_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 49, 50, 51 } },
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 1, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x100,
+ 	},
+ 	{
+@@ -1606,6 +1683,7 @@ static const struct lvts_ctrl_data mt8188_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 55, 56, 57 } },
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x200,
+ 	},
+ 	{
+@@ -1616,6 +1694,7 @@ static const struct lvts_ctrl_data mt8188_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 61, 62, 63 } },
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x300,
+ 	}
+ };
+@@ -1629,6 +1708,7 @@ static const struct lvts_ctrl_data mt8192_lvts_mcu_data_ctrl[] = {
+ 			  .cal_offsets = { 0x08, 0x09, 0x0a } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x0,
+ 		.mode = LVTS_MSR_FILTERED_MODE,
+ 	},
+@@ -1640,6 +1720,7 @@ static const struct lvts_ctrl_data mt8192_lvts_mcu_data_ctrl[] = {
+ 			  .cal_offsets = { 0x10, 0x11, 0x12 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x100,
+ 		.mode = LVTS_MSR_FILTERED_MODE,
+ 	},
+@@ -1655,6 +1736,7 @@ static const struct lvts_ctrl_data mt8192_lvts_mcu_data_ctrl[] = {
+ 			  .cal_offsets = { 0x20, 0x21, 0x22 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 1, 1),
++		.cal_offset_num = 3,
+ 		.offset = 0x200,
+ 		.mode = LVTS_MSR_FILTERED_MODE,
+ 	}
+@@ -1669,6 +1751,7 @@ static const struct lvts_ctrl_data mt8192_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 0x28, 0x29, 0x2a } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x0,
+ 	},
+ 	{
+@@ -1679,6 +1762,7 @@ static const struct lvts_ctrl_data mt8192_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 0x30, 0x31, 0x32 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x100,
+ 	},
+ 	{
+@@ -1689,6 +1773,7 @@ static const struct lvts_ctrl_data mt8192_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 0x38, 0x39, 0x3a } },
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x200,
+ 	},
+ 	{
+@@ -1701,6 +1786,7 @@ static const struct lvts_ctrl_data mt8192_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 0x44, 0x45, 0x46 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 1, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x300,
+ 	}
+ };
+@@ -1714,6 +1800,7 @@ static const struct lvts_ctrl_data mt8195_lvts_mcu_data_ctrl[] = {
+ 			  .cal_offsets = { 0x07, 0x08, 0x09 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x0,
+ 	},
+ 	{
+@@ -1724,6 +1811,7 @@ static const struct lvts_ctrl_data mt8195_lvts_mcu_data_ctrl[] = {
+ 			  .cal_offsets = { 0x10, 0x11, 0x12 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x100,
+ 	},
+ 	{
+@@ -1738,6 +1826,7 @@ static const struct lvts_ctrl_data mt8195_lvts_mcu_data_ctrl[] = {
+ 			  .cal_offsets = { 0x1f, 0x20, 0x21 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 1, 1),
++		.cal_offset_num = 3,
+ 		.offset = 0x200,
+ 	}
+ };
+@@ -1751,6 +1840,7 @@ static const struct lvts_ctrl_data mt8195_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 0x28, 0x29, 0x2a } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x0,
+ 	},
+ 	{
+@@ -1761,6 +1851,7 @@ static const struct lvts_ctrl_data mt8195_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 0x31, 0x32, 0x33 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x100,
+ 	},
+ 	{
+@@ -1773,6 +1864,7 @@ static const struct lvts_ctrl_data mt8195_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 0x3d, 0x3e, 0x3f } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 1, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x200,
+ 	},
+ 	{
+@@ -1783,6 +1875,7 @@ static const struct lvts_ctrl_data mt8195_lvts_ap_data_ctrl[] = {
+ 			  .cal_offsets = { 0x46, 0x47, 0x48 } }
+ 		},
+ 		VALID_SENSOR_MAP(1, 1, 0, 0),
++		.cal_offset_num = 3,
+ 		.offset = 0x300,
+ 	}
+ };
+@@ -1797,11 +1890,13 @@ static const struct lvts_data mt7987_lvts_ap_data = {
+ 	.num_init_cmd	= ARRAY_SIZE(mt7987_init_cmds),
+ 	.temp_factor	= LVTS_COEFF_A_MT7987,
+ 	.temp_offset	= LVTS_COEFF_B_MT7987,
++	.golden_temp	= LVTS_GOLDEN_TEMP_MT7987,
+ 	.gt_calib_bit_offset = 24,
++	.def_calibration = 19380,
+ };
+ 
+ static const struct lvts_data mt7988_lvts_ap_data = {
+-	.irq_enable	= true,
++	.irq_enable	= false,
+ 	.lvts_ctrl	= mt7988_lvts_ap_data_ctrl,
+ 	.conn_cmd	= mt7988_conn_cmds,
+ 	.init_cmd	= mt7988_init_cmds,
+@@ -1810,7 +1905,9 @@ static const struct lvts_data mt7988_lvts_ap_data = {
+ 	.num_init_cmd	= ARRAY_SIZE(mt7988_init_cmds),
+ 	.temp_factor	= LVTS_COEFF_A_MT7988,
+ 	.temp_offset	= LVTS_COEFF_B_MT7988,
++	.golden_temp	= LVTS_GOLDEN_TEMP_MT7988,
+ 	.gt_calib_bit_offset = 24,
++	.def_calibration = 19380,
+ };
+ 
+ static const struct lvts_data mt8186_lvts_data = {
+@@ -1823,6 +1920,7 @@ static const struct lvts_data mt8186_lvts_data = {
+ 	.num_init_cmd	= ARRAY_SIZE(default_init_cmds),
+ 	.temp_factor	= LVTS_COEFF_A_MT7988,
+ 	.temp_offset	= LVTS_COEFF_B_MT7988,
++	.golden_temp	= LVTS_GOLDEN_TEMP_DEFAULT,
+ 	.gt_calib_bit_offset = 24,
+ 	.def_calibration = 19000,
+ };
+@@ -1837,6 +1935,7 @@ static const struct lvts_data mt8188_lvts_mcu_data = {
+ 	.num_init_cmd	= ARRAY_SIZE(default_init_cmds),
+ 	.temp_factor	= LVTS_COEFF_A_MT8195,
+ 	.temp_offset	= LVTS_COEFF_B_MT8195,
++	.golden_temp	= LVTS_GOLDEN_TEMP_DEFAULT,
+ 	.gt_calib_bit_offset = 20,
+ 	.def_calibration = 35000,
+ };
+@@ -1851,6 +1950,7 @@ static const struct lvts_data mt8188_lvts_ap_data = {
+ 	.num_init_cmd	= ARRAY_SIZE(default_init_cmds),
+ 	.temp_factor	= LVTS_COEFF_A_MT8195,
+ 	.temp_offset	= LVTS_COEFF_B_MT8195,
++	.golden_temp	= LVTS_GOLDEN_TEMP_DEFAULT,
+ 	.gt_calib_bit_offset = 20,
+ 	.def_calibration = 35000,
+ };
+@@ -1865,6 +1965,7 @@ static const struct lvts_data mt8192_lvts_mcu_data = {
+ 	.num_init_cmd	= ARRAY_SIZE(default_init_cmds),
+ 	.temp_factor	= LVTS_COEFF_A_MT8195,
+ 	.temp_offset	= LVTS_COEFF_B_MT8195,
++	.golden_temp	= LVTS_GOLDEN_TEMP_DEFAULT,
+ 	.gt_calib_bit_offset = 24,
+ 	.def_calibration = 35000,
+ };
+@@ -1879,6 +1980,7 @@ static const struct lvts_data mt8192_lvts_ap_data = {
+ 	.num_init_cmd	= ARRAY_SIZE(default_init_cmds),
+ 	.temp_factor	= LVTS_COEFF_A_MT8195,
+ 	.temp_offset	= LVTS_COEFF_B_MT8195,
++	.golden_temp	= LVTS_GOLDEN_TEMP_DEFAULT,
+ 	.gt_calib_bit_offset = 24,
+ 	.def_calibration = 35000,
+ };
+@@ -1893,6 +1995,7 @@ static const struct lvts_data mt8195_lvts_mcu_data = {
+ 	.num_init_cmd	= ARRAY_SIZE(default_init_cmds),
+ 	.temp_factor	= LVTS_COEFF_A_MT8195,
+ 	.temp_offset	= LVTS_COEFF_B_MT8195,
++	.golden_temp	= LVTS_GOLDEN_TEMP_DEFAULT,
+ 	.gt_calib_bit_offset = 24,
+ 	.def_calibration = 35000,
+ };
+@@ -1907,6 +2010,7 @@ static const struct lvts_data mt8195_lvts_ap_data = {
+ 	.num_init_cmd	= ARRAY_SIZE(default_init_cmds),
+ 	.temp_factor	= LVTS_COEFF_A_MT8195,
+ 	.temp_offset	= LVTS_COEFF_B_MT8195,
++	.golden_temp	= LVTS_GOLDEN_TEMP_DEFAULT,
+ 	.gt_calib_bit_offset = 24,
+ 	.def_calibration = 35000,
+ };
+-- 
+2.45.2
+

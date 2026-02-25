@@ -1,0 +1,11 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+@@ -276,7 +276,7 @@
+ 
+ &uart1 {
+ 	pinctrl-names = "default";
+-	pinctrl-0 = <&uart1_pins>;
++	pinctrl-0 = <&uart1_tx_rx_pins>;
+ 	status = "okay";
+ };
+ 

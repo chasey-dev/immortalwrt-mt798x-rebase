@@ -1,0 +1,26 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7987.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7987.dtsi
+@@ -661,10 +661,23 @@
+ 			reg = <0 0x15104800 0 0x400>;
+ 		};
+ 
++		pciephy: phy@11e4a000 {
++			compatible = "mediatek,mt7987-pcie-phy";
++			reg = <0 0x11e4a000 0 0x100>;
++			reg-names = "sif";
++			#phy-cells = <1>;
++			mediatek,syscon-type = <&topmisc 0x110>;
++			/* Optional: specify lane mode configuration */
++			/* mediatek,1port-2lane; */
++			/* mediatek,2port-1lane; */
++		};
++
+ 		pcie0: pcie@11280000 {
+ 			compatible = "mediatek,mt7987-pcie",
+ 				     "mediatek,mt8192-pcie";
+ 			device_type = "pci";
++			phys = <&pciephy PHY_TYPE_PCIE>;
++			phy-names = "pcie-phy";
+ 			#address-cells = <3>;
+ 			#size-cells = <2>;
+ 			reg = <0 0x11280000 0 0x2000>;

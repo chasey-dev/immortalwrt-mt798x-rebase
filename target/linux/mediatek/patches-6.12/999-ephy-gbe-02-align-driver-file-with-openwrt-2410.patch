@@ -1,0 +1,220 @@
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.c
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
+@@ -137,6 +137,8 @@
+ #define   MTK_PHY_TCLKOFFSET_MASK		GENMASK(12, 8)
+ 
+ /* Registers on MDIO_MMD_VEND1 */
++#define MTK_PHY_RG_DEV1E_REGA6			0xa6
++
+ #define MTK_PHY_TXVLD_DA_RG			0x12
+ #define   MTK_PHY_DA_TX_I2MPB_A_GBE_MASK	GENMASK(15, 10)
+ #define   MTK_PHY_DA_TX_I2MPB_A_TBT_MASK	GENMASK(5, 0)
+@@ -203,6 +205,8 @@
+ #define MTK_PHY_RG_LPI_PCS_DSP_CTRL_REG122	0x122
+ #define   MTK_PHY_LPI_NORM_MSE_HI_THRESH1000_MASK	GENMASK(7, 0)
+ 
++#define MTK_PHY_RG_DEV1E_REG123			0x123
++
+ #define MTK_PHY_RG_TESTMUX_ADC_CTRL		0x144
+ #define   MTK_PHY_RG_TXEN_DIG_MASK		GENMASK(5, 5)
+ 
+@@ -247,6 +251,8 @@
+ #define MTK_PHY_RG_DASN_DAC_IN1_D		0x184
+ #define   MTK_PHY_DASN_DAC_IN1_D_MASK		GENMASK(9, 0)
+ 
++#define MTK_PHY_RG_DEV1E_REG189			0x189
++
+ #define MTK_PHY_RG_DEV1E_REG19b			0x19b
+ #define   MTK_PHY_BYPASS_DSP_LPI_READY		BIT(8)
+ 
+@@ -369,6 +375,10 @@ enum CAL_MODE {
+ 	SW_M
+ };
+ 
++struct mtk_socphy_priv {
++	unsigned long		led_state;
++};
++
+ struct mtk_socphy_shared {
+ 	u32			boottrap;
+ 	struct mtk_socphy_priv	priv[4];
+@@ -926,6 +936,11 @@ static void mt7988_phy_finetune(struct p
+ 	for (i = 0; i < 12; i++)
+ 		phy_write_mmd(phydev, MDIO_MMD_VEND1, i, val[i]);
+ 
++	/* Enable HW auto downshift */
++	phy_modify_paged(phydev, MTK_PHY_PAGE_EXTENDED_1,
++					MTK_PHY_AUX_CTRL_AND_STATUS,
++					0, MTK_PHY_ENABLE_DOWNSHIFT);
++
+ 	/* TCT finetune */
+ 	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_TX_FILTER, 0x5);
+ 
+@@ -936,19 +951,15 @@ static void mt7988_phy_finetune(struct p
+ 
+ 	/* VgaDecRate is 1 at default on mt7988 */
+ 
+-	__mtk_tr_modify(phydev, 0x1, 0xf, 0x1,
+-			MRVL_TR_FIX_100KP_MASK | MRVL_TR_FIX_100KF_MASK |
+-			MRVL_TR_FIX_1000KP_MASK | MRVL_TR_FIX_1000KF_MASK,
+-			FIELD_PREP(MRVL_TR_FIX_100KP_MASK, 0x6) |
+-			FIELD_PREP(MRVL_TR_FIX_100KF_MASK, 0x7) |
+-			FIELD_PREP(MRVL_TR_FIX_1000KP_MASK, 0x6) |
+-			FIELD_PREP(MRVL_TR_FIX_1000KF_MASK, 0x7));
+-
+ 	__mtk_tr_modify(phydev, 0x0, 0xf, 0x3c,
+ 			REMOTE_ACK_COUNT_LIMIT_CTRL_MASK,
+ 			FIELD_PREP(REMOTE_ACK_COUNT_LIMIT_CTRL_MASK, 0x1));
+ 	phy_restore_page(phydev, MTK_PHY_PAGE_STANDARD, 0);
+ 
++	/* Timing Recovery for GbE slave mode */
++	mtk_tr_write(phydev, 0x1, 0xf, 0x1, 0x6fb90a);
++	mtk_tr_write(phydev, 0x2, 0xd, 0x6, 0x2ebaef);
++
+ 	/* TR_OPEN_LOOP_EN = 1, lpf_x_average = 10 */
+ 	phy_modify_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DEV1E_REG234,
+ 		       MTK_PHY_TR_OPEN_LOOP_EN_MASK |
+@@ -957,6 +968,63 @@ static void mt7988_phy_finetune(struct p
+ 
+ 	/* rg_tr_lpf_cnt_val = 1023 */
+ 	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_LPF_CNT_VAL, 0x3ff);
++
++		/* enable asymmetric pause cap */
++	phy_set_bits(phydev, 0x4, ADVERTISE_PAUSE_ASYM);
++
++	/* Disable EEE */
++	phy_write_mmd(phydev, MDIO_MMD_AN, 0x3c, 0x0);
++
++	/* Disable generate signal to clear the scramble_lock when lpi mode */
++	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DEV1E_REG189, BIT(1));
++
++	/* Adjust 100_mse_threshold */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DEV1E_REG123, 0xffff);
++
++	/* Disable mcc */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DEV1E_REGA6, 0x300);
++}
++
++static void mt7988_phy_line_driving(struct phy_device *phydev)
++{
++	/* For ADC timing margin window for LDO calibration */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xd3, 0x2222);
++
++	/* Adjust AD sample timing */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xc2, 0x4444);
++
++	/* Adjust Line driver current for different mode */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x271, 0x2ca5);
++
++	/* Adjust Line driver current for different mode */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x272, 0xc6b);
++
++	/* Adjust Line driver gain for 10BT from 1000BT calibration result */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x273, 0x3000);
++
++	/* Adjust RX Echo path filter */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_TX_FILTER, 0x5);
++
++	/* Adjust RX HVGA bias current */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x41, 0x3333);
++
++	/* Adjust TX class AB driver 1 */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x268, 0x384);
++
++	/* Adjust TX class AB driver 2 */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x269, 0x1114);
++
++	/* Adjust DAC delay for TX Pairs */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x13, 0x404);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x14, 0x404);
++
++	/* Adjust DAC digital delay for TX Delay */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x44, 0xc0);
++
++	/* Adjust Line driver compensation cap for stability concern due to
++	 * increase current.
++	 */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x26a, 0x3333);
+ }
+ 
+ static void mt798x_phy_eee(struct phy_device *phydev)
+@@ -1203,6 +1271,7 @@ static int mt798x_phy_config_init(struct
+ 		break;
+ 	case MTK_GPHY_ID_MT7988:
+ 		mt7988_phy_finetune(phydev);
++		mt7988_phy_line_driving(phydev);
+ 		break;
+ 	}
+ 
+@@ -1216,6 +1285,7 @@ static int mt798x_phy_led_blink_set(stru
+ 				    unsigned long *delay_on,
+ 				    unsigned long *delay_off)
+ {
++	struct mtk_socphy_priv *priv = phydev->priv;
+ 	bool blinking = false;
+ 	int err;
+ 
+@@ -1223,25 +1293,27 @@ static int mt798x_phy_led_blink_set(stru
+ 	if (err < 0)
+ 		return err;
+ 
+-	err = mtk_phy_hw_led_blink_set(phydev, index, blinking);
++	err = mtk_phy_hw_led_blink_set(phydev, index, &priv->led_state,
++				       blinking);
+ 	if (err)
+ 		return err;
+ 
+-	return mtk_phy_hw_led_on_set(phydev, index, MTK_GPHY_LED_ON_MASK,
+-				     false);
++	return mtk_phy_hw_led_on_set(phydev, index, &priv->led_state,
++				     MTK_GPHY_LED_ON_MASK, false);
+ }
+ 
+ static int mt798x_phy_led_brightness_set(struct phy_device *phydev,
+ 					 u8 index, enum led_brightness value)
+ {
++	struct mtk_socphy_priv *priv = phydev->priv;
+ 	int err;
+ 
+-	err = mtk_phy_hw_led_blink_set(phydev, index, false);
++	err = mtk_phy_hw_led_blink_set(phydev, index, &priv->led_state, false);
+ 	if (err)
+ 		return err;
+ 
+-	return mtk_phy_hw_led_on_set(phydev, index, MTK_GPHY_LED_ON_MASK,
+-				     (value != LED_OFF));
++	return mtk_phy_hw_led_on_set(phydev, index, &priv->led_state,
++				     MTK_GPHY_LED_ON_MASK, (value != LED_OFF));
+ }
+ 
+ static const unsigned long supported_triggers =
+@@ -1264,7 +1336,9 @@ static int mt798x_phy_led_hw_is_supporte
+ static int mt798x_phy_led_hw_control_get(struct phy_device *phydev, u8 index,
+ 					 unsigned long *rules)
+ {
+-	return mtk_phy_led_hw_ctrl_get(phydev, index, rules,
++	struct mtk_socphy_priv *priv = phydev->priv;
++
++	return mtk_phy_led_hw_ctrl_get(phydev, index, rules, &priv->led_state,
+ 				       MTK_GPHY_LED_ON_SET,
+ 				       MTK_GPHY_LED_RX_BLINK_SET,
+ 				       MTK_GPHY_LED_TX_BLINK_SET);
+@@ -1273,7 +1347,9 @@ static int mt798x_phy_led_hw_control_get
+ static int mt798x_phy_led_hw_control_set(struct phy_device *phydev, u8 index,
+ 					 unsigned long rules)
+ {
+-	return mtk_phy_led_hw_ctrl_set(phydev, index, rules,
++	struct mtk_socphy_priv *priv = phydev->priv;
++
++	return mtk_phy_led_hw_ctrl_set(phydev, index, rules, &priv->led_state,
+ 				       MTK_GPHY_LED_ON_SET,
+ 				       MTK_GPHY_LED_RX_BLINK_SET,
+ 				       MTK_GPHY_LED_TX_BLINK_SET);
+@@ -1386,6 +1462,7 @@ static int mt7988_phy_probe(struct phy_d
+ 	 * 1. Meet common mode compliance test criteria
+ 	 * 2. Make sure that TX-VCM calibration works fine
+ 	 */
++	phy_set_bits(phydev, 0x17, BIT(4));
+ 	phy_modify_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RXADC_CTRL_RG7,
+ 		       MTK_PHY_DA_AD_BUF_BIAS_LP_MASK, 0x3 << 8);
+ 

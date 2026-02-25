@@ -1,0 +1,12 @@
+Index: linux-6.12.65/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+===================================================================
+--- linux-6.12.65.orig/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
++++ linux-6.12.65/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+@@ -263,3 +263,7 @@
+ &watchdog {
+ 	status = "okay";
+ };
++
++&wifi {
++	status = "okay";
++};

@@ -1,0 +1,68 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
+@@ -289,6 +289,9 @@
+ };
+ 
+ &pcie0 {
++	wifi-reset-gpios = <&pio 7 GPIO_ACTIVE_LOW>;
++	wifi-reset-msleep = <100>;
++	wifi-deassert-msleep = <500>;
+ 	status = "okay";
+ };
+ 
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0-only OR MIT
+ 
+ #include <dt-bindings/clock/mediatek,mt7988-clk.h>
++#include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
+ #include <dt-bindings/phy/phy.h>
+ #include <dt-bindings/pinctrl/mt65xx.h>
+@@ -266,8 +267,7 @@
+ 			pcie0_pins: pcie0-pins {
+ 				mux {
+ 					function = "pcie";
+-					groups = "pcie_2l_0_pereset", "pcie_clk_req_n0_0",
+-						 "pcie_wake_n0_0";
++					groups = "pcie_2l_0_pereset", "pcie_clk_req_n0_0";
+ 				};
+ 			};
+ 
+--- a/arch/arm64/boot/dts/mediatek/mt7988d-rfb-2pcie.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988d-rfb-2pcie.dtso
+@@ -7,6 +7,8 @@
+ /dts-v1/;
+ /plugin/;
+ 
++#include <dt-bindings/gpio/gpio.h>
++
+ / {
+ 	/*
+ 	 * Making MT7988A PCIE working like MT7988D, which only support 2 pcies:
+@@ -27,5 +29,24 @@
+ 			status = "disabled";
+ 		};
+ 	};
++
++	/*
++	 * For 2-PCIe WiFi NICs like MT7996, MT7988D uses PCIe0 and PCIe3,
++	 * while MT7988A uses PCIe0 and PCIe1; since the PCIe probe order is
++	 * PCIe2-PCIe3-PCIe0-PCIe1, we should add a reset node to PCIe3 here.
++	 * When both PCIe3 and PCIe0 have a reset node, PCIe3 (probed first)
++	 * acquires the GPIO, PCIe0 gets -EBUSY, but since the PCIe driver
++	 * requests GPIOs optionally, everything works as expected.
++	 */
++
++	fragment@2 {
++		target-path = "/soc/pcie@11290000";
++		__overlay__ {
++			wifi-reset-gpios = <&pio 7 GPIO_ACTIVE_LOW>;
++			wifi-reset-msleep = <100>;
++			wifi-deassert-msleep = <500>;
++			status = "okay";
++		};
++	};
+ };
+ 

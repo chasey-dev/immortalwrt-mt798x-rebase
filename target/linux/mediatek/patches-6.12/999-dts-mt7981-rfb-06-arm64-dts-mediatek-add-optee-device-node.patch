@@ -1,0 +1,31 @@
+From 8242ed3745c6c9fd098600dba84dfa0e398e5576 Mon Sep 17 00:00:00 2001
+From: "guan-gm.lin" <guan-gm.lin@mediatek.com>
+Date: Wed, 21 Jan 2026 17:26:01 +0800
+Subject: [PATCH] 81 add optee mode
+
+---
+ arch/arm64/boot/dts/mediatek/mt7981b.dtsi | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
+index b60eca4..804cb2e 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
+@@ -17,6 +17,14 @@ / {
+ 	#address-cells = <2>;
+ 	#size-cells = <2>;
+ 
++        firmware {
++                optee {
++                        status = "okay";
++                        method = "smc";
++                        compatible = "linaro,optee-tz";
++                };
++        };
++
+ 	cpus {
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+-- 
+2.45.2
+

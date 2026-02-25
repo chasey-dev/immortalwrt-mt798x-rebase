@@ -1,0 +1,30 @@
+From 7655b31d5b45aba325c0a51310b73bf6bc4279e1 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 20 Jan 2026 17:40:14 +0800
+Subject: [PATCH] nft_flow_offload add macvlan support
+
+---
+ net/netfilter/nft_flow_offload.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/net/netfilter/nft_flow_offload.c b/net/netfilter/nft_flow_offload.c
+index ecb602c..218bb14 100644
+--- a/net/netfilter/nft_flow_offload.c
++++ b/net/netfilter/nft_flow_offload.c
+@@ -212,10 +212,12 @@ static void nft_dev_path_info(const struct net_device_path_stack *stack,
+ 		case DEV_PATH_DSA:
+ 		case DEV_PATH_VLAN:
+ 		case DEV_PATH_PPPOE:
++		case DEV_PATH_MACVLAN:
+ 			if (is_zero_ether_addr(info->h_source))
+ 				memcpy(info->h_source, path->dev->dev_addr, ETH_ALEN);
+ 
+-			if (path->type == DEV_PATH_ETHERNET)
++			if (path->type == DEV_PATH_ETHERNET ||
++			    path->type == DEV_PATH_MACVLAN)
+ 				break;
+ 			if (path->type == DEV_PATH_DSA) {
+ 				i = stack->num_paths;
+-- 
+2.45.2
+

@@ -1,0 +1,17 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -821,10 +821,10 @@
+ 		};
+ 
+ 
+-		topmisc: system-controller@11d10084 {
+-			compatible = "mediatek,mt7988-topmisc",
+-				     "syscon";
+-			reg = <0 0x11d10084 0 0xff80>;
++		topmisc: system-controller@11d10000 {
++			compatible = "mediatek,mt7988-topmisc", "syscon",
++				     "mediatek,mt7988-power-controller";
++			reg = <0 0x11d10000 0 0x10000>;
+ 		};
+ 
+ 		xsphy: xs-phy@11e10000 {

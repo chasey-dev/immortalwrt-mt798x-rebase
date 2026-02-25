@@ -1,0 +1,83 @@
+From bf273e29a3b810834ae0729cffc6bf739a796737 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 25 Nov 2025 16:57:49 +0800
+Subject: [PATCH] netfilter: add vlan egress qos learning flow to
+ xt_FLOWOFFLOAD
+
+Without this patch, the PPEs are unable to learn VLAN PCP field
+when the below command is configured.
+ - vconfig set_egress_map $dev $priority $pcp
+---
+ include/net/netfilter/nf_conntrack_qos.h |  1 +
+ net/netfilter/xt_FLOWOFFLOAD.c           | 15 ++++++++++++++-
+ 2 files changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/include/net/netfilter/nf_conntrack_qos.h b/include/net/netfilter/nf_conntrack_qos.h
+index 3d5ffe7..2916a07 100644
+--- a/include/net/netfilter/nf_conntrack_qos.h
++++ b/include/net/netfilter/nf_conntrack_qos.h
+@@ -15,6 +15,7 @@ struct nf_conn_tos {
+ 
+ struct nf_conn_qos {
+ 	struct nf_conn_tos	tos[IP_CT_DIR_MAX];
++	u32			priority[IP_CT_DIR_MAX];
+ };
+ 
+ static inline
+diff --git a/net/netfilter/xt_FLOWOFFLOAD.c b/net/netfilter/xt_FLOWOFFLOAD.c
+index 40cc97f..92be992 100644
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -44,6 +44,7 @@ struct nf_forward_info {
+ 	u8 ingress_vlans;
+ 	u8 h_source[ETH_ALEN];
+ 	u8 h_dest[ETH_ALEN];
++	u32 priority;
+ 	enum flow_offload_xmit_type xmit_type;
+ };
+ 
+@@ -364,6 +365,7 @@ static void nf_dev_path_info(const struct net_device_path_stack *stack,
+ {
+ 	const struct net_device_path *path;
+ 	int i;
++	u32 vlan_pcp;
+ 
+ 	memcpy(info->h_dest, ha, ETH_ALEN);
+ 
+@@ -396,6 +398,13 @@ static void nf_dev_path_info(const struct net_device_path_stack *stack,
+ 				info->outdev = path->dev;
+ 			info->encap[info->num_encaps].id = path->encap.id;
+ 			info->encap[info->num_encaps].proto = path->encap.proto;
++
++			if (path->type == DEV_PATH_VLAN) {
++				vlan_pcp = vlan_dev_get_egress_qos_mask(
++						(struct net_device *)(path->dev), info->priority);
++				info->encap[info->num_encaps].id |= vlan_pcp;
++			}
++
+ 			info->num_encaps++;
+ 			if (path->type == DEV_PATH_PPPOE)
+ 				memcpy(info->h_dest, path->encap.h_dest, ETH_ALEN);
+@@ -503,7 +512,10 @@ static int nf_dev_forward_path(struct sk_buff *skb,
+ 	struct net_device_path_ctx ctx = {
+ 		.dev	= dst->dev,
+ 	};
+-	struct nf_forward_info info = {};
++	struct nf_conn_qos *qos = nf_conn_qos_find(ct);
++	struct nf_forward_info info = {
++		.priority = qos ? qos->priority[dir] : skb->priority,
++	};
+ 	struct ethhdr *eth;
+ 	enum ip_conntrack_dir skb_dir;
+ 	unsigned char ha[ETH_ALEN];
+@@ -740,6 +752,7 @@ flowoffload_tg(struct sk_buff *skb, const struct xt_action_param *par)
+ 
+ 		qos->tos[dir].value = tos;
+ 		atomic64_add(1, &qos->tos[dir].counter);
++		qos->priority[dir] = skb->priority;
+ 
+ 		if (atomic64_read(&qos->tos[dir].counter) < net->ct.sysctl_qos)
+ 			return XT_CONTINUE;
+-- 
+2.45.2
+

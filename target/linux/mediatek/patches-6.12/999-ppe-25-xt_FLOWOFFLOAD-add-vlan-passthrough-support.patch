@@ -1,0 +1,64 @@
+From e2865c58ab0a257f1522673de8ab60103a13e239 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 21 Oct 2025 21:28:39 +0800
+Subject: [PATCH] xt_FLOWOFFLOAD add vlan passthrough support
+
+VLAN passthrough packet can be offloaded when the below toggle is enabled
+	echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged
+
+Signed-off-by: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+---
+ net/netfilter/xt_FLOWOFFLOAD.c | 29 ++++++++++++++++++++++++++++-
+ 1 file changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/net/netfilter/xt_FLOWOFFLOAD.c b/net/netfilter/xt_FLOWOFFLOAD.c
+index 423e6d2..40cc97f 100644
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -335,6 +335,29 @@ static bool nf_is_valid_ether_device(const struct net_device *dev)
+ 	return true;
+ }
+ 
++static void nf_fill_vlan_passthrough_info(struct sk_buff *skb, struct nf_forward_info *info)
++{
++	struct net_bridge_port *port;
++
++	if (!skb_vlan_tag_present(skb))
++		return;
++
++	rcu_read_lock();
++	port = br_port_get_rcu(skb->dev);
++	/* when bridge vlan enabled, the vlan tag would be handled by the bridge */
++	if (port && !br_opt_get(port->br, BROPT_VLAN_ENABLED)) {
++		if (info->num_encaps >= NF_FLOW_TABLE_ENCAP_MAX) {
++			info->indev = NULL;
++			goto out;
++		}
++		info->encap[info->num_encaps].id = skb_vlan_tag_get_id(skb);
++		info->encap[info->num_encaps].proto = skb->vlan_proto;
++		info->num_encaps++;
++	}
++out:
++	rcu_read_unlock();
++}
++
+ static void nf_dev_path_info(const struct net_device_path_stack *stack,
+ 			     struct nf_forward_info *info,
+ 			     unsigned char *ha)
+@@ -502,8 +525,12 @@ static int nf_dev_forward_path(struct sk_buff *skb,
+ 		xt_flowoffload_br_vlan_dev_fill_forward_path(skb, &ctx);
+ 	}
+ 
+-	if (nf_dev_fill_forward_path(&ctx, route, dst, ct, dir, ha, &stack) >= 0)
++	if (nf_dev_fill_forward_path(&ctx, route, dst, ct, dir, ha, &stack) >= 0) {
++		/* Add VLAN pass through info if needed */
++		nf_fill_vlan_passthrough_info(skb, &info);
++
+ 		nf_dev_path_info(&stack, &info, ha);
++	}
+ 
+ 	devs[!dir] = (struct net_device *)info.indev;
+ 	if (!info.indev)
+-- 
+2.45.2
+

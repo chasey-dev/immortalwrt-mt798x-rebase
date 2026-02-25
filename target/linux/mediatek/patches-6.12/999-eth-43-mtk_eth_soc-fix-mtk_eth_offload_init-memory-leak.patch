@@ -1,0 +1,47 @@
+From 970222d6ae0073e38289a691245a0f13392b8641 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 3 Feb 2026 10:59:49 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: fix mtk_eth_offload_init memory
+
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 8 ++++----
+ drivers/net/ethernet/mediatek/mtk_eth_soc.h | 2 +-
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index a4a3b2b..bd07d04 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -7109,12 +7109,12 @@ static int mtk_probe(struct platform_device *pdev)
+ 				err = -ENOMEM;
+ 				goto err_deinit_ppe;
+ 			}
+-			err = mtk_eth_offload_init(eth, i);
+-
+-			if (err)
+-				goto err_deinit_ppe;
+ 		}
+ 
++		err = mtk_eth_offload_init(eth);
++		if (err)
++			goto err_deinit_ppe;
++
+ 		err = mtk_ppe_internal_debugfs_init(eth);
+ 		if (err)
+ 			goto err_deinit_ppe;
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.h b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+index ef1f335..61386c4 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -1975,7 +1975,7 @@ int mtk_ptp_hwtstamp_get_config(struct net_device *dev, struct ifreq *ifr);
+ int mtk_ptp_clock_init(struct mtk_eth *eth);
+ int mtk_ptp_clock_deinit(struct mtk_eth *eth);
+ 
+-int mtk_eth_offload_init(struct mtk_eth *eth, u8 id);
++int mtk_eth_offload_init(struct mtk_eth *eth);
+ int mtk_eth_setup_tc(struct net_device *dev, enum tc_setup_type type,
+ 		     void *type_data);
+ int mtk_flow_offload_cmd(struct mtk_eth *eth, struct flow_cls_offload *cls,
+-- 
+2.45.2
+

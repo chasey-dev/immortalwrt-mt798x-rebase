@@ -1,0 +1,50 @@
+From cc060e552eff25f75d65d8c6194b9b1a08a62027 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Fri, 16 Jan 2026 14:28:47 +0800
+Subject: [PATCH] arm64: dts: mt7981: add mtkhnat driver support
+
+---
+ arch/arm64/boot/dts/mediatek/mt7981-rfb.dts | 7 +++++++
+ arch/arm64/boot/dts/mediatek/mt7981b.dtsi   | 8 ++++++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts b/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+index 8fba575..ccf1c87 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+@@ -121,6 +121,13 @@ gmac1: mac@1 {
+ 	};
+ };
+ 
++&hnat {
++	mtketh-wan = "eth1";
++	mtketh-lan = "lan";
++	mtketh-max-gmac = <2>;
++	status = "okay";
++};
++
+ &i2c0 {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&i2c0_1_pins>;
+diff --git a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
+index e53b62a..b9eed64 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
+@@ -521,6 +521,14 @@ wdma: wdma@15104800 {
+ 			      <0 0x15104c00 0 0x400>;
+ 		};
+ 
++		hnat: hnat@15000000 {
++			compatible = "mediatek,mtk-hnat_v4";
++			reg = <0 0x15100000 0 0x80000>;
++			resets = <&ethsys 0>;
++			reset-names = "mtketh";
++			status = "disabled";
++		};
++
+ 		ap2woccif: ap2woccif@151a5000 {
+ 			compatible = "mediatek,ap2woccif";
+ 			reg = <0 0x151a5000 0 0x1000>,
+-- 
+2.45.2
+

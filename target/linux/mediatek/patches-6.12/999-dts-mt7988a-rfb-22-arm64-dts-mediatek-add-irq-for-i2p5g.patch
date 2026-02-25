@@ -1,0 +1,20 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-i2p5g-phy.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-i2p5g-phy.dtso
+@@ -7,6 +7,8 @@
+ /dts-v1/;
+ /plugin/;
+ 
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++
+ / {
+ 	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
+ 
+@@ -25,6 +27,8 @@
+ 		__overlay__ {
+ 			pinctrl-names = "i2p5gbe-led";
+ 			pinctrl-0 = <&i2p5gbe_led0_pins>;
++			interrupts = <GIC_SPI 286 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-parent = <&gic>;
+ 		};
+ 	};
+ };

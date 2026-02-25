@@ -1,0 +1,63 @@
+From 001a19322452521841b4c0010f9cef5e3f582227 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Wed, 24 Sep 2025 12:51:29 +0800
+Subject: [PATCH] netfilter: add flow_offload_teardown_by_tuple API
+
+Without this patch, users are unable to delete or flush flow rule and
+PPE entries via the FTNL application.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ include/net/netfilter/nf_flow_table.h    |   1 +
+ net/netfilter/nf_flow_table_core.c       |  23 +++
+ 2 files changed, 24 insertions(+)
+
+diff --git a/include/net/netfilter/nf_flow_table.h b/include/net/netfilter/nf_flow_table.h
+index b96d91c..3f63813 100644
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -295,6 +295,7 @@ int nf_flow_table_init(struct nf_flowtable *flow_table);
+ void nf_flow_table_free(struct nf_flowtable *flow_table);
+ 
+ void flow_offload_teardown(struct flow_offload *flow);
++void flow_offload_teardown_by_tuple(struct flow_offload_tuple *tuple);
+ 
+ int nf_flow_table_iterate(struct nf_flowtable *flow_table,
+                       void (*iter)(struct nf_flowtable *flowtable,
+diff --git a/net/netfilter/nf_flow_table_core.c b/net/netfilter/nf_flow_table_core.c
+index 6e3a8e9..13af051 100644
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -349,6 +349,29 @@ void flow_offload_teardown(struct flow_offload *flow)
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_teardown);
+ 
++void flow_offload_teardown_by_tuple(struct flow_offload_tuple *tuple)
++{
++	struct net_device *netdev;
++	struct nf_flowtable *flowtable;
++	struct flow_offload_tuple_rhash *tuplehash;
++	struct flow_offload *flow;
++	int dir;
++
++	list_for_each_entry(flowtable, &flowtables, list) {
++		for_each_netdev(&init_net, netdev) {
++			tuple->iifidx = netdev->ifindex;
++			tuplehash = flow_offload_lookup(flowtable, tuple);
++			if (!tuplehash)
++				continue;
++
++			dir = tuplehash->tuple.dir;
++			flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
++			flow_offload_teardown(flow);
++		}
++	};
++}
++EXPORT_SYMBOL_GPL(flow_offload_teardown_by_tuple);
++
+ struct flow_offload_tuple_rhash *
+ flow_offload_lookup(struct nf_flowtable *flow_table,
+ 		    struct flow_offload_tuple *tuple)
+-- 
+2.45.2
+

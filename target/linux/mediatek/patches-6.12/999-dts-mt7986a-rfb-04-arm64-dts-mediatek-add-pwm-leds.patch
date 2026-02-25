@@ -1,0 +1,34 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+@@ -28,6 +28,18 @@
+ 		reg = <0 0x40000000 0 0x40000000>;
+ 	};
+ 
++ 	pwm_led: pwm-led {
++		compatible = "pwm-leds";
++		status = "disabled";
++
++		led {
++			pwms = <&pwm 0 50000 0>;
++			max-brightness = <255>;
++			active-low;
++			linux,default-trigger = "default-on";
++		};
++	};
++
+ 	reg_1p8v: regulator-1p8v {
+ 		compatible = "regulator-fixed";
+ 		regulator-name = "fixed-1.8V";
+@@ -356,6 +368,12 @@
+ 	};
+ };
+ 
++&pwm_led {
++ 	pinctrl-names = "default";
++	pinctrl-0 = <&pwm_pins>;
++	status = "okay";
++};
++
+ &uart0 {
+ 	status = "okay";
+ };

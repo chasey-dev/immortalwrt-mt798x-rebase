@@ -1,0 +1,42 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+@@ -81,6 +81,18 @@
+ 	};
+ };
+ 
++&i2c0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c0_1_pins>;
++	status = "okay";
++
++	at24c32: at24c32@57 {
++		compatible = "atmel,24c32";
++		reg = <0x57>;
++		status = "disabled";
++	};
++};
++
+ &mdio_bus {
+ 	switch: switch@1f {
+ 		compatible = "mediatek,mt7531";
+@@ -128,6 +140,20 @@
+ 			groups = "pwm0_0", "pwm1_1", "pwm2";
+ 		};
+ 	};
++
++	i2c0_0_pins: i2c0-0-pins {
++		mux {
++			function = "i2c";
++			groups = "i2c0_0";
++		};
++	};
++
++	i2c0_1_pins: i2c0-1-pins {
++		mux {
++			function = "i2c";
++			groups = "i2c0_1";
++		};
++	};
+ };
+ 
+ &spi0 {

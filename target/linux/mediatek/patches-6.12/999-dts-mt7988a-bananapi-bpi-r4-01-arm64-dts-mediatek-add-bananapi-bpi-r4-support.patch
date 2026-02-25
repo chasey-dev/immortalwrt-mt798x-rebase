@@ -1,0 +1,407 @@
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4-spim-nand.dtso
+@@ -0,0 +1,77 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&spi0>;
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spi0_flash_pins>;
++			status = "okay";
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			flash@0 {
++				compatible = "spi-nand";
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++				spi-tx-bus-width = <4>;
++				spi-rx-bus-width = <4>;
++
++				partitions {
++					compatible = "fixed-partitions";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					partition@0 {
++						label = "BL2";
++						reg = <0x00000 0x0200000>;
++						read-only;
++					};
++
++					ubi_part: partition@200000 {
++						label = "ubi";
++						reg = <0x0200000 0x7e00000>;
++						compatible = "linux,ubi";
++
++						volumes {
++							ubi-volume-ubootenv {
++								volname = "ubootenv";
++								nvmem-layout {
++									compatible = "u-boot,env-redundant-bool";
++								};
++							};
++
++							ubi-volume-ubootenv2 {
++								volname = "ubootenv2";
++								nvmem-layout {
++									compatible = "u-boot,env-redundant-bool";
++								};
++							};
++
++							ubi_root: ubi-volume-fit {
++								volname = "fit";
++							};
++
++						};
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-spim-nand = <&ubi_root>;
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4-spim-nand-nmbm.dtso
+@@ -0,0 +1,136 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&spi0>;
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spi0_flash_pins>;
++			status = "okay";
++
++			flash@0 {
++				compatible = "spi-nand";
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++				spi-tx-bus-width = <4>;
++				spi-rx-bus-width = <4>;
++				mediatek,nmbm;
++				mediatek,bmt-max-ratio = <1>;
++				mediatek,bmt-max-reserved-blocks = <64>;
++
++				partitions {
++					compatible = "fixed-partitions";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					partition@0 {
++						label = "BL2";
++						reg = <0x00000 0x0100000>;
++						read-only;
++					};
++
++					partition@100000 {
++						label = "u-boot-env";
++						reg = <0x0100000 0x0080000>;
++					};
++
++					factory: partition@180000 {
++						label = "Factory";
++						reg = <0x180000 0x0400000>;
++
++						nvmem-layout {
++							compatible = "fixed-layout";
++							#address-cells = <1>;
++							#size-cells = <1>;
++
++							gmac2_mac: eeprom@fffee {
++								reg = <0xfffee 0x6>;
++							};
++
++							gmac1_mac: eeprom@ffffa {
++								reg = <0xffffa 0x6>;
++							};
++
++							gmac0_mac: eeprom@ffff4 {
++								reg = <0xffff4 0x6>;
++							};
++						};
++					};
++
++					partition@580000 {
++						label = "FIP";
++						reg = <0x580000 0x0200000>;
++					};
++
++					partition@780000 {
++						label = "ubi";
++						reg = <0x780000 0x7080000>;
++						compatible = "linux,ubi";
++
++						volumes {
++							ubi_rootfs: ubi-volume-fit {
++								volname = "firmware";
++							};
++						};
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&pcie0>;
++		__overlay__ {
++			slot0: pcie@0,0 {
++				reg = <0x0000 0 0 0 0>;
++
++				mt7996@0,0 {
++					compatible = "mediatek,mt76";
++					reg = <0x0000 0 0 0 0>;
++					device_type = "pci";
++					mediatek,mtd-eeprom = <&factory 0x0>;
++				};
++			};
++		};
++	};
++
++	fragment@2 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-spim-nand = <&ubi_rootfs>;
++		};
++	};
++
++	fragment@3 {
++		target = <&gmac0>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac0_mac>;
++		};
++	};
++
++	fragment@4 {
++		target = <&gmac1>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac1_mac>;
++		};
++	};
++
++	fragment@5 {
++		target = <&gmac2>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac2_mac>;
++		};
++	};
++};
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4.dtsi
+@@ -6,14 +6,15 @@
+ #include <dt-bindings/input/input.h>
+ #include <dt-bindings/leds/common.h>
+ #include <dt-bindings/regulator/richtek,rt5190a-regulator.h>
+-
+ #include "mt7988a.dtsi"
++#include "mt7988a-pinctrl.dtsi"
+ 
+ / {
+ 	chosen {
+-		stdout-path = "serial0:115200n8";
+-		bootargs = "console=ttyS0,115200n1 pci=pcie_bus_perf ubi.block=0,fit root=/dev/fit0";
+-		rootdisk-spim-nand = <&ubi_rootfs>;
++		bootargs = "console=ttyS0,115200n1 loglevel=6 \
++			    earlycon=uart8250,mmio32,0x11000000 \
++			    pci=pcie_bus_perf ubi.block=0,firmware root=/dev/fit0 \
++			    rootwait";
+ 	};
+ 
+ 	fan: pwm-fan {
+@@ -440,118 +441,6 @@
+ 	status = "okay";
+ };
+ 
+-&pio {
+-	mdio0_pins: mdio0-pins {
+-		mux {
+-			function = "eth";
+-			groups = "mdc_mdio0";
+-		};
+-
+-		conf {
+-			pins = "SMI_0_MDC", "SMI_0_MDIO";
+-			drive-strength = <8>;
+-		};
+-	};
+-
+-	i2c0_pins: i2c0-g0-pins {
+-		mux {
+-			function = "i2c";
+-			groups = "i2c0_1";
+-		};
+-	};
+-
+-	i2c1_pins: i2c1-g0-pins {
+-		mux {
+-			function = "i2c";
+-			groups = "i2c1_0";
+-		};
+-	};
+-
+-	i2c1_sfp_pins: i2c1-sfp-g0-pins {
+-		mux {
+-			function = "i2c";
+-			groups = "i2c1_sfp";
+-		};
+-	};
+-
+-	i2c2_0_pins: i2c2-g0-pins {
+-		mux {
+-			function = "i2c";
+-			groups = "i2c2_0";
+-		};
+-	};
+-
+-	i2c2_1_pins: i2c2-g1-pins {
+-		mux {
+-			function = "i2c";
+-			groups = "i2c2_1";
+-		};
+-	};
+-
+-	gbe0_led0_pins: gbe0-led0-pins {
+-		mux {
+-			function = "led";
+-			groups = "gbe0_led0";
+-		};
+-	};
+-
+-	gbe1_led0_pins: gbe1-led0-pins {
+-		mux {
+-			function = "led";
+-			groups = "gbe1_led0";
+-		};
+-	};
+-
+-	gbe2_led0_pins: gbe2-led0-pins {
+-		mux {
+-			function = "led";
+-			groups = "gbe2_led0";
+-		};
+-	};
+-
+-	gbe3_led0_pins: gbe3-led0-pins {
+-		mux {
+-			function = "led";
+-			groups = "gbe3_led0";
+-		};
+-	};
+-
+-	i2p5gbe_led0_pins: 2p5gbe-led0-pins {
+-		mux {
+-			function = "led";
+-			groups = "2p5gbe_led0";
+-		};
+-	};
+-
+-	mmc0_pins_emmc_45: mmc0-emmc-45-pins {
+-		mux {
+-			function = "flash";
+-			groups = "emmc_45";
+-		};
+-	};
+-
+-	mmc0_pins_emmc_51: mmc0-emmc-51-pins {
+-		mux {
+-			function = "flash";
+-			groups = "emmc_51";
+-		};
+-	};
+-
+-	mmc0_pins_sdcard: mmc0-sdcard-pins {
+-		mux {
+-			function = "flash";
+-			groups = "sdcard";
+-		};
+-	};
+-
+-	spi0_flash_pins: spi0-flash-pins {
+-		mux {
+-			function = "spi";
+-			groups = "spi0", "spi0_wp_hold";
+-		};
+-	};
+-};
+-
+ &pwm {
+ 	status = "okay";
+ };
+@@ -578,46 +467,6 @@
+ 	status = "okay";
+ };
+ 
+-&spi_nand {
+-	partitions {
+-		compatible = "fixed-partitions";
+-		#address-cells = <1>;
+-		#size-cells = <1>;
+-
+-		partition@0 {
+-			label = "bl2";
+-			reg = <0x0 0x200000>;
+-			read-only;
+-		};
+-
+-		partition@200000 {
+-			label = "ubi";
+-			reg = <0x200000 0x7e00000>;
+-			compatible = "linux,ubi";
+-
+-			volumes {
+-				ubi-volume-ubootenv {
+-					volname = "ubootenv";
+-					nvmem-layout {
+-						compatible = "u-boot,env-redundant-bool-layout";
+-					};
+-				};
+-
+-				ubi-volume-ubootenv2 {
+-					volname = "ubootenv2";
+-					nvmem-layout {
+-						compatible = "u-boot,env-redundant-bool-layout";
+-					};
+-				};
+-
+-				ubi_rootfs: ubi-volume-fit {
+-					volname = "fit";
+-				};
+-			};
+-		};
+-	};
+-};
+-
+ &ssusb1 {
+ 	status = "okay";
+ };

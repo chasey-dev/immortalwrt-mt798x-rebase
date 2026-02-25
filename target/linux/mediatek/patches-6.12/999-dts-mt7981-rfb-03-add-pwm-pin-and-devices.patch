@@ -1,0 +1,80 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+@@ -25,6 +25,44 @@
+ 		device_type = "memory";
+ 	};
+ 
++ 	pwm_led: pwm-led {
++		compatible = "pwm-leds";
++		status = "disabled";
++
++		led {
++			pwms = <&pwm 0 50000 0>;
++			max-brightness = <255>;
++			active-low;
++			linux,default-trigger = "default-on";
++		};
++	};
++
++	pwm_rgb: pwm-rgb {
++		compatible = "pwm-leds-multicolor";
++		status = "disabled";
++
++		multi-led {
++			color = <LED_COLOR_ID_RGB>;
++			function = LED_FUNCTION_INDICATOR;
++			max-brightness = <255>;
++
++			led-red {
++				pwms = <&pwm 1 50000>;
++				color = <LED_COLOR_ID_RED>;
++			};
++
++			led-green {
++				pwms = <&pwm 2 50000>;
++				color = <LED_COLOR_ID_GREEN>;
++			};
++
++			led-blue {
++				pwms = <&pwm 3 50000>;
++				color = <LED_COLOR_ID_BLUE>;
++			};
++		};
++	};
++
+ 	reg_3p3v: regulator-3p3v {
+ 		compatible = "regulator-fixed";
+ 		regulator-name = "fixed-3.3V";
+@@ -168,6 +206,32 @@
+ 			};
+ 		};
+ 	};
++
++ 	pwm_pins: pwm-pins {
++		mux {
++			function = "pwm";
++			groups = "pwm0_0";
++		};
++	};
++
++	pwm_rgb_pins: pwm-rgb-pins {
++		mux {
++			function = "pwm";
++			groups = "pwm0_0", "pwm1_1", "pwm2";
++		};
++	};
++};
++
++&pwm_led {
++ 	pinctrl-names = "default";
++	pinctrl-0 = <&pwm_pins>;
++	status = "okay";
++};
++
++&pwm_rgb {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pwm_rgb_pins>;
++	status = "disabled";
+ };
+ 
+ &xhci {

@@ -1,0 +1,25 @@
+From dadf8f5d48c6cc9b8e6f72fada3218d26503c612 Mon Sep 17 00:00:00 2001
+From: Rex Lu <rex.lu@mediatek.com>
+Date: Tue, 29 Apr 2025 15:04:58 +0800
+Subject: [PATCH 09/15] Refactor RRO_RX_D_DRV init flow
+
+Signed-off-by: Rex Lu <rex.lu@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_wed.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_wed.c b/drivers/net/ethernet/mediatek/mtk_wed.c
+index 9368d50..5d6dd83 100644
+--- a/drivers/net/ethernet/mediatek/mtk_wed.c
++++ b/drivers/net/ethernet/mediatek/mtk_wed.c
+@@ -2226,7 +2226,6 @@ mtk_wed_start_hw_rro(struct mtk_wed_device *dev, u32 irq_mask, bool reset)
+ 		return;
+ 	}
+ 
+-	wed_set(dev, MTK_WED_RRO_RX_D_CFG(2), MTK_WED_RRO_MSDU_PG_DRV_CLR);
+ 	wed_w32(dev, MTK_WED_RRO_MSDU_PG_RING2_CFG,
+ 		MTK_WED_RRO_MSDU_PG_DRV_CLR);
+ 
+-- 
+2.45.2
+

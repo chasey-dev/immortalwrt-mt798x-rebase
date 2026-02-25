@@ -1,0 +1,15 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+@@ -114,6 +114,12 @@
+ 	pinctrl-0 = <&i2c_pins>;
+ 	status = "okay";
+ 
++	at24c32: at24c32@57 {
++		compatible = "atmel,24c32";
++		reg = <0x57>;
++		status = "disabled";
++	};
++
+ 	wm8960: wm8960@1a {
+ 		compatible = "wlf,wm8960";
+ 		#sound-dai-cells = <0>;

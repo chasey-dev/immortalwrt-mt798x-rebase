@@ -1,0 +1,35 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -493,6 +493,10 @@
+ 				 <&topckgen CLK_TOP_SPI_SEL>,
+ 				 <&infracfg CLK_INFRA_104M_SPI0>,
+ 				 <&infracfg CLK_INFRA_66M_SPI0_HCK>;
++			assigned-clocks = <&topckgen CLK_TOP_SPI_SEL>,
++				  <&infracfg CLK_INFRA_MUX_SPI0_SEL>;
++			assigned-clock-parents = <&topckgen CLK_TOP_MPLL_D2>,
++						 <&topckgen CLK_TOP_SPI_SEL>;
+ 			clock-names = "parent-clk", "sel-clk", "spi-clk",
+ 				      "hclk";
+ 			#address-cells = <1>;
+@@ -508,6 +512,10 @@
+ 				 <&topckgen CLK_TOP_SPIM_MST_SEL>,
+ 				 <&infracfg CLK_INFRA_104M_SPI1>,
+ 				 <&infracfg CLK_INFRA_66M_SPI1_HCK>;
++			assigned-clocks = <&topckgen CLK_TOP_SPIM_MST_SEL>,
++				  <&infracfg CLK_INFRA_MUX_SPI1_SEL>;
++			assigned-clock-parents = <&topckgen CLK_TOP_MPLL_D2>,
++						 <&topckgen CLK_TOP_SPIM_MST_SEL>;
+ 			clock-names = "parent-clk", "sel-clk", "spi-clk",
+ 				      "hclk";
+ 			#address-cells = <1>;
+@@ -525,6 +533,10 @@
+ 				 <&topckgen CLK_TOP_SPI_SEL>,
+ 				 <&infracfg CLK_INFRA_104M_SPI2_BCK>,
+ 				 <&infracfg CLK_INFRA_66M_SPI2_HCK>;
++			assigned-clocks = <&topckgen CLK_TOP_SPI_SEL>,
++				  <&infracfg CLK_INFRA_MUX_SPI2_SEL>;
++			assigned-clock-parents = <&topckgen CLK_TOP_MPLL_D2>,
++						 <&topckgen CLK_TOP_SPI_SEL>;
+ 			clock-names = "parent-clk", "sel-clk", "spi-clk",
+ 				      "hclk";
+ 			#address-cells = <1>;

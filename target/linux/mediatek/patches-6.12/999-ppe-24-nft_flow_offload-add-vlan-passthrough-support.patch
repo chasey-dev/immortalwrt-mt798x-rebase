@@ -1,0 +1,65 @@
+From 51b35e13cf6a178f44a3feb901bea17e71444f5c Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 21 Oct 2025 19:30:27 +0800
+Subject: [PATCH] nft_flow_offload add vlan passthrough support
+
+VLAN passthrough packet can be offloaded when the below toggle is enabled
+	echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged
+
+Signed-off-by: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+---
+ net/netfilter/nft_flow_offload.c | 30 +++++++++++++++++++++++++++++-
+ 1 file changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/net/netfilter/nft_flow_offload.c b/net/netfilter/nft_flow_offload.c
+index 13918f5..a1a214e 100644
+--- a/net/netfilter/nft_flow_offload.c
++++ b/net/netfilter/nft_flow_offload.c
+@@ -169,6 +169,30 @@ struct nft_forward_info {
+ 	enum flow_offload_xmit_type xmit_type;
+ };
+ 
++static void nft_fill_vlan_passthrough_info(const struct nft_pktinfo *pkt,
++					   struct nft_forward_info *info)
++{
++	struct net_bridge_port *port;
++
++	if (!skb_vlan_tag_present(pkt->skb))
++		return;
++
++	rcu_read_lock();
++	port = br_port_get_rcu(pkt->skb->dev);
++	/* when bridge vlan enabled, the vlan tag would be handled by the bridge */
++	if (port && !br_opt_get(port->br, BROPT_VLAN_ENABLED)) {
++		if (info->num_encaps >= NF_FLOW_TABLE_ENCAP_MAX) {
++			info->indev = NULL;
++			goto out;
++		}
++		info->encap[info->num_encaps].id = skb_vlan_tag_get_id(pkt->skb);
++		info->encap[info->num_encaps].proto = pkt->skb->vlan_proto;
++		info->num_encaps++;
++	}
++out:
++	rcu_read_unlock();
++}
++
+ static void nft_dev_path_info(const struct net_device_path_stack *stack,
+ 			      struct nft_forward_info *info,
+ 			      unsigned char *ha, struct nf_flowtable *flowtable)
+@@ -299,8 +323,12 @@ static int nft_dev_forward_path(const struct nft_pktinfo *pkt,
+ 		nft_br_vlan_dev_fill_forward_path(pkt, &ctx);
+ 	}
+ 
+-	if (nft_dev_fill_forward_path(&ctx, route, dst, ct, dir, ha, &stack) >= 0)
++	if (nft_dev_fill_forward_path(&ctx, route, dst, ct, dir, ha, &stack) >= 0) {
++		/* Add VLAN pass through info if needed */
++		nft_fill_vlan_passthrough_info(pkt, &info);
++
+ 		nft_dev_path_info(&stack, &info, ha, &ft->data);
++	}
+ 
+ 	if (!info.indev || !nft_flowtable_find_dev(info.indev, ft))
+ 		return -ENOENT;
+-- 
+2.45.2
+

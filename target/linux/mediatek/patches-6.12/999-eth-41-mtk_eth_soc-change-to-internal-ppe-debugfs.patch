@@ -1,0 +1,31 @@
+From b325bbc1cf3caf4b26f8b2ccdb45c0b6c534a7d2 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Wed, 24 Sep 2025 12:02:44 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: change to internal ppe debugfs
+
+Without this patch, users cannot get the Bind or Unbind entries
+with a single debug command.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c   |  4 ++++
+ 1 files changed, 4 insertions(+)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index 81773ee..025ff77 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -6867,6 +6867,10 @@ static int mtk_probe(struct platform_device *pdev)
+ 			if (err)
+ 				goto err_deinit_ppe;
+ 		}
++
++		err = mtk_ppe_internal_debugfs_init(eth);
++		if (err)
++			goto err_deinit_ppe;
+ 	}
+ 
+ 	mtk_eth_debugfs_init(eth);
+-- 
+2.45.2
+

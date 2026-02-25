@@ -1,0 +1,60 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
+@@ -242,6 +242,57 @@
+ 	};
+ };
+ 
++&i2c1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c1_pins>;
++	status = "okay";
++
++	at24c32: at24c32@57 {
++		compatible = "atmel,24c32";
++		reg = <0x57>;
++		status = "disabled";
++	};
++
++	wm8960: wm8960@1a {
++		compatible = "wlf,wm8960";
++		reg = <0x1a>;
++	};
++
++	zts8032: zts8032@76 {
++		compatible = "zilltek,zts8032";
++		reg = <0x76>;
++		status = "disabled";
++	};
++
++	zts8232: zts8232@64 {
++		compatible = "zilltek,zts8232";
++		reg = <0x64>;
++		#address-cells=<1>;
++		#size-cells=<0>;
++		status = "disabled";
++	};
++
++	dps368: dps368@77 {
++		compatible = "infineon,dps310";
++		reg = <0x77>;
++		status = "disabled";
++	};
++
++	rtq6056: rtq6056@40 {
++		compatible = "richtek,rtq6056";
++		reg = <0x40>;
++		shunt-resistor-micro-ohms = <10000>;
++		#io-channel-cells = <1>;
++	};
++};
++
++&i2c2 {
++	pinctrl-names = "default";
++	/* pin-shared with 10G phys reset gpio pin */
++	pinctrl-0 = <&i2c2_1_pins>;
++	status = "disabled";
++};
++
+ &pcie0 {
+ 	status = "okay";
+ };

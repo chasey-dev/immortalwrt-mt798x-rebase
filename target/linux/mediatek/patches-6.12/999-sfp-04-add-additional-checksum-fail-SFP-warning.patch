@@ -1,0 +1,80 @@
+From 4055660aa9f6c5cc1e11607dd139fa2ae34987f4 Mon Sep 17 00:00:00 2001
+From: "neal.yen" <neal.yen@mediatek.com>
+Date: Tue, 28 Oct 2025 11:35:15 +0800
+Subject: [PATCH] net: phy: sfp: add additional checksum fail SFP warning
+
+Signed-off-by: neal.yen <neal.yen@mediatek.com>
+
+diff --git a/drivers/net/phy/sfp.c b/drivers/net/phy/sfp.c
+index 00e152f..99dbfc3 100644
+--- a/drivers/net/phy/sfp.c
++++ b/drivers/net/phy/sfp.c
+@@ -325,6 +325,28 @@ static bool sfp_module_supported(const struct sfp_eeprom_id *id)
+ 	    !memcmp(id->base.vendor_pn, "UF-INSTANT      ", 16))
+ 		return true;
+ 
++	/* SFP RollBall module JESS-LINK P60000BBC001-1 Instant has in its
++	 * EEPROM stored phys id SFF_8472 instead of SFP. Therefore mark this
++	 * module explicitly as supported based on vendor name and pn match.
++	 */
++	if (id->base.phys_id == SFF8024_ID_SFF_8472 &&
++	    id->base.phys_ext_id == SFP_PHYS_EXT_ID_SFP &&
++	    !memcmp(id->base.vendor_name, "JESS-LINK       ", 16) &&
++	    !memcmp(id->base.vendor_pn, "P60000BBC001-1  ", 16))
++		return true;
++
++	/* SFP GPON module SK-LINK SFP-GE-LX20 SM1310 and SM1550 Instant
++	 * has in its EEPROM stored phys id UNK instead of SFP. Therefore
++	 * mark this module explicitly as supported based on vendor name
++	 * and pn match.
++	 */
++	if (id->base.phys_id == SFF8024_ID_UNK &&
++	    id->base.phys_ext_id == SFP_PHYS_EXT_ID_SFP &&
++	    !memcmp(id->base.vendor_name, "SK-LINK         ", 16) &&
++	    (!memcmp(id->base.vendor_pn, "SFP-GE-LX20-SM13", 16) ||
++	     !memcmp(id->base.vendor_pn, "SFP-GE-LX-SM1550", 16)))
++		return true;
++
+ 	return false;
+ }
+ 
+@@ -2256,7 +2278,7 @@ static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
+ 	struct sfp_eeprom_id id;
+ 	bool cotsworks_sfbg;
+ 	unsigned int mask;
+-	bool cotsworks;
++	bool cotsworks, jesslink, sklink;
+ 	u8 check;
+ 	int ret;
+ 
+@@ -2311,6 +2333,18 @@ static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
+ 	cotsworks = !memcmp(id.base.vendor_name, "COTSWORKS       ", 16);
+ 	cotsworks_sfbg = !memcmp(id.base.vendor_pn, "SFBG", 4);
+ 
++	/* JESS-LINK do not seem to update the checksums when they
++	 * do the final programming with the final module part number,
++	 * serial number and date code.
++	 */
++	jesslink = !memcmp(id.base.vendor_name, "JESS-LINK       ", 16);
++
++	/* SK-LINK do not seem to update the checksums when they
++	 * do the final programming with the final module part number,
++	 * serial number and date code.
++	 */
++	sklink = !memcmp(id.base.vendor_name, "SK-LINK         ", 16);
++
+ 	/* Cotsworks SFF module EEPROM do not always have valid phys_id,
+ 	 * phys_ext_id, and connector bytes.  Rewrite SFF EEPROM bytes if
+ 	 * Cotsworks PN matches and bytes are not correct.
+@@ -2324,7 +2358,7 @@ static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
+ 	/* Validate the checksum over the base structure */
+ 	check = sfp_check(&id.base, sizeof(id.base) - 1);
+ 	if (check != id.base.cc_base) {
+-		if (cotsworks) {
++		if (cotsworks || jesslink || sklink) {
+ 			dev_warn(sfp->dev,
+ 				 "EEPROM base structure checksum failure (0x%02x != 0x%02x)\n",
+ 				 check, id.base.cc_base);
+-- 
+2.45.2
+

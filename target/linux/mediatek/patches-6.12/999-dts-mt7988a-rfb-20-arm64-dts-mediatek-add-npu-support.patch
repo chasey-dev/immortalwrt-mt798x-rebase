@@ -1,0 +1,80 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -5,6 +5,7 @@
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
+ #include <dt-bindings/phy/phy.h>
+ #include <dt-bindings/pinctrl/mt65xx.h>
++#include <dt-bindings/power/mt7988-power.h>
+ #include <dt-bindings/reset/mediatek,mt7988-resets.h>
+ #include <dt-bindings/leds/common.h>
+ #include <dt-bindings/thermal/thermal.h>
+@@ -855,6 +856,7 @@
+ 			compatible = "mediatek,mt7988-topmisc", "syscon",
+ 				     "mediatek,mt7988-power-controller";
+ 			reg = <0 0x11d10000 0 0x10000>;
++			#power-domain-cells = <1>;
+ 		};
+ 
+ 		xsphy: xs-phy@11e10000 {
+@@ -1272,6 +1274,61 @@
+ 			};
+ 		};
+ 
++		tops: tops@09100000 {
++			compatible = "mediatek,tops";
++			reg = <0 0x09100000 0 0x01000000>;
++			reg-names = "tops-base";
++			clocks = <&topckgen CLK_TOP_BUS_TOPS_SEL>,
++				 <&topckgen CLK_TOP_TOPS_P2_26M_SEL>,
++				 <&topckgen CLK_TOP_NETSYS_TOPS_400M_SEL>,
++				 <&topckgen CLK_TOP_NPU_TOPS_SEL>,
++				 <&topckgen CLK_TOP_NPU_SEL>;
++			clock-names = "bus", "sram", "xdma", "offload", "mgmt";
++			power-domains = <&topmisc MT7988_POWER_DOMAIN_TOPS0>,
++					<&topmisc MT7988_POWER_DOMAIN_TOPS1>;
++
++			interrupt-parent = <&gic>;
++			interrupts = <GIC_SPI 196 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 280 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 281 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "tdma-tx-pause", "mbox", "wdt";
++
++			dmas = <&hpdma1 0>;
++			dma-names = "tnl-sync";
++
++			fe_mem = <&eth>;
++		};
++
++		tops-mbox {
++			compatible = "mediatek,tops-mbox";
++			interrupt-parent = <&gic>;
++			interrupts = <GIC_SPI 280 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "mbox";
++			tops = <&tops>;
++		};
++
++		hpdma1: hpdma@09106000 {
++			compatible = "mediatek,hpdma-top";
++			reg = <0 0x09106000 0 0x1000>;
++			reg-names = "base";
++			#dma-cells = <1>;
++		};
++
++		hpdma2: hpdma@09606000 {
++			compatible = "mediatek,hpdma-sub";
++			reg = <0 0x09606000 0 0x1000>;
++			reg-names = "base";
++			#dma-cells = <2>;
++		};
++
++		tops-ocd@0e500000 {
++			compatible = "mediatek,tops-ocd";
++			reg = <0 0x0e500000 0 0x15000>;
++			reg-names = "tops-ocd-base";
++			clocks = <&infracfg CLK_INFRA_AUD_L>;
++			clock-names = "debugsys";
++		};
++
+ 		wo_ccif0: syscon@151a5000 {
+ 			compatible = "mediatek,mt7988-wo-ccif", "syscon";
+ 			reg = <0 0x151a5000 0 0x1000>;

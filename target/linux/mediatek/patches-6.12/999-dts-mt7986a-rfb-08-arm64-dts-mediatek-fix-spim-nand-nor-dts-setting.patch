@@ -1,0 +1,51 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb-spim-nand.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb-spim-nand.dts
+@@ -37,12 +37,14 @@
+ };
+ 
+ &spi0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi_nand_pins>;
+ 	status = "okay";
+ 
+ 	spi_nand: spi_nand@1 {
+ 		compatible = "spi-nand";
+ 		reg = <1>;
+-		spi-max-frequency = <10000000>;
++		spi-max-frequency = <52000000>;
+ 		spi-tx-bus-width = <4>;
+ 		spi-rx-bus-width = <4>;
+ 
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb-spim-nor.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb-spim-nor.dts
+@@ -7,6 +7,8 @@
+ };
+ 
+ &spi0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi_nor_pins>;
+ 	status = "okay";
+ 
+ 	spi_nor: spi_nor@0 {
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+@@ -179,8 +179,6 @@
+ };
+ 
+ &spi0 {
+-	pinctrl-names = "default";
+-	pinctrl-0 = <&spi_flash_pins>;
+ 	cs-gpios = <0>, <0>;
+ 	status = "disabled";
+ };
+--- a/arch/arm64/boot/dts/mediatek/mt7986-spim-nand-nmbm.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7986-spim-nand-nmbm.dtso
+@@ -13,6 +13,8 @@
+ };
+ 
+ &{/soc/spi@1100a000} {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi_nand_pins>;
+ 	status = "okay";
+ 
+ 	flash@0 {

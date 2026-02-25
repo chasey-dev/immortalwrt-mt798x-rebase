@@ -1,0 +1,25 @@
+From a6c7715c031d6b8b169fdcbe7ae318853e7f4d44 Mon Sep 17 00:00:00 2001
+From: "neal.yen" <neal.yen@mediatek.com>
+Date: Mon, 20 Oct 2025 15:29:33 +0800
+Subject: [PATCH] arm64: dts: mt7988: add gsw node
+
+---
+ arch/arm64/boot/dts/mediatek/mt7988a.dtsi | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -184,6 +184,13 @@
+ 		};
+ 	};
+ 
++	gsw: gsw@15020000 {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		reg = <0 0x15020000 0 0x8000>;
++		status = "disabled";
++	};
++
+ 	soc: soc {
+ 		compatible = "simple-bus";
+ 		ranges;

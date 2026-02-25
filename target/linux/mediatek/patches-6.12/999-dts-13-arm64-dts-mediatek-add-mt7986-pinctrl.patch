@@ -1,0 +1,406 @@
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7986-pinctrl.dtsi
+@@ -0,0 +1,225 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ * Author: Tim.Kuo <Tim.Kuo@mediatek.com>
++ */
++
++#include <dt-bindings/pinctrl/mt65xx.h>
++
++&pio {
++	i2c_pins: i2c-pins {
++		mux {
++			function = "i2c";
++			groups = "i2c";
++		};
++	};
++
++	mmc0_pins_default: mmc0-pins {
++		mux {
++			function = "emmc";
++			groups = "emmc_51";
++		};
++		conf-cmd-dat {
++			pins = "EMMC_DATA_0", "EMMC_DATA_1", "EMMC_DATA_2",
++			       "EMMC_DATA_3", "EMMC_DATA_4", "EMMC_DATA_5",
++			       "EMMC_DATA_6", "EMMC_DATA_7", "EMMC_CMD";
++			input-enable;
++			drive-strength = <4>;
++			bias-pull-up = <MTK_PUPD_SET_R1R0_01>; /* pull-up 10K */
++		};
++		conf-clk {
++			pins = "EMMC_CK";
++			drive-strength = <6>;
++			bias-pull-down = <MTK_PUPD_SET_R1R0_10>; /* pull-down 50K */
++		};
++		conf-ds {
++			pins = "EMMC_DSL";
++			bias-pull-down = <MTK_PUPD_SET_R1R0_10>; /* pull-down 50K */
++		};
++		conf-rst {
++			pins = "EMMC_RSTB";
++			drive-strength = <4>;
++			bias-pull-up = <MTK_PUPD_SET_R1R0_01>; /* pull-up 10K */
++		};
++	};
++
++	mmc0_pins_uhs: mmc0-uhs-pins {
++		mux {
++			function = "emmc";
++			groups = "emmc_51";
++		};
++		conf-cmd-dat {
++			pins = "EMMC_DATA_0", "EMMC_DATA_1", "EMMC_DATA_2",
++			       "EMMC_DATA_3", "EMMC_DATA_4", "EMMC_DATA_5",
++			       "EMMC_DATA_6", "EMMC_DATA_7", "EMMC_CMD";
++			input-enable;
++			drive-strength = <4>;
++			bias-pull-up = <MTK_PUPD_SET_R1R0_01>; /* pull-up 10K */
++		};
++		conf-clk {
++			pins = "EMMC_CK";
++			drive-strength = <6>;
++			bias-pull-down = <MTK_PUPD_SET_R1R0_10>; /* pull-down 50K */
++		};
++		conf-ds {
++			pins = "EMMC_DSL";
++			bias-pull-down = <MTK_PUPD_SET_R1R0_10>; /* pull-down 50K */
++		};
++		conf-rst {
++			pins = "EMMC_RSTB";
++			drive-strength = <4>;
++			bias-pull-up = <MTK_PUPD_SET_R1R0_01>; /* pull-up 10K */
++		};
++	};
++
++	pcie_pins: pcie-pins {
++		mux {
++			function = "pcie";
++			groups = "pcie_pereset";
++		};
++	};
++
++	pwm_pins: pwm-pins {
++		mux {
++			function = "pwm";
++			groups = "pwm0";
++		};
++	};
++
++	spi_nand_pins: spi-nand-pins {
++		mux {
++			function = "spi";
++			groups = "spi0", "spi0_wp_hold";
++		};
++		conf-pu {
++			pins = "SPI2_CS", "SPI2_HOLD", "SPI2_WP";
++			drive-strength = <MTK_DRIVE_4mA>;
++			bias-disable;	/* bias-disable */
++		};
++		conf-pd {
++			pins = "SPI2_CLK", "SPI2_MOSI", "SPI2_MISO";
++			drive-strength = <MTK_DRIVE_4mA>;
++			bias-disable;	/* bias-disable */
++		};
++	};
++
++	spi_nor_pins: spi-nand-pins {
++		mux {
++			function = "spi";
++			groups = "spi0", "spi0_wp_hold";
++		};
++		conf-pu {
++			pins = "SPI2_CS", "SPI2_HOLD", "SPI2_WP";
++			drive-strength = <MTK_DRIVE_8mA>;
++			bias-disable;	/* bias-disable */
++		};
++		conf-pd {
++			pins = "SPI2_CLK", "SPI2_MOSI", "SPI2_MISO";
++			drive-strength = <MTK_DRIVE_8mA>;
++			bias-disable;	/* bias-disable */
++		};
++	};
++
++	spic_pins: spic-pins-29-to-32 {
++		mux {
++			function = "spi";
++			groups = "spi1_2";
++		};
++	};
++
++	uart1_pins: uart1-pins {
++		mux {
++			function = "uart";
++			groups = "uart1";
++		};
++	};
++
++	uart1_tx_rx_pins: uart1-tx-rx-pins {
++		mux {
++			function = "uart";
++			groups = "uart1_rx_tx";
++		};
++	};
++
++	uart2_pins: uart2-pins {
++		mux {
++			function = "uart";
++			groups = "uart2";
++		};
++	};
++
++	usb_ngff_pins: usb-ngff-pins {
++		ngff-gnss-off-conf {
++			pins = "GPIO_6";
++			drive-strength = <8>;
++			mediatek,pull-up-adv = <1>;
++		};
++		ngff-pe-rst-conf {
++			pins = "GPIO_7";
++			drive-strength = <8>;
++			mediatek,pull-up-adv = <1>;
++		};
++		ngff-wwan-off-conf {
++			pins = "GPIO_8";
++			drive-strength = <8>;
++			mediatek,pull-up-adv = <1>;
++		};
++		ngff-pwr-off-conf {
++			pins = "GPIO_9";
++			drive-strength = <8>;
++			mediatek,pull-up-adv = <1>;
++		};
++		ngff-rst-conf {
++			pins = "GPIO_10";
++			drive-strength = <8>;
++			mediatek,pull-up-adv = <1>;
++		};
++		ngff-coex-conf {
++			pins = "SPI1_CS";
++			drive-strength = <8>;
++			mediatek,pull-up-adv = <1>;
++		};
++	};
++
++	wf_2g_5g_pins: wf_2g_5g-pins {
++		mux {
++			function = "wifi";
++			groups = "wf_2g", "wf_5g";
++		};
++		conf {
++			pins = "WF0_HB1", "WF0_HB2", "WF0_HB3", "WF0_HB4",
++			       "WF0_HB0", "WF0_HB0_B", "WF0_HB5", "WF0_HB6",
++			       "WF0_HB7", "WF0_HB8", "WF0_HB9", "WF0_HB10",
++			       "WF0_TOP_CLK", "WF0_TOP_DATA", "WF1_HB1",
++			       "WF1_HB2", "WF1_HB3", "WF1_HB4", "WF1_HB0",
++			       "WF1_HB5", "WF1_HB6", "WF1_HB7", "WF1_HB8",
++			       "WF1_TOP_CLK", "WF1_TOP_DATA";
++			drive-strength = <MTK_DRIVE_4mA>;
++		};
++	};
++
++	wf_dbdc_pins: wf_dbdc-pins {
++		mux {
++			function = "wifi";
++			groups = "wf_dbdc";
++		};
++		conf {
++			pins = "WF0_HB1", "WF0_HB2", "WF0_HB3", "WF0_HB4",
++			       "WF0_HB0", "WF0_HB0_B", "WF0_HB5", "WF0_HB6",
++			       "WF0_HB7", "WF0_HB8", "WF0_HB9", "WF0_HB10",
++			       "WF0_TOP_CLK", "WF0_TOP_DATA", "WF1_HB1",
++			       "WF1_HB2", "WF1_HB3", "WF1_HB4", "WF1_HB0",
++			       "WF1_HB5", "WF1_HB6", "WF1_HB7", "WF1_HB8",
++			       "WF1_TOP_CLK", "WF1_TOP_DATA";
++			drive-strength = <MTK_DRIVE_4mA>;
++		};
++	};
++
++	wf_led_pins: wf-led-pins {
++		mux {
++			function = "led";
++			groups = "wifi_led";
++		};
++	};
++};
++
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dtsi
+@@ -8,7 +8,7 @@
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/pinctrl/mt65xx.h>
+ #include "mt7986a.dtsi"
+-
++#include "mt7986-pinctrl.dtsi"
+ / {
+ 	model = "MediaTek MT7986a RFB";
+ 	compatible = "mediatek,mt7986a-rfb";
+@@ -141,145 +141,6 @@
+ 	status = "okay";
+ };
+ 
+-&pio {
+-	mmc0_pins_default: mmc0-pins {
+-		mux {
+-			function = "emmc";
+-			groups = "emmc_51";
+-		};
+-		conf-cmd-dat {
+-			pins = "EMMC_DATA_0", "EMMC_DATA_1", "EMMC_DATA_2",
+-			       "EMMC_DATA_3", "EMMC_DATA_4", "EMMC_DATA_5",
+-			       "EMMC_DATA_6", "EMMC_DATA_7", "EMMC_CMD";
+-			input-enable;
+-			drive-strength = <MTK_DRIVE_4mA>;
+-			bias-pull-up = <MTK_PUPD_SET_R1R0_01>;	/* pull-up 10K */
+-		};
+-		conf-clk {
+-			pins = "EMMC_CK";
+-			drive-strength = <MTK_DRIVE_6mA>;
+-			bias-pull-down = <MTK_PUPD_SET_R1R0_10>;	/* pull-down 50K */
+-		};
+-		conf-ds {
+-			pins = "EMMC_DSL";
+-			bias-pull-down = <MTK_PUPD_SET_R1R0_10>;	/* pull-down 50K */
+-		};
+-		conf-rst {
+-			pins = "EMMC_RSTB";
+-			drive-strength = <MTK_DRIVE_4mA>;
+-			bias-pull-up = <MTK_PUPD_SET_R1R0_01>;	/* pull-up 10K */
+-		};
+-	};
+-
+-	mmc0_pins_uhs: mmc0-uhs-pins {
+-		mux {
+-			function = "emmc";
+-			groups = "emmc_51";
+-		};
+-		conf-cmd-dat {
+-			pins = "EMMC_DATA_0", "EMMC_DATA_1", "EMMC_DATA_2",
+-			       "EMMC_DATA_3", "EMMC_DATA_4", "EMMC_DATA_5",
+-			       "EMMC_DATA_6", "EMMC_DATA_7", "EMMC_CMD";
+-			input-enable;
+-			drive-strength = <MTK_DRIVE_4mA>;
+-			bias-pull-up = <MTK_PUPD_SET_R1R0_01>;	/* pull-up 10K */
+-		};
+-		conf-clk {
+-			pins = "EMMC_CK";
+-			drive-strength = <MTK_DRIVE_6mA>;
+-			bias-pull-down = <MTK_PUPD_SET_R1R0_10>;	/* pull-down 50K */
+-		};
+-		conf-ds {
+-			pins = "EMMC_DSL";
+-			bias-pull-down = <MTK_PUPD_SET_R1R0_10>;	/* pull-down 50K */
+-		};
+-		conf-rst {
+-			pins = "EMMC_RSTB";
+-			drive-strength = <MTK_DRIVE_4mA>;
+-			bias-pull-up = <MTK_PUPD_SET_R1R0_01>;	/* pull-up 10K */
+-		};
+-	};
+-
+-	pcie_pins: pcie-pins {
+-		mux {
+-			function = "pcie";
+-			groups = "pcie_clk", "pcie_wake", "pcie_pereset";
+-		};
+-	};
+-
+-	spic_pins_g2: spic-pins-29-to-32 {
+-		mux {
+-			function = "spi";
+-			groups = "spi1_2";
+-		};
+-	};
+-
+-	spi_flash_pins: spi-flash-pins-33-to-38 {
+-		mux {
+-			function = "spi";
+-			groups = "spi0", "spi0_wp_hold";
+-		};
+-		conf-pu {
+-			pins = "SPI2_CS", "SPI2_HOLD", "SPI2_WP";
+-			drive-strength = <MTK_DRIVE_8mA>;
+-			bias-disable;	/* bias-disable */
+-		};
+-		conf-pd {
+-			pins = "SPI2_CLK", "SPI2_MOSI", "SPI2_MISO";
+-			drive-strength = <MTK_DRIVE_8mA>;
+-			bias-disable;	/* bias-disable */
+-		};
+-	};
+-
+-	uart1_pins: uart1-pins {
+-		mux {
+-			function = "uart";
+-			groups = "uart1";
+-		};
+-	};
+-
+-	uart2_pins: uart2-pins {
+-		mux {
+-			function = "uart";
+-			groups = "uart2";
+-		};
+-	};
+-
+-	wf_2g_5g_pins: wf_2g_5g-pins {
+-		mux {
+-			function = "wifi";
+-			groups = "wf_2g", "wf_5g";
+-		};
+-		conf {
+-			pins = "WF0_HB1", "WF0_HB2", "WF0_HB3", "WF0_HB4",
+-			       "WF0_HB0", "WF0_HB0_B", "WF0_HB5", "WF0_HB6",
+-			       "WF0_HB7", "WF0_HB8", "WF0_HB9", "WF0_HB10",
+-			       "WF0_TOP_CLK", "WF0_TOP_DATA", "WF1_HB1",
+-			       "WF1_HB2", "WF1_HB3", "WF1_HB4", "WF1_HB0",
+-			       "WF1_HB5", "WF1_HB6", "WF1_HB7", "WF1_HB8",
+-			       "WF1_TOP_CLK", "WF1_TOP_DATA";
+-			drive-strength = <MTK_DRIVE_4mA>;
+-		};
+-	};
+-
+-	wf_dbdc_pins: wf_dbdc-pins {
+-		mux {
+-			function = "wifi";
+-			groups = "wf_dbdc";
+-		};
+-		conf {
+-			pins = "WF0_HB1", "WF0_HB2", "WF0_HB3", "WF0_HB4",
+-			       "WF0_HB0", "WF0_HB0_B", "WF0_HB5", "WF0_HB6",
+-			       "WF0_HB7", "WF0_HB8", "WF0_HB9", "WF0_HB10",
+-			       "WF0_TOP_CLK", "WF0_TOP_DATA", "WF1_HB1",
+-			       "WF1_HB2", "WF1_HB3", "WF1_HB4", "WF1_HB0",
+-			       "WF1_HB5", "WF1_HB6", "WF1_HB7", "WF1_HB8",
+-			       "WF1_TOP_CLK", "WF1_TOP_DATA";
+-			drive-strength = <MTK_DRIVE_4mA>;
+-		};
+-	};
+-};
+-
+ &spi0 {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&spi_flash_pins>;
+@@ -290,7 +151,7 @@
+ 
+ &spi1 {
+ 	pinctrl-names = "default";
+-	pinctrl-0 = <&spic_pins_g2>;
++	pinctrl-0 = <&spic_pins>;
+ 	status = "okay";
+ 
+ 	proslic_spi: proslic_spi@0 {
+--- a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
+@@ -9,7 +9,8 @@
+ #include <dt-bindings/clock/mt7986-clk.h>
+ #include <dt-bindings/reset/mt7986-resets.h>
+ #include <dt-bindings/phy/phy.h>
+-
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
+ / {
+ 	compatible = "mediatek,mt7986a";
+ 	interrupt-parent = <&gic>;

@@ -1,0 +1,590 @@
+From 7becdc3d0b86a3a9f8056cbe26024e2ca02896c9 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Wed, 24 Sep 2025 12:04:34 +0800
+Subject: [PATCH] netfilter: add DSCP learning flow to xt_FLOWOFFLOAD
+
+User can use the command below to enable DSCP learning flow.
+ - echo [1, 255] > /proc/sys/net/netfilter/nf_conntrack_qos
+
+Without this patch, the PPEs are unable to learn the DSCP from SKB.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_ppe.c       | 11 ++++
+ drivers/net/ethernet/mediatek/mtk_ppe.h       |  2 +
+ .../net/ethernet/mediatek/mtk_ppe_offload.c   | 13 +++-
+ include/net/netfilter/nf_conntrack_extend.h   |  1 +
+ include/net/netfilter/nf_conntrack_qos.h      | 61 +++++++++++++++++++
+ include/net/netfilter/nf_flow_table.h         |  2 +
+ include/net/netns/conntrack.h                 |  1 +
+ net/netfilter/Makefile                        |  2 +-
+ net/netfilter/nf_conntrack_core.c             |  3 +
+ net/netfilter/nf_conntrack_extend.c           |  2 +
+ net/netfilter/nf_conntrack_netlink.c          |  2 +
+ net/netfilter/nf_conntrack_qos.c              | 25 ++++++++
+ net/netfilter/nf_conntrack_standalone.c       | 27 ++++++++
+ net/netfilter/nf_flow_table_core.c            |  2 +
+ net/netfilter/nf_flow_table_ip.c              | 10 +++
+ net/netfilter/nf_flow_table_offload.c         |  7 ++-
+ net/netfilter/xt_FLOWOFFLOAD.c                | 43 +++++++++++++
+ 17 files changed, 210 insertions(+), 4 deletions(-)
+ create mode 100644 include/net/netfilter/nf_conntrack_qos.h
+ create mode 100644 net/netfilter/nf_conntrack_qos.c
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_ppe.c b/drivers/net/ethernet/mediatek/mtk_ppe.c
+index 40b3155..cd4e778 100644
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
+@@ -398,6 +398,17 @@ int mtk_foe_entry_set_dsa(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 	return 0;
+ }
+ 
++int mtk_foe_entry_set_dscp(struct mtk_eth *eth, struct mtk_foe_entry *entry,
++			   unsigned int dscp)
++{
++	u32 *ib2 = mtk_foe_entry_ib2(eth, entry);
++
++	*ib2 &= ~MTK_FOE_IB2_DSCP;
++	*ib2 |= FIELD_PREP(MTK_FOE_IB2_DSCP, dscp);
++
++	return 0;
++}
++
+ int mtk_foe_entry_set_vlan(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 			   int vid)
+ {
+diff --git a/drivers/net/ethernet/mediatek/mtk_ppe.h b/drivers/net/ethernet/mediatek/mtk_ppe.h
+index 0bd28fe..d505629 100644
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.h
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.h
+@@ -391,6 +391,8 @@ int mtk_foe_entry_set_ipv6_tuple(struct mtk_eth *eth,
+ 				 __be32 *dest_addr, __be16 dest_port);
+ int mtk_foe_entry_set_dsa(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 			  int port);
++int mtk_foe_entry_set_dscp(struct mtk_eth *eth, struct mtk_foe_entry *entry,
++			   unsigned int dscp);
+ int mtk_foe_entry_set_vlan(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 			   int vid);
+ int mtk_foe_entry_set_pppoe(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+diff --git a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
+index 441f034..5a700a9 100644
+--- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
+@@ -193,7 +193,7 @@ static int
+ mtk_flow_set_output_device(struct mtk_eth *eth, struct mtk_foe_entry *foe,
+ 			   struct net_device *idev, struct net_device *odev,
+ 			   struct flow_cls_offload *f, const u8 *dest_mac,
+-			   int *wed_index)
++			   int *wed_index, int dscp)
+ {
+ 	struct mtk_wdma_info info = {};
+ 	struct nf_conn *ct = NULL;
+@@ -272,6 +272,7 @@ mtk_flow_set_output_device(struct mtk_eth *eth, struct mtk_foe_entry *foe,
+ 
+ out:
+ 	mtk_foe_entry_set_pse_port(eth, foe, pse_port);
++	mtk_foe_entry_set_dscp(eth, foe, dscp);
+ 
+ 	return 0;
+ }
+@@ -290,6 +291,7 @@ mtk_flow_offload_replace(struct mtk_eth *eth, struct flow_cls_offload *f,
+ 	int wed_index = -1;
+ 	u16 addr_type = 0;
+ 	u8 l4proto = 0;
++	u8 dscp = 0;
+ 	int err = 0;
+ 	int i;
+ 
+@@ -337,6 +339,13 @@ mtk_flow_offload_replace(struct mtk_eth *eth, struct flow_cls_offload *f,
+ 		return -EOPNOTSUPP;
+ 	}
+ 
++	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_IP)) {
++		struct flow_match_ip match;
++
++		flow_rule_match_ip(rule, &match);
++		dscp = match.key->tos;
++	}
++
+ 	switch (addr_type) {
+ 	case 0:
+ 		offload_type = MTK_PPE_PKT_TYPE_BRIDGE;
+@@ -494,7 +503,7 @@ mtk_flow_offload_replace(struct mtk_eth *eth, struct flow_cls_offload *f,
+ 		mtk_foe_entry_set_pppoe(eth, &foe, data.pppoe.sid);
+ 
+ 	err = mtk_flow_set_output_device(eth, &foe, idev, odev, f,
+-					 data.eth.h_dest, &wed_index);
++					 data.eth.h_dest, &wed_index, dscp);
+ 	if (err)
+ 		return err;
+ 
+diff --git a/include/net/netfilter/nf_conntrack_extend.h b/include/net/netfilter/nf_conntrack_extend.h
+index 0b24724..5208c4b 100644
+--- a/include/net/netfilter/nf_conntrack_extend.h
++++ b/include/net/netfilter/nf_conntrack_extend.h
+@@ -13,6 +13,7 @@ enum nf_ct_ext_id {
+ #endif
+ 	NF_CT_EXT_SEQADJ,
+ 	NF_CT_EXT_ACCT,
++	NF_CT_EXT_QOS,
+ #ifdef CONFIG_NF_CONNTRACK_EVENTS
+ 	NF_CT_EXT_ECACHE,
+ #endif
+diff --git a/include/net/netfilter/nf_conntrack_qos.h b/include/net/netfilter/nf_conntrack_qos.h
+new file mode 100644
+index 0000000..3d5ffe7
+--- /dev/null
++++ b/include/net/netfilter/nf_conntrack_qos.h
+@@ -0,0 +1,61 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#ifndef _NF_CONNTRACK_QOS_H
++#define _NF_CONNTRACK_QOS_H
++#include <net/net_namespace.h>
++#include <linux/netfilter/nf_conntrack_common.h>
++#include <linux/netfilter/nf_conntrack_tuple_common.h>
++#include <net/netfilter/nf_conntrack.h>
++#include <net/netfilter/nf_conntrack_extend.h>
++
++struct nf_conn_tos {
++	u8		value;
++	atomic64_t	counter;
++};
++
++struct nf_conn_qos {
++	struct nf_conn_tos	tos[IP_CT_DIR_MAX];
++};
++
++static inline
++struct nf_conn_qos *nf_conn_qos_find(const struct nf_conn *ct)
++{
++	return nf_ct_ext_find(ct, NF_CT_EXT_QOS);
++}
++
++static inline
++struct nf_conn_qos *nf_ct_qos_ext_add(struct nf_conn *ct, gfp_t gfp)
++{
++#if IS_ENABLED(CONFIG_NF_CONNTRACK)
++	struct net *net = nf_ct_net(ct);
++	struct nf_conn_qos *qos;
++
++	if (!net->ct.sysctl_qos)
++		return NULL;
++
++	qos = nf_ct_ext_add(ct, NF_CT_EXT_QOS, gfp);
++	if (!qos)
++		pr_debug("failed to add qos extension area");
++
++	memset(qos, 0, sizeof(struct nf_conn_qos));
++
++	return qos;
++#else
++	return NULL;
++#endif
++}
++
++static inline void nf_ct_qos_clear(struct nf_conn *ct)
++{
++#if IS_ENABLED(CONFIG_NF_CONNTRACK)
++	struct nf_conn_qos *qos;
++
++	qos = nf_ct_ext_find(ct, NF_CT_EXT_QOS);
++	if (qos)
++		memset(qos, 0, sizeof(struct nf_conn_qos));
++#endif
++}
++
++void nf_conntrack_qos_pernet_init(struct net *net);
++
++#endif /* _NF_CONNTRACK_QOS_H */
+diff --git a/include/net/netfilter/nf_flow_table.h b/include/net/netfilter/nf_flow_table.h
+index 2709725..b96d91c 100644
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -36,6 +36,7 @@ struct nf_flow_key {
+ 	};
+ 	struct flow_dissector_key_tcp			tcp;
+ 	struct flow_dissector_key_ports			tp;
++	struct flow_dissector_key_ip			ip;
+ } __aligned(BITS_PER_LONG / 8); /* Ensure that we can do comparisons as longs. */
+ 
+ struct nf_flow_match {
+@@ -137,6 +138,7 @@ struct flow_offload_tuple {
+ 					xmit_type:3,
+ 					encap_num:2,
+ 					in_vlan_ingress:2;
++	u8				tos;
+ 	u16				mtu;
+ 	union {
+ 		struct {
+diff --git a/include/net/netns/conntrack.h b/include/net/netns/conntrack.h
+index bae9148..b194496 100644
+--- a/include/net/netns/conntrack.h
++++ b/include/net/netns/conntrack.h
+@@ -100,6 +100,7 @@ struct netns_ct {
+ 	u8			sysctl_log_invalid; /* Log invalid packets */
+ 	u8			sysctl_events;
+ 	u8			sysctl_acct;
++	u8			sysctl_qos;
+ 	u8			sysctl_tstamp;
+ 	u8			sysctl_checksum;
+ 
+diff --git a/net/netfilter/Makefile b/net/netfilter/Makefile
+index 08e0910..179884c 100644
+--- a/net/netfilter/Makefile
++++ b/net/netfilter/Makefile
+@@ -4,7 +4,7 @@ netfilter-objs := core.o nf_log.o nf_queue.o nf_sockopt.o utils.o
+ nf_conntrack-y	:= nf_conntrack_core.o nf_conntrack_standalone.o nf_conntrack_expect.o nf_conntrack_helper.o \
+ 		   nf_conntrack_proto.o nf_conntrack_proto_generic.o nf_conntrack_proto_tcp.o nf_conntrack_proto_udp.o \
+ 		   nf_conntrack_proto_icmp.o \
+-		   nf_conntrack_extend.o nf_conntrack_acct.o nf_conntrack_seqadj.o
++		   nf_conntrack_extend.o nf_conntrack_acct.o nf_conntrack_qos.o nf_conntrack_seqadj.o
+ 
+ nf_conntrack-$(subst m,y,$(CONFIG_IPV6)) += nf_conntrack_proto_icmpv6.o
+ nf_conntrack-$(CONFIG_NF_CONNTRACK_TIMEOUT) += nf_conntrack_timeout.o
+diff --git a/net/netfilter/nf_conntrack_core.c b/net/netfilter/nf_conntrack_core.c
+index cdcc01f..e2f192f 100644
+--- a/net/netfilter/nf_conntrack_core.c
++++ b/net/netfilter/nf_conntrack_core.c
+@@ -41,6 +41,7 @@
+ #include <net/netfilter/nf_conntrack_core.h>
+ #include <net/netfilter/nf_conntrack_extend.h>
+ #include <net/netfilter/nf_conntrack_acct.h>
++#include <net/netfilter/nf_conntrack_qos.h>
+ #include <net/netfilter/nf_conntrack_ecache.h>
+ #include <net/netfilter/nf_conntrack_zones.h>
+ #include <net/netfilter/nf_conntrack_timestamp.h>
+@@ -1796,6 +1797,7 @@ init_conntrack(struct net *net, struct nf_conn *tmpl,
+ 				      GFP_ATOMIC);
+ 
+ 	nf_ct_acct_ext_add(ct, GFP_ATOMIC);
++	nf_ct_qos_ext_add(ct, GFP_ATOMIC);
+ 	nf_ct_tstamp_ext_add(ct, GFP_ATOMIC);
+ 	nf_ct_labels_ext_add(ct);
+ 
+@@ -2763,6 +2765,7 @@ int nf_conntrack_init_net(struct net *net)
+ 		goto err_expect;
+ 
+ 	nf_conntrack_acct_pernet_init(net);
++	nf_conntrack_qos_pernet_init(net);
+ 	nf_conntrack_tstamp_pernet_init(net);
+ 	nf_conntrack_ecache_pernet_init(net);
+ 	nf_conntrack_proto_pernet_init(net);
+diff --git a/net/netfilter/nf_conntrack_extend.c b/net/netfilter/nf_conntrack_extend.c
+index dd62cc1..986d220 100644
+--- a/net/netfilter/nf_conntrack_extend.c
++++ b/net/netfilter/nf_conntrack_extend.c
+@@ -23,6 +23,7 @@
+ #include <net/netfilter/nf_conntrack_labels.h>
+ #include <net/netfilter/nf_conntrack_synproxy.h>
+ #include <net/netfilter/nf_conntrack_act_ct.h>
++#include <net/netfilter/nf_conntrack_qos.h>
+ #include <net/netfilter/nf_nat.h>
+ 
+ #define NF_CT_EXT_PREALLOC	128u /* conntrack events are on by default */
+@@ -36,6 +37,7 @@ static const u8 nf_ct_ext_type_len[NF_CT_EXT_NUM] = {
+ #endif
+ 	[NF_CT_EXT_SEQADJ] = sizeof(struct nf_conn_seqadj),
+ 	[NF_CT_EXT_ACCT] = sizeof(struct nf_conn_acct),
++	[NF_CT_EXT_QOS] = sizeof(struct nf_conn_qos),
+ #ifdef CONFIG_NF_CONNTRACK_EVENTS
+ 	[NF_CT_EXT_ECACHE] = sizeof(struct nf_conntrack_ecache),
+ #endif
+diff --git a/net/netfilter/nf_conntrack_netlink.c b/net/netfilter/nf_conntrack_netlink.c
+index 18a91c0..d5287f1 100644
+--- a/net/netfilter/nf_conntrack_netlink.c
++++ b/net/netfilter/nf_conntrack_netlink.c
+@@ -42,6 +42,7 @@
+ #include <net/netfilter/nf_conntrack_l4proto.h>
+ #include <net/netfilter/nf_conntrack_tuple.h>
+ #include <net/netfilter/nf_conntrack_acct.h>
++#include <net/netfilter/nf_conntrack_qos.h>
+ #include <net/netfilter/nf_conntrack_zones.h>
+ #include <net/netfilter/nf_conntrack_timestamp.h>
+ #include <net/netfilter/nf_conntrack_labels.h>
+@@ -2305,6 +2306,7 @@ ctnetlink_create_conntrack(struct net *net,
+ 		goto err2;
+ 
+ 	nf_ct_acct_ext_add(ct, GFP_ATOMIC);
++	nf_ct_qos_ext_add(ct, GFP_ATOMIC);
+ 	nf_ct_tstamp_ext_add(ct, GFP_ATOMIC);
+ 	nf_ct_ecache_ext_add(ct, 0, 0, GFP_ATOMIC);
+ 	nf_ct_labels_ext_add(ct);
+diff --git a/net/netfilter/nf_conntrack_qos.c b/net/netfilter/nf_conntrack_qos.c
+new file mode 100644
+index 0000000..ae1de9a
+--- /dev/null
++++ b/net/netfilter/nf_conntrack_qos.c
+@@ -0,0 +1,25 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* QoS handling for netfilter. */
++
++#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
++
++#include <linux/netfilter.h>
++#include <linux/slab.h>
++#include <linux/kernel.h>
++#include <linux/moduleparam.h>
++#include <linux/export.h>
++
++#include <net/netfilter/nf_conntrack.h>
++#include <net/netfilter/nf_conntrack_extend.h>
++#include <net/netfilter/nf_conntrack_qos.h>
++
++static unsigned short nf_ct_qos __read_mostly = 3;
++
++module_param_named(qos, nf_ct_qos, ushort, 0644);
++MODULE_PARM_DESC(qos, "Enable connection tracking qos.");
++
++void nf_conntrack_qos_pernet_init(struct net *net)
++{
++	net->ct.sysctl_qos = nf_ct_qos;
++}
++
+diff --git a/net/netfilter/nf_conntrack_standalone.c b/net/netfilter/nf_conntrack_standalone.c
+index 39fd990..fd41c64 100644
+--- a/net/netfilter/nf_conntrack_standalone.c
++++ b/net/netfilter/nf_conntrack_standalone.c
+@@ -21,6 +21,7 @@
+ #include <net/netfilter/nf_conntrack_expect.h>
+ #include <net/netfilter/nf_conntrack_helper.h>
+ #include <net/netfilter/nf_conntrack_acct.h>
++#include <net/netfilter/nf_conntrack_qos.h>
+ #include <net/netfilter/nf_conntrack_zones.h>
+ #include <net/netfilter/nf_conntrack_timestamp.h>
+ #include <linux/rculist_nulls.h>
+@@ -289,6 +290,18 @@ seq_print_acct(struct seq_file *s, const struct nf_conn *ct, int dir)
+ 		   (unsigned long long)atomic64_read(&counter[dir].bytes));
+ }
+ 
++static void
++seq_print_qos(struct seq_file *s, const struct nf_conn *ct, int dir)
++{
++	struct nf_conn_qos *qos;
++
++	qos = nf_conn_qos_find(ct);
++	if (!qos)
++		return;
++
++	seq_printf(s, "tos=%u ", qos->tos[dir].value);
++}
++
+ /* return 0 on success, 1 in case of error */
+ static int ct_seq_show(struct seq_file *s, void *v)
+ {
+@@ -340,6 +353,8 @@ static int ct_seq_show(struct seq_file *s, void *v)
+ 
+ 	seq_print_acct(s, ct, IP_CT_DIR_ORIGINAL);
+ 
++	seq_print_qos(s, ct, IP_CT_DIR_ORIGINAL);
++
+ 	if (!(test_bit(IPS_SEEN_REPLY_BIT, &ct->status)))
+ 		seq_puts(s, "[UNREPLIED] ");
+ 
+@@ -349,6 +364,8 @@ static int ct_seq_show(struct seq_file *s, void *v)
+ 
+ 	seq_print_acct(s, ct, IP_CT_DIR_REPLY);
+ 
++	seq_print_qos(s, ct, IP_CT_DIR_REPLY);
++
+ 	if (test_bit(IPS_HW_OFFLOAD_BIT, &ct->status))
+ 		seq_puts(s, "[HW_OFFLOAD] ");
+ 	else if (test_bit(IPS_OFFLOAD_BIT, &ct->status))
+@@ -608,6 +625,7 @@ enum nf_ct_sysctl_index {
+ 	NF_SYSCTL_CT_LOG_INVALID,
+ 	NF_SYSCTL_CT_EXPECT_MAX,
+ 	NF_SYSCTL_CT_ACCT,
++	NF_SYSCTL_CT_QOS,
+ #ifdef CONFIG_NF_CONNTRACK_EVENTS
+ 	NF_SYSCTL_CT_EVENTS,
+ #endif
+@@ -724,6 +742,15 @@ static struct ctl_table nf_ct_sysctl_table[] = {
+ 		.extra1 	= SYSCTL_ZERO,
+ 		.extra2 	= SYSCTL_ONE,
+ 	},
++	[NF_SYSCTL_CT_QOS] = {
++		.procname	= "nf_conntrack_qos",
++		.data		= &init_net.ct.sysctl_qos,
++		.maxlen		= sizeof(u8),
++		.mode		= 0644,
++		.proc_handler	= proc_dou8vec_minmax,
++		.extra1 	= SYSCTL_ZERO,
++		.extra2 	= SYSCTL_TWO_HUNDRED,
++	},
+ #ifdef CONFIG_NF_CONNTRACK_EVENTS
+ 	[NF_SYSCTL_CT_EVENTS] = {
+ 		.procname	= "nf_conntrack_events",
+diff --git a/net/netfilter/nf_flow_table_core.c b/net/netfilter/nf_flow_table_core.c
+index f903032..6e3a8e9 100644
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -9,6 +9,7 @@
+ #include <net/ip6_route.h>
+ #include <net/netfilter/nf_flow_table.h>
+ #include <net/netfilter/nf_conntrack.h>
++#include <net/netfilter/nf_conntrack_qos.h>
+ #include <net/netfilter/nf_conntrack_core.h>
+ #include <net/netfilter/nf_conntrack_l4proto.h>
+ #include <net/netfilter/nf_conntrack_tuple.h>
+@@ -341,6 +342,7 @@ static void flow_offload_del(struct nf_flowtable *flow_table,
+ 
+ void flow_offload_teardown(struct flow_offload *flow)
+ {
++	nf_ct_qos_clear(flow->ct);
+ 	clear_bit(IPS_OFFLOAD_BIT, &flow->ct->status);
+ 	set_bit(NF_FLOW_TEARDOWN, &flow->flags);
+ 	flow_offload_fixup_ct(flow->ct);
+diff --git a/net/netfilter/nf_flow_table_ip.c b/net/netfilter/nf_flow_table_ip.c
+index 98edcaa..34b432b 100644
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -372,6 +372,7 @@ static int nf_flow_offload_forward(struct nf_flowtable_ctx *ctx,
+ 	struct flow_offload *flow;
+ 	unsigned int thoff, mtu;
+ 	struct iphdr *iph;
++	struct net *net;
+ 
+ 	dir = tuplehash->tuple.dir;
+ 	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
+@@ -393,6 +394,10 @@ static int nf_flow_offload_forward(struct nf_flowtable_ctx *ctx,
+ 	if (skb_try_make_writable(skb, thoff + ctx->hdrsize))
+ 		return -1;
+ 
++	net = nf_ct_net(flow->ct);
++	if (net->ct.sysctl_qos)
++		ipv4_change_dsfield(iph, 0u, flow->tuplehash[dir].tuple.tos);
++
+ 	flow_offload_refresh(flow_table, flow, false);
+ 
+ 	nf_flow_encap_pop(skb, tuplehash);
+@@ -651,6 +656,7 @@ static int nf_flow_offload_ipv6_forward(struct nf_flowtable_ctx *ctx,
+ 	struct flow_offload *flow;
+ 	unsigned int thoff, mtu;
+ 	struct ipv6hdr *ip6h;
++	struct net *net;
+ 
+ 	dir = tuplehash->tuple.dir;
+ 	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
+@@ -672,6 +678,10 @@ static int nf_flow_offload_ipv6_forward(struct nf_flowtable_ctx *ctx,
+ 	if (skb_try_make_writable(skb, thoff + ctx->hdrsize))
+ 		return -1;
+ 
++	net = nf_ct_net(flow->ct);
++	if (net->ct.sysctl_qos)
++		ipv6_change_dsfield(ip6h, 0u, flow->tuplehash[dir].tuple.tos);
++
+ 	flow_offload_refresh(flow_table, flow, false);
+ 
+ 	nf_flow_encap_pop(skb, tuplehash);
+diff --git a/net/netfilter/nf_flow_table_offload.c b/net/netfilter/nf_flow_table_offload.c
+index b9cbb34..ee2e12f 100644
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -103,6 +103,7 @@ static int nf_flow_rule_match(struct nf_flow_match *match,
+ 	NF_FLOW_DISSECTOR(match, FLOW_DISSECTOR_KEY_IPV6_ADDRS, ipv6);
+ 	NF_FLOW_DISSECTOR(match, FLOW_DISSECTOR_KEY_TCP, tcp);
+ 	NF_FLOW_DISSECTOR(match, FLOW_DISSECTOR_KEY_PORTS, tp);
++	NF_FLOW_DISSECTOR(match, FLOW_DISSECTOR_KEY_IP, ip);
+ 
+ 	if (other_dst && other_dst->lwtstate) {
+ 		tun_info = lwt_tun_info(other_dst->lwtstate);
+@@ -182,9 +183,13 @@ static int nf_flow_rule_match(struct nf_flow_match *match,
+ 	key->basic.ip_proto = tuple->l4proto;
+ 	mask->basic.ip_proto = 0xff;
+ 
++	key->ip.tos = tuple->tos;
++	mask->ip.tos = 0xff;
++
+ 	match->dissector.used_keys |= BIT_ULL(FLOW_DISSECTOR_KEY_META) |
+ 				      BIT_ULL(FLOW_DISSECTOR_KEY_CONTROL) |
+-				      BIT_ULL(FLOW_DISSECTOR_KEY_BASIC);
++				      BIT_ULL(FLOW_DISSECTOR_KEY_BASIC) |
++				      BIT_ULL(FLOW_DISSECTOR_KEY_IP);
+ 
+ 	switch (tuple->l4proto) {
+ 	case IPPROTO_TCP:
+diff --git a/net/netfilter/xt_FLOWOFFLOAD.c b/net/netfilter/xt_FLOWOFFLOAD.c
+index 6d0f89b..ab56262 100644
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -12,6 +12,7 @@
+ #include <linux/if_vlan.h>
+ #include <net/ip.h>
+ #include <net/netfilter/nf_conntrack.h>
++#include <net/netfilter/nf_conntrack_qos.h>
+ #include <net/netfilter/nf_conntrack_extend.h>
+ #include <net/netfilter/nf_conntrack_helper.h>
+ #include <net/netfilter/nf_flow_table.h>
+@@ -50,6 +51,19 @@ static DEFINE_SPINLOCK(hooks_lock);
+ 
+ struct xt_flowoffload_table flowtable[2];
+ 
++static void
++xt_flowoffload_dscp_init(struct flow_offload *flow, const struct nf_conn *ct,
++			 enum ip_conntrack_dir dir)
++{
++	struct nf_conn_qos *qos;
++
++	qos = nf_conn_qos_find(ct);
++	if (qos) {
++		flow->tuplehash[dir].tuple.tos = qos->tos[dir].value;
++		flow->tuplehash[!dir].tuple.tos = qos->tos[!dir].value;
++	}
++}
++
+ static unsigned int
+ xt_flowoffload_net_hook(void *priv, struct sk_buff *skb,
+ 			const struct nf_hook_state *state)
+@@ -636,6 +650,11 @@ flowoffload_tg(struct sk_buff *skb, const struct xt_action_param *par)
+ 	struct net_device *devs[2] = {};
+ 	struct nf_conn *ct;
+ 	struct net *net;
++	struct nf_conn_qos *qos;
++	struct ipv6hdr *ip6h;
++	struct iphdr *iph;
++	u32 offset = 0;
++	u8 tos = 0;
+ 
+ 	if (xt_flowoffload_skip(skb, xt_family(par)))
+ 		return XT_CONTINUE;
+@@ -669,6 +688,28 @@ flowoffload_tg(struct sk_buff *skb, const struct xt_action_param *par)
+ 
+ 	dir = CTINFO2DIR(ctinfo);
+ 
++	qos = nf_conn_qos_find(ct);
++	if (qos) {
++		struct net *net = nf_ct_net(ct);
++
++		switch (xt_family(par)) {
++		case NFPROTO_IPV4:
++			iph = (struct iphdr *)(skb_network_header(skb) + offset);
++			tos = iph->tos;
++			break;
++		case NFPROTO_IPV6:
++			ip6h = (struct ipv6hdr *)(skb_network_header(skb) + offset);
++			tos = ipv6_get_dsfield(ip6h);
++			break;
++		}
++
++		qos->tos[dir].value = tos;
++		atomic64_add(1, &qos->tos[dir].counter);
++
++		if (atomic64_read(&qos->tos[dir].counter) < net->ct.sysctl_qos)
++			return XT_CONTINUE;
++	}
++
+ 	devs[dir] = xt_out(par);
+ 	devs[!dir] = xt_in(par);
+ 
+@@ -692,6 +733,8 @@ flowoffload_tg(struct sk_buff *skb, const struct xt_action_param *par)
+ 
+ 	flow_offload_route_init(flow, &route);
+ 
++	xt_flowoffload_dscp_init(flow, ct, dir);
++
+ 	if (tcph) {
+ 		ct->proto.tcp.seen[0].flags |= IP_CT_TCP_FLAG_BE_LIBERAL;
+ 		ct->proto.tcp.seen[1].flags |= IP_CT_TCP_FLAG_BE_LIBERAL;
+-- 
+2.45.2
+

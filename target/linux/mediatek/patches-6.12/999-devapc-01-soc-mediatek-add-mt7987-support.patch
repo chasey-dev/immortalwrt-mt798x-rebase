@@ -1,0 +1,177 @@
+--- a/drivers/soc/mediatek/mtk-devapc.c
++++ b/drivers/soc/mediatek/mtk-devapc.c
+@@ -15,7 +16,7 @@
+ #define VIO_MOD_TO_REG_IND(m)	((m) / 32)
+ #define VIO_MOD_TO_REG_OFF(m)	((m) % 32)
+ 
+-struct mtk_devapc_vio_dbgs {
++struct mtk_devapc_vio_dbgs_v1 {
+ 	union {
+ 		u32 vio_dbg0;
+ 		struct {
+@@ -31,12 +32,29 @@ struct mtk_devapc_vio_dbgs {
+ 	u32 vio_dbg1;
+ };
+ 
++struct mtk_devapc_vio_dbgs_v2 {
++	union {
++		u32 vio_dbg0;
++		struct {
++			u32 dmnid:6;
++			u32 vio_w:1;
++			u32 vio_r:1;
++		} dbg0_bits;
++	};
++
++	u32 vio_dbg1;
++	u32 vio_dbg2;
++	u32 vio_dbg3;
++};
++
+ struct mtk_devapc_regs_ofs {
+ 	/* reg offset */
+ 	u32 vio_mask_offset;
+ 	u32 vio_sta_offset;
+ 	u32 vio_dbg0_offset;
+ 	u32 vio_dbg1_offset;
++	u32 vio_dbg2_offset;
++	u32 vio_dbg3_offset;
+ 	u32 apc_con_offset;
+ 	u32 vio_shift_sta_offset;
+ 	u32 vio_shift_sel_offset;
+@@ -46,6 +64,7 @@ struct mtk_devapc_regs_ofs {
+ struct mtk_devapc_data {
+ 	/* numbers of violation index */
+ 	u32 vio_idx_num;
++	u32 version;
+ 	const struct mtk_devapc_regs_ofs *regs_ofs;
+ };
+ 
+@@ -154,13 +173,9 @@ static int devapc_sync_vio_dbg(struct mt
+ 	return true;
+ }
+ 
+-/*
+- * devapc_extract_vio_dbg - extract full violation information after doing
+- *                          shift mechanism.
+- */
+-static void devapc_extract_vio_dbg(struct mtk_devapc_context *ctx)
++static void devapc_extract_vio_dbg_v1(struct mtk_devapc_context *ctx)
+ {
+-	struct mtk_devapc_vio_dbgs vio_dbgs;
++	struct mtk_devapc_vio_dbgs_v1 vio_dbgs;
+ 	void __iomem *vio_dbg0_reg;
+ 	void __iomem *vio_dbg1_reg;
+ 
+@@ -181,6 +196,46 @@ static void devapc_extract_vio_dbg(struc
+ 		 vio_dbgs.vio_dbg1);
+ }
+ 
++static void devapc_extract_vio_dbg_v2(struct mtk_devapc_context *ctx)
++{
++	struct mtk_devapc_vio_dbgs_v2 vio_dbgs;
++	void __iomem *vio_dbg0_reg;
++	void __iomem *vio_dbg1_reg;
++	void __iomem *vio_dbg2_reg;
++	void __iomem *vio_dbg3_reg;
++
++	vio_dbg0_reg = ctx->infra_base + ctx->data->regs_ofs->vio_dbg0_offset;
++	vio_dbg1_reg = ctx->infra_base + ctx->data->regs_ofs->vio_dbg1_offset;
++	vio_dbg2_reg = ctx->infra_base + ctx->data->regs_ofs->vio_dbg2_offset;
++	vio_dbg3_reg = ctx->infra_base + ctx->data->regs_ofs->vio_dbg3_offset;
++
++	vio_dbgs.vio_dbg0 = readl(vio_dbg0_reg);
++	vio_dbgs.vio_dbg1 = readl(vio_dbg1_reg);
++	vio_dbgs.vio_dbg2 = readl(vio_dbg2_reg);
++	vio_dbgs.vio_dbg3 = readl(vio_dbg3_reg);
++
++	if (vio_dbgs.dbg0_bits.vio_w)
++		dev_info(ctx->dev, "Write Violation\n");
++	else if (vio_dbgs.dbg0_bits.vio_r)
++		dev_info(ctx->dev, "Read Violation\n");
++
++	printk("Bus ID:0x%x, Dom ID:0x%x, Vio Addr:0x%llx\n",
++		 vio_dbgs.vio_dbg1, vio_dbgs.dbg0_bits.dmnid,
++		 ((u64)vio_dbgs.vio_dbg3 << 32) | vio_dbgs.vio_dbg2);
++}
++
++/*
++ * devapc_extract_vio_dbg - extract full violation information after doing
++ *                          shift mechanism.
++ */
++static void devapc_extract_vio_dbg(struct mtk_devapc_context *ctx)
++{
++	if (ctx->data->version == 1)
++		devapc_extract_vio_dbg_v1(ctx);
++	else
++		devapc_extract_vio_dbg_v2(ctx);
++}
++
+ /*
+  * devapc_violation_irq - the devapc Interrupt Service Routine (ISR) will dump
+  *                        violation information including which master violates
+@@ -229,16 +284,37 @@ static const struct mtk_devapc_regs_ofs
+ 	.vio_shift_con_offset = 0xF20,
+ };
+ 
++static const struct mtk_devapc_regs_ofs devapc_regs_ofs_mt7986 = {
++	.vio_mask_offset = 0x0,
++	.vio_sta_offset = 0x400,
++	.vio_dbg0_offset = 0x900,
++	.vio_dbg1_offset = 0x904,
++	.vio_dbg2_offset = 0x908,
++	.vio_dbg3_offset = 0x90C,
++	.apc_con_offset = 0xF00,
++	.vio_shift_sta_offset = 0xF20,
++	.vio_shift_sel_offset = 0xF30,
++	.vio_shift_con_offset = 0xF10,
++};
++
+ static const struct mtk_devapc_data devapc_mt6779 = {
+ 	.vio_idx_num = 511,
++	.version = 1,
+ 	.regs_ofs = &devapc_regs_ofs_mt6779,
+ };
+ 
+ static const struct mtk_devapc_data devapc_mt8186 = {
+ 	.vio_idx_num = 519,
++	.version = 1,
+ 	.regs_ofs = &devapc_regs_ofs_mt6779,
+ };
+ 
++static const struct mtk_devapc_data devapc_mt7987 = {
++	.vio_idx_num = 283,
++	.version = 2,
++	.regs_ofs = &devapc_regs_ofs_mt7986,
++};
++
+ static const struct of_device_id mtk_devapc_dt_match[] = {
+ 	{
+ 		.compatible = "mediatek,mt6779-devapc",
+@@ -247,6 +323,9 @@ static const struct of_device_id mtk_dev
+ 		.compatible = "mediatek,mt8186-devapc",
+ 		.data = &devapc_mt8186,
+ 	}, {
++		.compatible = "mediatek,mt7987-devapc",
++		.data = &devapc_mt7987,
++	}, {
+ 	},
+ };
+ MODULE_DEVICE_TABLE(of, mtk_devapc_dt_match);
+@@ -278,10 +357,12 @@ static int mtk_devapc_probe(struct platf
+ 		goto err;
+ 	}
+ 
+-	ctx->infra_clk = devm_clk_get_enabled(&pdev->dev, "devapc-infra-clock");
+-	if (IS_ERR(ctx->infra_clk)) {
+-		ret = -EINVAL;
+-		goto err;
++	if (ctx->data->version == 1) {
++		ctx->infra_clk = devm_clk_get_enabled(&pdev->dev, "devapc-infra-clock");
++		if (IS_ERR(ctx->infra_clk)) {
++			ret = -EINVAL;
++			goto err;
++		}
+ 	}
+ 
+ 	ret = devm_request_irq(&pdev->dev, devapc_irq, devapc_violation_irq,

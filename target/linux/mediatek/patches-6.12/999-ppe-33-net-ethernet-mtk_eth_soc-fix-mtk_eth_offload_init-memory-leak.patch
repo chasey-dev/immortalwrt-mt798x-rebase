@@ -1,0 +1,41 @@
+From d933c660a042bd291511cba53b9cfb444d49fbaa Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 20 Jan 2026 16:35:52 +0800
+Subject: [PATCH] net: ethernet: mtk_ppe: fix mtk_eth_offload_init memory
+ leak
+
+---
+ drivers/net/ethernet/mediatek/mtk_ppe.c         | 1 +
+ drivers/net/ethernet/mediatek/mtk_ppe_offload.c | 4 +---
+ 4 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_ppe.c b/drivers/net/ethernet/mediatek/mtk_ppe.c
+index 33adfe7..ad94f0e 100644
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
+@@ -1215,6 +1215,7 @@ void mtk_ppe_deinit(struct mtk_eth *eth)
+ 			return;
+ 		rhashtable_destroy(&eth->ppe[i]->l2_flows);
+ 	}
++	rhashtable_destroy(&eth->flow_table);
+ }
+ 
+ static void mtk_ppe_init_foe_table(struct mtk_ppe *ppe)
+diff --git a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
+index 7d36012..993ab42 100644
+--- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
+@@ -779,9 +779,7 @@ int mtk_eth_setup_tc(struct net_device *dev, enum tc_setup_type type,
+ 	}
+ }
+ 
+-int mtk_eth_offload_init(struct mtk_eth *eth, u8 id)
++int mtk_eth_offload_init(struct mtk_eth *eth)
+ {
+-	if (!eth->ppe[id] || !eth->ppe[id]->foe_table)
+-		return 0;
+ 	return rhashtable_init(&eth->flow_table, &mtk_flow_ht_params);
+ }
+-- 
+2.45.2
+

@@ -1,0 +1,67 @@
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -244,6 +244,7 @@ static int flow_offload_eth_src(struct n
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+ 		addr = this_tuple->out.h_source;
+ 		break;
++	case FLOW_OFFLOAD_XMIT_XFRM:
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+ 		other_tuple = &flow->tuplehash[!dir].tuple;
+ 		dev = dev_get_by_index(net, other_tuple->iifidx);
+@@ -294,6 +295,7 @@ static int flow_offload_eth_dst(struct n
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+ 		ether_addr_copy(ha, this_tuple->out.h_dest);
+ 		break;
++	case FLOW_OFFLOAD_XMIT_XFRM:
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+ 		other_tuple = &flow->tuplehash[!dir].tuple;
+ 		daddr = &other_tuple->src_v4;
+@@ -562,6 +564,7 @@ static void flow_offload_redirect(struct
+ 		this_tuple = &flow->tuplehash[dir].tuple;
+ 		ifindex = this_tuple->out.hw_ifidx;
+ 		break;
++	case FLOW_OFFLOAD_XMIT_XFRM:
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+ 		other_tuple = &flow->tuplehash[!dir].tuple;
+ 		ifindex = other_tuple->iifidx;
+@@ -602,6 +605,12 @@ static void flow_offload_encap_tunnel(co
+ 			entry->tunnel = tun_info;
+ 		}
+ 	}
++
++	if (dst && dst->xfrm) {
++		entry = flow_action_entry_next(flow_rule);
++		entry->id = FLOW_ACTION_IPSEC_PUSH;
++		memcpy(&entry->ipsec.xs, dst->xfrm, sizeof(struct xfrm_state));
++	}
+ }
+ 
+ static void flow_offload_decap_tunnel(const struct flow_offload *flow,
+--- a/include/net/flow_offload.h
++++ b/include/net/flow_offload.h
+@@ -5,6 +5,7 @@
+ #include <linux/list.h>
+ #include <linux/netlink.h>
+ #include <net/flow_dissector.h>
++#include <net/xfrm.h>
+ 
+ struct flow_match {
+ 	struct flow_dissector	*dissector;
+@@ -184,6 +185,7 @@ enum flow_action_id {
+ 	FLOW_ACTION_VLAN_PUSH_ETH,
+ 	FLOW_ACTION_VLAN_POP_ETH,
+ 	FLOW_ACTION_CONTINUE,
++	FLOW_ACTION_IPSEC_PUSH,
+ 	NUM_FLOW_ACTIONS,
+ };
+ 
+@@ -327,6 +329,9 @@ struct flow_action_entry {
+ 		struct {				/* FLOW_ACTION_PPPOE_PUSH */
+ 			u16		sid;
+ 		} pppoe;
++		struct {
++			struct xfrm_state xs;
++		} ipsec;
+ 	};
+ 	struct flow_action_cookie *user_cookie; /* user defined action cookie */
+ };

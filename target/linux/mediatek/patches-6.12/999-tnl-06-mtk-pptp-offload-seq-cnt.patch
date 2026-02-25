@@ -1,0 +1,55 @@
+--- a/drivers/net/ppp/pptp.c
++++ b/drivers/net/ppp/pptp.c
+@@ -41,6 +41,9 @@
+ 
+ #define MAX_CALLID 65535
+ 
++int (*mtk_pptp_seq_next)(u16 call_id, u32 *val) = NULL;
++EXPORT_SYMBOL(mtk_pptp_seq_next);
++
+ static DECLARE_BITMAP(callid_bitmap, MAX_CALLID + 1);
+ static struct pppox_sock __rcu **callid_sock;
+ 
+@@ -158,6 +161,7 @@ static int pptp_xmit(struct ppp_channel
+ 	int islcp;
+ 	int len;
+ 	unsigned char *data;
++	u32 seq_sent_hw;
+ 	__u32 seq_recv;
+ 	struct rtable *rt;
+ 	struct net_device *tdev;
+@@ -220,7 +224,14 @@ static int pptp_xmit(struct ppp_channel
+ 	hdr->gre_hd.protocol = GRE_PROTO_PPP;
+ 	hdr->call_id = htons(opt->dst_addr.call_id);
+ 
+-	hdr->seq = htonl(++opt->seq_sent);
++	if (mtk_pptp_seq_next && !mtk_pptp_seq_next(opt->dst_addr.call_id,
++						    &seq_sent_hw)) {
++		opt->seq_sent = seq_sent_hw;
++		hdr->seq = htonl(opt->seq_sent);
++	} else {
++		hdr->seq = htonl(++opt->seq_sent);
++	}
++
+ 	if (opt->ack_sent != seq_recv)	{
+ 		/* send ack with this message */
+ 		hdr->gre_hd.flags |= GRE_ACK;
+--- a/include/net/pptp.h
++++ b/include/net/pptp.h
+@@ -5,6 +5,8 @@
+ #include <linux/types.h>
+ #include <net/gre.h>
+ 
++#include <net/gre.h>
++
+ #define PPP_LCP_ECHOREQ 0x09
+ #define PPP_LCP_ECHOREP 0x0A
+ #define SC_RCV_BITS     (SC_RCV_B7_1|SC_RCV_B7_0|SC_RCV_ODDP|SC_RCV_EVNP)
+@@ -23,5 +25,7 @@ struct pptp_gre_header {
+ 	__be32 ack;
+ } __packed;
+ 
++/* symbol exported from linux kernel driver/net/ppp/pptp.c */
++extern int (*mtk_pptp_seq_next)(uint16_t call_id, uint32_t *val);
+ 
+ #endif

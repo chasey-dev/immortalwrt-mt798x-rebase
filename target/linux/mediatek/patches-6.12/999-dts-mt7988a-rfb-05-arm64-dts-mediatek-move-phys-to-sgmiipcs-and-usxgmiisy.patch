@@ -1,0 +1,65 @@
+From f8a9077417d95647cd4a1d545a6ecdac91357088 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Fri, 3 Oct 2025 10:33:14 +0800
+Subject: [PATCH] arm64: dts: mt7988: move phys to sgmiipcs and usxgmiisys
+ node
+
+---
+ arch/arm64/boot/dts/mediatek/mt7988a.dtsi | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+index a0aad82..d54c6a2 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -325,6 +325,7 @@ sgmiisys0: syscon@10060000 {
+ 
+ 			sgmiipcs0: pcs {
+ 				compatible = "mediatek,mt7988-sgmii";
++				phys = <&xfi_tphy0>;
+ 				clocks = <&topckgen CLK_TOP_SGM_0_SEL>,
+ 					 <&sgmiisys0 CLK_SGM0_TX_EN>,
+ 					 <&sgmiisys0 CLK_SGM0_RX_EN>;
+@@ -344,6 +345,7 @@ sgmiisys1: syscon@10070000 {
+ 
+ 			sgmiipcs1: pcs {
+ 				compatible = "mediatek,mt7988-sgmii";
++				phys = <&xfi_tphy1>;
+ 				clocks = <&topckgen CLK_TOP_SGM_1_SEL>,
+ 					 <&sgmiisys1 CLK_SGM1_TX_EN>,
+ 					 <&sgmiisys1 CLK_SGM1_RX_EN>;
+@@ -356,6 +358,7 @@ usxgmiisys0: pcs@10080000 {
+ 			compatible = "mediatek,mt7988-usxgmiisys";
+ 			reg = <0 0x10080000 0 0x1000>;
+ 			resets = <&watchdog 12>;
++			phys = <&xfi_tphy0>;
+ 			clocks = <&topckgen CLK_TOP_USXGMII_SBUS_0_SEL>;
+ 			#pcs-cells = <0>;
+ 		};
+@@ -364,6 +367,7 @@ usxgmiisys1: pcs@10081000 {
+ 			compatible = "mediatek,mt7988-usxgmiisys";
+ 			reg = <0 0x10081000 0 0x1000>;
+ 			resets = <&watchdog 13>;
++			phys = <&xfi_tphy1>;
+ 			clocks = <&topckgen CLK_TOP_USXGMII_SBUS_1_SEL>;
+ 			#pcs-cells = <0>;
+ 		};
+@@ -1179,7 +1183,6 @@ gmac1: mac@1 {
+ 				compatible = "mediatek,eth-mac";
+ 				reg = <1>;
+ 				pcs-handle = <&sgmiipcs1>, <&usxgmiisys1>;
+-				phys = <&xfi_tphy1>;
+ 				status = "disabled";
+ 			};
+ 
+@@ -1187,7 +1190,6 @@ gmac2: mac@2 {
+ 				compatible = "mediatek,eth-mac";
+ 				reg = <2>;
+ 				pcs-handle = <&sgmiipcs0>, <&usxgmiisys0>;
+-				phys = <&xfi_tphy0>;
+ 				status = "disabled";
+ 			};
+ 
+-- 
+2.45.2
+

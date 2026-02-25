@@ -1,0 +1,1651 @@
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spidev.dtso
+@@ -0,0 +1,28 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Tim.Kuo <Tim.Kuo@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@1 {
++		target = <&spi1>;
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spic_pins>;
++			status = "okay";
++
++			spi_dev1: spi@0 {
++				compatible = "rohm,dh2228fv";
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++				spi-cs-setup-delay-ns = <90>;
++				spi-cs-hold-delay-ns = <90>;
++				spi-cs-inactive-delay-ns = <90>;
++			};
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth1-i2p5g.dtso
+@@ -0,0 +1,30 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target = <&gmac1>;
++		__overlay__ {
++			phy-mode = "internal";
++			phy-handle = <&phy15>;
++			status = "okay";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc_netsys/ethernet@15100000/mdio-bus";
++		__overlay__ {
++			/* built-in 2.5G Ethernet PHY */
++			phy15: phy@15 {
++				pinctrl-names = "i2p5gbe-led";
++				pinctrl-0 = <&i2p5gbe_led0_pins>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				reg = <15>;
++				phy-mode = "internal";
++			};
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-usb.dtso
+@@ -0,0 +1,25 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/phy/phy.h>
++
++/ {
++	fragment@0 {
++		target-path = "/soc/usb-phy@11c50000/usb-phy@11c50700";
++		__overlay__ {
++			status = "okay";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc/usb@11200000";
++		__overlay__ {
++			phys = <&tphyu2port0 PHY_TYPE_USB2>,
++			       <&tphyu3port0 PHY_TYPE_USB3>;
++			mediatek,u3p-dis-msk=<0>;
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spim-nor.dtso
+@@ -0,0 +1,61 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target-path = "/soc/spi@11009800";
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spi2_flash_pins>;
++			status = "okay";
++
++			flash@0 {
++				#address-cells = <1>;
++				#size-cells = <1>;
++				compatible = "jedec,spi-nor";
++				spi-cal-enable;
++				spi-cal-mode = "read-data";
++				spi-cal-datalen = <7>;
++				spi-cal-data = /bits/ 8 <
++					0x53 0x46 0x5F 0x42 0x4F 0x4F 0x54>;
++				spi-cal-addrlen = <1>;
++				spi-cal-addr = /bits/ 32 <0x0>;
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++				spi-tx-bus-width = <4>;
++				spi-rx-bus-width = <4>;
++
++				partition@00000 {
++					label = "BL2";
++					reg = <0x00000 0x0040000>;
++				};
++				partition@40000 {
++					label = "u-boot-env";
++					reg = <0x40000 0x0010000>;
++				};
++				partition@50000 {
++					label = "Factory";
++					reg = <0x50000 0x0200000>;
++				};
++				partition@250000 {
++					label = "FIP";
++					reg = <0x250000 0x0080000>;
++				};
++				nor_rootdisk: partition@2D0000 {
++					label = "firmware";
++					reg = <0x2D0000 0x1D30000>;
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-nor = <&nor_rootdisk>;
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-e2p5g.dtso
+@@ -0,0 +1,40 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target = <&gmac0>;
++		__overlay__ {
++			phy-mode = "2500base-x";
++			phy-handle = <&phy12>;
++			status = "okay";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc_netsys/ethernet@15100000/mdio-bus";
++		__overlay__ {
++			phy12: phy@12 {
++				compatible = "ethernet-phy-id03a2.a411";
++				reg = <12>;
++				reset-gpios = <&pio 49 1>;
++				reset-assert-us = <10000>;
++				reset-deassert-us = <10000>;
++				phy-mode = "2500base-x";
++				full-duplex;
++				pause;
++				airoha,phy-handle;
++			};
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan = "eth0";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8855-gsw.dtso
+@@ -0,0 +1,61 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/interrupt-controller/irq.h>
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	fragment@0 {
++		target = <&gmac0>;
++		__overlay__ {
++			phy-mode = "2500base-x";
++			status = "okay";
++			fixed-link {
++				speed = <2500>;
++				full-duplex;
++				pause;
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/";
++		__overlay__ {
++			gsw_an8855: gsw@1 {
++				compatible = "airoha,an8855";
++				#mediatek,ethsys = <&ethsys>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				airoha,mdio = <&mdio>;
++				airoha,portmap = "lllll";
++				airoha,intr = <6>;
++				airoha,ext-surge = <1>;
++				reset-gpios = <&pio 42 0>;
++				interrupt-parent = <&pio>;
++				interrupts = <41 IRQ_TYPE_LEVEL_HIGH>;
++				status = "okay";
++
++				port5: port@5 {
++					compatible = "airoha,an8855-port";
++					reg = <5>;
++					phy-mode = "2500base-x";
++
++					fixed-link {
++						speed = <2500>;
++						full-duplex;
++					};
++				};
++			};
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan = "eth0";
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-emmc.dtso
+@@ -0,0 +1,101 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target-path = "/";
++		__overlay__ {
++			reg_3p3v: regulator-3p3v {
++				compatible = "regulator-fixed";
++				regulator-name = "fixed-3.3V";
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc/spi@11007800";
++		__overlay__ {
++			status = "disabled";
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc/mmc@11230000";
++		__overlay__ {
++			pinctrl-names = "default", "state_uhs";
++			pinctrl-0 = <&mmc_pins_default>;
++			pinctrl-1 = <&mmc_pins_uhs>;
++			bus-width = <8>;
++			max-frequency = <48000000>;
++			cap-mmc-highspeed;
++			vmmc-supply = <&reg_3p3v>;
++			non-removable;
++			status = "okay";
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			card@0 {
++				compatible = "mmc-card";
++				reg = <0>;
++
++				block {
++					compatible = "block-device";
++					partitions {
++						block-partition-env {
++							partname = "ubootenv";
++							nvmem-layout {
++								compatible = "u-boot,env";
++							};
++						};
++
++						block-partition-factory {
++							partname = "factory";
++
++							nvmem-layout {
++								compatible = "fixed-layout";
++								#address-cells = <1>;
++								#size-cells = <1>;
++
++								eeprom_factory_0: eeprom@0 {
++									reg = <0x0 0x1e00>;
++								};
++							};
++						};
++
++						emmc_rootfs: block-partition-production {
++							partname = "production";
++						};
++					};
++				};
++			};
++		};
++	};
++
++        fragment@3 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-emmc = <&emmc_rootfs>;
++		};
++	};
++
++	fragment@4 {
++		target = <&pcie0>;
++		__overlay__ {
++			slot0: pcie@0,0 {
++				reg = <0x0000 0 0 0 0>;
++				mt7996@0,0 {
++					reg = <0x0000 0 0 0 0>;
++					nvmem-cells = <&eeprom_factory_0>;
++					nvmem-cell-names = "eeprom";
++				};
++			};
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-mt7531-gsw.dtso
+@@ -0,0 +1,87 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/interrupt-controller/irq.h>
++
++/ {
++	fragment@0 {
++		target = <&gmac0>;
++		__overlay__ {
++			phy-mode = "2500base-x";
++			status = "okay";
++			fixed-link {
++				speed = <2500>;
++				full-duplex;
++				pause;
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc_netsys/ethernet@15100000/mdio-bus";
++		__overlay__ {
++			phy12: phy@12 {
++				compatible = "ethernet-phy-id03a2.a411";
++				reg = <12>;
++				reset-gpios = <&pio 49 1>;
++				reset-assert-us = <10000>;
++				reset-deassert-us = <10000>;
++				phy-mode = "2500base-x";
++				full-duplex;
++				pause;
++				airoha,pnswap-rx;
++			};
++		};
++	};
++
++	fragment@2 {
++		target-path = "/";
++		__overlay__ {
++			gsw_mt753x: gsw@0 {
++				compatible = "mediatek,mt753x";
++				mediatek,ethsys = <&ethsys>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				mediatek,mdio = <&mdio>;
++				mediatek,portmap = "lllll";
++				mediatek,mdio_master_pinmux = <1>;
++				reset-gpios = <&pio 42 0>;
++				interrupt-parent = <&pio>;
++				interrupts = <41 IRQ_TYPE_LEVEL_HIGH>;
++				status = "okay";
++
++				port5: port@5 {
++					compatible = "mediatek,mt753x-port";
++					reg = <5>;
++					phy-mode = "2500base-x";
++
++					fixed-link {
++						speed = <2500>;
++						full-duplex;
++					};
++				};
++
++				port6: port@6 {
++					compatible = "mediatek,mt753x-port";
++					reg = <6>;
++					phy-mode = "2500base-x";
++
++					fixed-link {
++						speed = <2500>;
++						full-duplex;
++					};
++				};
++			};
++		};
++	};
++
++	fragment@3 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan = "eth0";
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987a-rfb.dts
+@@ -0,0 +1,89 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++#include "mt7987a.dtsi"
++#include <dt-bindings/input/input.h>
++
++/* MT7987A RFB DTS for DT overlay-based device tree */
++/ {
++	model = "MediaTek MT7987A RFB";
++	compatible = "mediatek,mt7987a", "mediatek,mt7987";
++
++	chosen {
++		bootargs = "console=ttyS0,115200n1 loglevel=6  \
++			    earlycon=uart8250,mmio32,0x11000000 \
++			    pci=pcie_bus_perf ubi.block=0,firmware \
++			    root=/dev/fit0 rootwait";
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		reset {
++			label = "reset";
++			linux,code = <KEY_RESTART>;
++			gpios = <&pio 1 GPIO_ACTIVE_LOW>;
++			debounce-interval = <10>;
++		};
++
++		wps {
++			label = "wps";
++			linux,code = <KEY_WPS_BUTTON>;
++			gpios = <&pio 0 GPIO_ACTIVE_LOW>;
++			debounce-interval = <10>;
++		};
++	};
++
++	/* use pwm0 as led: share with fan/pwm_rgb */
++	pwm_led {
++		compatible = "pwm-leds";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pwm_pins>;
++		status = "disabled";
++
++		led {
++			pwms = <&pwm 0 50000 0>;
++			max-brightness = <255>;
++			active-low;
++			linux,default-trigger = "default-on";
++		};
++	};
++
++	/* use pwm0/1/2 as multicolor LED: share with fan/pwm_led */
++	pwm_rgb {
++		compatible = "pwm-leds-multicolor";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pwm_rgb_pins>;
++		status = "disabled";
++
++		multi-led {
++			color = <LED_COLOR_ID_RGB>;
++			function = LED_FUNCTION_INDICATOR;
++			max-brightness = <255>;
++
++			led-red {
++				pwms = <&pwm 0 50000>;
++				color = <LED_COLOR_ID_RED>;
++			};
++
++			led-green {
++				pwms = <&pwm 1 50000>;
++				color = <LED_COLOR_ID_GREEN>;
++			};
++
++			led-blue {
++				pwms = <&pwm 2 50000>;
++				color = <LED_COLOR_ID_BLUE>;
++			};
++		};
++	};
++};
++
++&fan {
++	pwms = <&pwm 0 50000 0>;
++	status = "disabled";
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-mt7531.dtso
+@@ -0,0 +1,91 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target = <&gmac0>;
++		__overlay__ {
++			phy-mode = "2500base-x";
++			status = "okay";
++			fixed-link {
++				speed = <2500>;
++				full-duplex;
++				pause;
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc_netsys/ethernet@15100000/mdio-bus";
++		__overlay__ {
++			phy12: phy@12 {
++				compatible = "ethernet-phy-id03a2.a411";
++				reg = <12>;
++				reset-gpios = <&pio 49 1>;
++				reset-assert-us = <10000>;
++				reset-deassert-us = <10000>;
++				phy-mode = "2500base-x";
++				full-duplex;
++				pause;
++				airoha,pnswap-rx;
++				airoha,phy-handle;
++			};
++
++			switch31: switch@31 {
++				compatible = "mediatek,mt7531";
++				reg = <31>;
++				reset-gpios = <&pio 42 0>;
++				status = "okay";
++
++				ports {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					port@0 {
++						reg = <0>;
++						label = "lan0";
++					};
++
++					port@1 {
++						reg = <1>;
++						label = "lan1";
++					};
++
++					port@2 {
++						reg = <2>;
++						label = "lan2";
++					};
++
++					port@3 {
++						reg = <3>;
++						label = "lan3";
++					};
++
++					port@5 {
++						reg = <5>;
++						label = "lan5";
++						phy-mode = "2500base-x";
++						phy-handle = <&phy12>;
++					};
++
++					port@6 {
++						reg = <6>;
++						label = "cpu";
++						ethernet = <&gmac0>;
++						phy-mode = "2500base-x";
++
++						fixed-link {
++							speed = <2500>;
++							full-duplex;
++							pause;
++						};
++					};
++				};
++
++			};
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8855.dtso
+@@ -0,0 +1,206 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	fragment@0 {
++		target = <&gmac0>;
++		__overlay__ {
++			phy-mode = "2500base-x";
++			status = "okay";
++			fixed-link {
++				speed = <2500>;
++				full-duplex;
++				pause;
++			};
++		};
++
++	};
++
++	fragment@1 {
++		target-path = "/soc_netsys/ethernet@15100000/mdio-bus";
++		__overlay__ {
++			mfd: mfd@1 {
++				compatible = "airoha,an8855-mfd";
++				reg = <1>;
++				status = "okay";
++
++				efuse {
++					compatible = "airoha,an8855-efuse";
++					#nvmem-cell-cells = <0>;
++
++					nvmem-layout {
++						compatible = "fixed-layout";
++						#address-cells = <1>;
++						#size-cells = <1>;
++
++						shift_sel_port0_tx_a: shift-sel-port0-tx-a@c {
++							reg = <0xc 0x4>;
++						};
++
++						shift_sel_port0_tx_b: shift-sel-port0-tx-b@10 {
++							reg = <0x10 0x4>;
++						};
++
++						shift_sel_port0_tx_c: shift-sel-port0-tx-c@14 {
++							reg = <0x14 0x4>;
++						};
++
++						shift_sel_port0_tx_d: shift-sel-port0-tx-d@18 {
++							reg = <0x18 0x4>;
++						};
++
++						shift_sel_port1_tx_a: shift-sel-port1-tx-a@1c {
++							reg = <0x1c 0x4>;
++						};
++
++						shift_sel_port1_tx_b: shift-sel-port1-tx-b@20 {
++							reg = <0x20 0x4>;
++						};
++
++						shift_sel_port1_tx_c: shift-sel-port1-tx-c@24 {
++							reg = <0x24 0x4>;
++						};
++
++						shift_sel_port1_tx_d: shift-sel-port1-tx-d@28 {
++							reg = <0x28 0x4>;
++						};
++
++						shift_sel_port2_tx_a: shift-sel-port2-tx-a@2c {
++							reg = <0x2c 0x4>;
++						};
++
++						shift_sel_port2_tx_b: shift-sel-port2-tx-b@30 {
++							reg = <0x30 0x4>;
++						};
++
++						shift_sel_port2_tx_c: shift-sel-port2-tx-c@34 {
++							reg = <0x34 0x4>;
++						};
++
++						shift_sel_port2_tx_d: shift-sel-port2-tx-d@38 {
++							reg = <0x38 0x4>;
++						};
++
++						shift_sel_port3_tx_a: shift-sel-port3-tx-a@4c {
++							reg = <0x4c 0x4>;
++						};
++
++						shift_sel_port3_tx_b: shift-sel-port3-tx-b@50 {
++							reg = <0x50 0x4>;
++						};
++
++						shift_sel_port3_tx_c: shift-sel-port3-tx-c@54 {
++							reg = <0x54 0x4>;
++						};
++
++						shift_sel_port3_tx_d: shift-sel-port3-tx-d@58 {
++							reg = <0x58 0x4>;
++						};
++					};
++				};
++
++				ethernet-switch {
++					compatible = "airoha,an8855-switch";
++					reset-gpios = <&pio 42 GPIO_ACTIVE_HIGH>;
++					airoha,ext-surge;
++
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						port@0 {
++							reg = <0>;
++							label = "lan0";
++							phy-mode = "internal";
++							phy-handle = <&internal_phy1>;
++						};
++
++						port@1 {
++							reg = <1>;
++							label = "lan1";
++							phy-mode = "internal";
++							phy-handle = <&internal_phy2>;
++						};
++
++						port@2 {
++							reg = <2>;
++							label = "lan2";
++							phy-mode = "internal";
++							phy-handle = <&internal_phy3>;
++						};
++
++						port@3 {
++							reg = <3>;
++							label = "lan3";
++							phy-mode = "internal";
++							phy-handle = <&internal_phy4>;
++						};
++
++						port@5 {
++							reg = <5>;
++							ethernet = <&gmac0>;
++							phy-mode = "2500base-x";
++
++							fixed-link {
++								speed = <2500>;
++								full-duplex;
++								pause;
++							};
++						};
++					};
++				};
++
++				mdio {
++					compatible = "airoha,an8855-mdio";
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					internal_phy1: phy@1 {
++						reg = <1>;
++
++						nvmem-cells = <&shift_sel_port0_tx_a>,
++								<&shift_sel_port0_tx_b>,
++								<&shift_sel_port0_tx_c>,
++								<&shift_sel_port0_tx_d>;
++						nvmem-cell-names = "tx_a", "tx_b", "tx_c", "tx_d";
++					};
++
++					internal_phy2: phy@2 {
++						reg = <2>;
++
++						nvmem-cells = <&shift_sel_port1_tx_a>,
++								<&shift_sel_port1_tx_b>,
++								<&shift_sel_port1_tx_c>,
++								<&shift_sel_port1_tx_d>;
++						nvmem-cell-names = "tx_a", "tx_b", "tx_c", "tx_d";
++					};
++
++					internal_phy3: phy@3 {
++						reg = <3>;
++
++						nvmem-cells = <&shift_sel_port2_tx_a>,
++								<&shift_sel_port2_tx_b>,
++								<&shift_sel_port2_tx_c>,
++								<&shift_sel_port2_tx_d>;
++						nvmem-cell-names = "tx_a", "tx_b", "tx_c", "tx_d";
++					};
++
++					internal_phy4: phy@4 {
++						reg = <4>;
++
++						nvmem-cells = <&shift_sel_port3_tx_a>,
++								<&shift_sel_port3_tx_b>,
++								<&shift_sel_port3_tx_c>,
++								<&shift_sel_port3_tx_d>;
++						nvmem-cell-names = "tx_a", "tx_b", "tx_c", "tx_d";
++					};
++				};
++			};
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-sd.dtso
+@@ -0,0 +1,74 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target-path = "/";
++		__overlay__ {
++			reg_3p3v: regulator-3p3v {
++				compatible = "regulator-fixed";
++				regulator-name = "fixed-3.3V";
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-boot-on;
++				regulator-always-on;
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc/spi@11007800";
++		__overlay__ {
++			status = "disabled";
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc/mmc@11230000";
++		__overlay__ {
++			pinctrl-names = "default", "state_uhs";
++			pinctrl-0 = <&sd_pins_default>;
++			pinctrl-1 = <&sd_pins_uhs>;
++			bus-width = <4>;
++			max-frequency = <48000000>;
++			cap-sd-highspeed;
++			vmmc-supply = <&reg_3p3v>;
++			vqmmc-supply = <&reg_3p3v>;
++			no-mmc;
++			no-sdio;
++			status = "okay";
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			card@0 {
++				compatible = "mmc-card";
++				reg = <0>;
++
++				block {
++					compatible = "block-device";
++					partitions {
++						block-partition-env {
++							partname = "ubootenv";
++							nvmem-layout {
++								compatible = "u-boot,env";
++							};
++						};
++						sd_rootfs: block-partition-production {
++							partname = "production";
++						};
++					};
++				};
++			};
++		};
++	};
++
++        fragment@3 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-sd = <&sd_rootfs>;
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8801sb.dtso
+@@ -0,0 +1,40 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target = <&gmac0>;
++		__overlay__ {
++			phy-mode = "sgmii";
++			phy-handle = <&phy31>;
++			status = "okay";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc_netsys/ethernet@15100000/mdio-bus";
++		__overlay__ {
++			phy31: phy@31 {
++				compatible = "ethernet-phy-idc0ff.0421";
++				reg = <31>;
++				reset-gpios = <&pio 48 1>;
++				reset-assert-us = <10000>;
++				reset-deassert-us = <10000>;
++				phy-mode = "sgmii";
++				airoha,sgmii-mode = <1>;
++				eee-broken-100tx;
++				eee-broken-1000t;
++			};
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan = "eth0";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8801sb.dtso
+@@ -0,0 +1,41 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target = <&gmac2>;
++		__overlay__ {
++			phy-mode = "sgmii";
++			phy-handle = <&phy31>;
++			status = "okay";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan2 = "eth2";
++			mtketh-max-gmac = <3>;
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/ethernet@15100000/mdio-bus";
++		__overlay__ {
++			phy31: phy@31 {
++				compatible = "ethernet-phy-idc0ff.0421";
++				reg = <31>;
++				reset-gpios = <&pio 48 1>;
++				reset-assert-us = <10000>;
++				reset-deassert-us = <10000>;
++				phy-mode = "sgmii";
++				airoha,sgmii-mode = <1>;
++				eee-broken-100tx;
++				eee-broken-1000t;
++			};
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-e2p5g.dtso
+@@ -0,0 +1,39 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target = <&gmac2>;
++		__overlay__ {
++			phy-mode = "2500base-x";
++			phy-handle = <&phy11>;
++			status = "okay";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan2 = "eth2";
++			mtketh-max-gmac = <3>;
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/ethernet@15100000/mdio-bus";
++		__overlay__ {
++			reset-gpios = <&pio 48 1>;
++			reset-delay-us = <10000>;
++
++			phy11: phy@11 {
++				compatible = "ethernet-phy-id03a2.a411";
++				reg = <11>;
++				phy-mode = "2500base-x";
++				airoha,phy-handle;
++			};
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-sfp.dtso
+@@ -0,0 +1,50 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	fragment@0 {
++		target-path = "/";
++		__overlay__ {
++			sfp_cage0: sfp@0 {
++				compatible = "sff,sfp";
++				i2c-bus = <&i2c0>;
++				mod-def0-gpios = <&pio 49 GPIO_ACTIVE_LOW>;
++				los-gpios = <&pio 46 GPIO_ACTIVE_HIGH>;
++				tx-disable-gpios = <&pio 48 GPIO_ACTIVE_HIGH>;
++				maximum-power-milliwatt = <3000>;
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gmac2>;
++		__overlay__ {
++			phy-mode = "2500base-x";
++			managed = "in-band-status";
++			sfp = <&sfp_cage0>;
++			status = "okay";
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan2 = "eth2";
++			mtketh-max-gmac = <3>;
++		};
++	};
++
++	fragment@3 {
++		target-path = "/soc/i2c@11003000";
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&i2c0_pins>;
++			status = "okay";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spim-nand-nmbm.dtso
+@@ -0,0 +1,130 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target-path = "/soc/spi@11007800";
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spi0_flash_pins>;
++			status = "okay";
++
++			flash@0 {
++				compatible = "spi-nand";
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++				spi-tx-bus-width = <4>;
++				spi-rx-bus-width = <4>;
++				mediatek,nmbm;
++				mediatek,bmt-max-ratio = <1>;
++				mediatek,bmt-max-reserved-blocks = <64>;
++
++				partitions {
++					compatible = "fixed-partitions";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					partition@0 {
++						label = "BL2";
++						reg = <0x00000 0x0100000>;
++						read-only;
++					};
++
++					partition@100000 {
++						label = "u-boot-env";
++						reg = <0x0100000 0x0080000>;
++					};
++
++					factory: partition@180000 {
++						label = "Factory";
++						reg = <0x180000 0x0400000>;
++
++						nvmem-layout {
++							compatible = "fixed-layout";
++							#address-cells = <1>;
++							#size-cells = <1>;
++
++							gmac2_mac: eeprom@fffee {
++								reg = <0xfffee 0x6>;
++							};
++
++							gmac1_mac: eeprom@ffffa {
++								reg = <0xffffa 0x6>;
++							};
++
++							gmac0_mac: eeprom@ffff4 {
++								reg = <0xffff4 0x6>;
++							};
++						};
++					};
++
++					partition@580000 {
++						label = "FIP";
++						reg = <0x580000 0x0200000>;
++					};
++
++					partition@780000 {
++						label = "ubi";
++						reg = <0x780000 0x7080000>;
++						compatible = "linux,ubi";
++
++						volumes {
++							ubi_rootfs: ubi-volume-fit {
++								volname = "firmware";
++							};
++						};
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-spim-nand = <&ubi_rootfs>;
++		};
++	};
++
++	fragment@2 {
++		target = <&pcie0>;
++		__overlay__ {
++			slot0: pcie@0,0 {
++				reg = <0x0000 0 0 0 0>;
++
++				mt7996@0,0 {
++					compatible = "mediatek,mt76";
++					reg = <0x0000 0 0 0 0>;
++					device_type = "pci";
++					mediatek,mtd-eeprom = <&factory 0x0>;
++				};
++			};
++		};
++	};
++
++	fragment@3 {
++		target = <&gmac0>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac0_mac>;
++		};
++	};
++
++	fragment@4 {
++		target = <&gmac1>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac1_mac>;
++		};
++	};
++
++	fragment@5 {
++		target = <&gmac2>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac2_mac>;
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spim-nand.dtso
+@@ -0,0 +1,134 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target-path = "/soc/spi@11007800";
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spi0_flash_pins>;
++			status = "okay";
++
++			flash@0 {
++				compatible = "spi-nand";
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++				spi-tx-bus-width = <4>;
++				spi-rx-bus-width = <4>;
++
++				partitions {
++					compatible = "fixed-partitions";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					partition@0 {
++						label = "BL2";
++						reg = <0x00000 0x0200000>;
++						read-only;
++					};
++
++					partition@200000 {
++						label = "ubi";
++						reg = <0x0200000 0x7e00000>;
++						compatible = "linux,ubi";
++
++						volumes {
++							ubi-volume-ubootenv {
++								volname = "ubootenv";
++								nvmem-layout {
++									compatible = "u-boot,env-redundant-bool";
++								};
++							};
++
++							ubi-volume-ubootenv2 {
++								volname = "ubootenv2";
++								nvmem-layout {
++									compatible = "u-boot,env-redundant-bool";
++								};
++							};
++
++							ubi_factory: ubi-volume-factory {
++								volname = "factory";
++
++								nvmem-layout {
++									compatible = "fixed-layout";
++									#address-cells = <1>;
++									#size-cells = <1>;
++
++									eeprom_wmac: eeprom@0 {
++										reg = <0x0 0x1e00>;
++									};
++
++									gmac2_mac: eeprom@fffee {
++										reg = <0xfffee 0x6>;
++									};
++
++									gmac1_mac: eeprom@ffffa {
++										reg = <0xffffa 0x6>;
++									};
++
++									gmac0_mac: eeprom@ffff4 {
++										reg = <0xffff4 0x6>;
++									};
++								};
++							};
++
++							ubi_root: ubi-volume-fit {
++								volname = "fit";
++							};
++						};
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-spim-nand = <&ubi_root>;
++		};
++	};
++
++	fragment@2 {
++		target = <&pcie0>;
++		__overlay__ {
++			slot0: pcie@0,0 {
++				reg = <0x0000 0 0 0 0>;
++
++				wifi@0,0 {
++					compatible = "mediatek,mt76";
++					reg = <0x0000 0 0 0 0>;
++					nvmem-cell-names = "eeprom";
++					nvmem-cells = <&eeprom_wmac>;
++				};
++			};
++		};
++	};
++
++	fragment@3 {
++		target = <&gmac0>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac0_mac>;
++		};
++	};
++
++	fragment@4 {
++		target = <&gmac1>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac1_mac>;
++		};
++	};
++
++	fragment@5 {
++		target = <&gmac2>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac2_mac>;
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spim2-nand.dtso
+@@ -0,0 +1,134 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target-path = "/soc/spi@11009800";
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spi2_flash_pins>;
++			status = "okay";
++
++			flash@0 {
++				compatible = "spi-nand";
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++				spi-tx-bus-width = <4>;
++				spi-rx-bus-width = <4>;
++
++				partitions {
++					compatible = "fixed-partitions";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					partition@0 {
++						label = "BL2";
++						reg = <0x00000 0x0200000>;
++						read-only;
++					};
++
++					partition@200000 {
++						label = "ubi";
++						reg = <0x0200000 0x7e00000>;
++						compatible = "linux,ubi";
++
++						volumes {
++							ubi-volume-ubootenv {
++								volname = "ubootenv";
++								nvmem-layout {
++									compatible = "u-boot,env-redundant-bool";
++								};
++							};
++
++							ubi-volume-ubootenv2 {
++								volname = "ubootenv2";
++								nvmem-layout {
++									compatible = "u-boot,env-redundant-bool";
++								};
++							};
++
++							ubi_factory: ubi-volume-factory {
++								volname = "factory";
++
++								nvmem-layout {
++									compatible = "fixed-layout";
++									#address-cells = <1>;
++									#size-cells = <1>;
++
++									eeprom_wmac: eeprom@0 {
++										reg = <0x0 0x1e00>;
++									};
++
++									gmac2_mac: eeprom@fffee {
++										reg = <0xfffee 0x6>;
++									};
++
++									gmac1_mac: eeprom@ffffa {
++										reg = <0xffffa 0x6>;
++									};
++
++									gmac0_mac: eeprom@ffff4 {
++										reg = <0xffff4 0x6>;
++									};
++								};
++							};
++
++							ubi_root: ubi-volume-fit {
++								volname = "fit";
++							};
++						};
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-spim-nand = <&ubi_root>;
++		};
++	};
++
++	fragment@2 {
++		target = <&pcie0>;
++		__overlay__ {
++			slot0: pcie@0,0 {
++				reg = <0x0000 0 0 0 0>;
++
++				wifi@0,0 {
++					compatible = "mediatek,mt76";
++					reg = <0x0000 0 0 0 0>;
++					nvmem-cell-names = "eeprom";
++					nvmem-cells = <&eeprom_wmac>;
++				};
++			};
++		};
++	};
++
++	fragment@3 {
++		target = <&gmac0>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac0_mac>;
++		};
++	};
++
++	fragment@4 {
++		target = <&gmac1>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac1_mac>;
++		};
++	};
++
++	fragment@5 {
++		target = <&gmac2>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac2_mac>;
++		};
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spim2-nand-nmbm.dtso
+@@ -0,0 +1,130 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target-path = "/soc/spi@11009800";
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spi2_flash_pins>;
++			status = "okay";
++
++			flash@0 {
++				compatible = "spi-nand";
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++				spi-tx-bus-width = <4>;
++				spi-rx-bus-width = <4>;
++				mediatek,nmbm;
++				mediatek,bmt-max-ratio = <1>;
++				mediatek,bmt-max-reserved-blocks = <64>;
++
++				partitions {
++					compatible = "fixed-partitions";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					partition@0 {
++						label = "BL2";
++						reg = <0x00000 0x0100000>;
++						read-only;
++					};
++
++					partition@100000 {
++						label = "u-boot-env";
++						reg = <0x0100000 0x0080000>;
++					};
++
++					factory: partition@180000 {
++						label = "Factory";
++						reg = <0x180000 0x0400000>;
++
++						nvmem-layout {
++							compatible = "fixed-layout";
++							#address-cells = <1>;
++							#size-cells = <1>;
++
++							gmac2_mac: eeprom@fffee {
++								reg = <0xfffee 0x6>;
++							};
++
++							gmac1_mac: eeprom@ffffa {
++								reg = <0xffffa 0x6>;
++							};
++
++							gmac0_mac: eeprom@ffff4 {
++								reg = <0xffff4 0x6>;
++							};
++						};
++					};
++
++					partition@580000 {
++						label = "FIP";
++						reg = <0x580000 0x0200000>;
++					};
++
++					partition@780000 {
++						label = "ubi";
++						reg = <0x780000 0x7080000>;
++						compatible = "linux,ubi";
++
++						volumes {
++							ubi_rootfs: ubi-volume-fit {
++								volname = "firmware";
++							};
++						};
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-spim-nand = <&ubi_rootfs>;
++		};
++	};
++
++	fragment@2 {
++		target = <&pcie0>;
++		__overlay__ {
++			slot0: pcie@0,0 {
++				reg = <0x0000 0 0 0 0>;
++
++				mt7996@0,0 {
++					compatible = "mediatek,mt76";
++					reg = <0x0000 0 0 0 0>;
++					device_type = "pci";
++					mediatek,mtd-eeprom = <&factory 0x0>;
++				};
++			};
++		};
++	};
++
++	fragment@3 {
++		target = <&gmac0>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac0_mac>;
++		};
++	};
++
++	fragment@4 {
++		target = <&gmac1>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac1_mac>;
++		};
++	};
++
++	fragment@5 {
++		target = <&gmac2>;
++		__overlay__ {
++			nvmem-cell-names = "mac-address";
++			nvmem-cells = <&gmac2_mac>;
++		};
++	};
++};

@@ -1,0 +1,64 @@
+From 31af1c426cff72c4d6093ff2d3989c5cfe872f2a Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Tue, 30 Dec 2025 10:33:19 +0800
+Subject: [PATCH] net: phy: aquantia: add software reset to aqr107_probe
+
+---
+ drivers/net/phy/aquantia/aquantia_main.c | 27 ++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/drivers/net/phy/aquantia/aquantia_main.c b/drivers/net/phy/aquantia/aquantia_main.c
+index 95a15ce..972fa89 100644
+--- a/drivers/net/phy/aquantia/aquantia_main.c
++++ b/drivers/net/phy/aquantia/aquantia_main.c
+@@ -123,6 +123,10 @@
+ #define AQUANTIA_VND1_GSYSCFG_5G		3
+ #define AQUANTIA_VND1_GSYSCFG_10G		4
+ 
++/* POR register for PHY reset */
++#define AQUANTIA_VND1_GLOBAL_POR		0x2681
++#define AQUANTIA_VND1_GLOBAL_POR_PHY_RESET	BIT(0)
++
+ static int aqr107_get_sset_count(struct phy_device *phydev)
+ {
+ 	return AQR107_SGMII_STAT_SZ;
+@@ -925,6 +929,27 @@ static int aqr113c_config_init(struct phy_device *phydev)
+ 	return aqr113c_fill_interface_modes(phydev);
+ }
+ 
++static int aqr107_phy_reset(struct phy_device *phydev)
++{
++	int val, err = 0;
++
++	/* Set software reset */
++	val = phy_write_mmd(phydev, MDIO_MMD_VEND1, AQUANTIA_VND1_GLOBAL_POR,
++			    AQUANTIA_VND1_GLOBAL_POR_PHY_RESET);
++	if (val < 0)
++		return val;
++
++	/* Wait for software reset complete */
++	err = phy_read_mmd_poll_timeout(phydev, MDIO_MMD_VEND1,
++					AQUANTIA_VND1_GLOBAL_POR, val,
++					!(val & AQUANTIA_VND1_GLOBAL_POR_PHY_RESET),
++					20000, 2000000, true);
++	if (err)
++		phydev_warn(phydev, "timeout: software reset operation\n");
++
++	return err;
++}
++
+ static int aqr107_probe(struct phy_device *phydev)
+ {
+ 	int ret;
+@@ -934,6 +959,8 @@ static int aqr107_probe(struct phy_device *phydev)
+ 	if (!phydev->priv)
+ 		return -ENOMEM;
+ 
++	aqr107_phy_reset(phydev);
++
+ 	ret = aqr_firmware_load(phydev);
+ 	if (ret)
+ 		return ret;
+-- 
+2.45.2
+

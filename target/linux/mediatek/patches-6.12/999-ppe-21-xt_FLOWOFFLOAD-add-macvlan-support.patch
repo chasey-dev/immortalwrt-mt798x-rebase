@@ -1,0 +1,64 @@
+From dafec73a320a200ed356c1063c9fda1d3045c9fc Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Wed, 24 Sep 2025 12:59:34 +0800
+Subject: [PATCH] xt_FLOWOFFLOAD add macvlan support
+
+Without this patch, the packets forwarded through macvlan device
+would not be HNAT offloaded.
+
+Signed-off-by: chak-kei.lam <chak-kei.lam@mediatek.com>
+---
+ drivers/net/macvlan.c          | 11 +++++++++++
+ net/netfilter/xt_FLOWOFFLOAD.c |  4 +++-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/macvlan.c b/drivers/net/macvlan.c
+index e1a5010..4285a18 100644
+--- a/drivers/net/macvlan.c
++++ b/drivers/net/macvlan.c
+@@ -889,6 +889,16 @@ static int macvlan_hwtstamp_set(struct net_device *dev,
+ 	return generic_hwtstamp_set_lower(real_dev, cfg, extack);
+ }
+ 
++static int macvlan_dev_fill_forward_path(struct net_device_path_ctx *ctx,
++				      struct net_device_path *path)
++{
++	path->type = DEV_PATH_MACVLAN;
++	path->dev = ctx->dev;
++	ctx->dev = macvlan_dev_real_dev(ctx->dev);
++
++	return 0;
++}
++
+ /*
+  * macvlan network devices have devices nesting below it and are a special
+  * "super class" of normal network devices; split their locks off into a
+@@ -1196,6 +1206,7 @@ static const struct net_device_ops macvlan_netdev_ops = {
+ 	.ndo_features_check	= passthru_features_check,
+ 	.ndo_hwtstamp_get	= macvlan_hwtstamp_get,
+ 	.ndo_hwtstamp_set	= macvlan_hwtstamp_set,
++	.ndo_fill_forward_path	= macvlan_dev_fill_forward_path,
+ };
+ 
+ static void macvlan_dev_free(struct net_device *dev)
+diff --git a/net/netfilter/xt_FLOWOFFLOAD.c b/net/netfilter/xt_FLOWOFFLOAD.c
+index 0597cff..423e6d2 100644
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -352,10 +352,12 @@ static void nf_dev_path_info(const struct net_device_path_stack *stack,
+ 		case DEV_PATH_DSA:
+ 		case DEV_PATH_VLAN:
+ 		case DEV_PATH_PPPOE:
++		case DEV_PATH_MACVLAN:
+ 			if (is_zero_ether_addr(info->h_source))
+ 				memcpy(info->h_source, path->dev->dev_addr, ETH_ALEN);
+ 
+-			if (path->type == DEV_PATH_ETHERNET)
++			if (path->type == DEV_PATH_ETHERNET ||
++			    path->type == DEV_PATH_MACVLAN)
+ 				break;
+ 			if (path->type == DEV_PATH_DSA) {
+ 				i = stack->num_paths;
+-- 
+2.45.2
+

@@ -1,0 +1,73 @@
+From bd99f1e60ccfaac56a9d6c12fc78a31aa129c93f Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Wed, 10 Dec 2025 14:49:53 +0800
+Subject: [PATCH] dts: mediatek: fix default ethernet interfaces config
+
+---
+ arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts | 36 ++++++++++++--------
+ 1 file changed, 21 insertions(+), 15 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+index 4b0f6b3..0697671 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+@@ -87,13 +87,8 @@ fixed-link {
+ 	gmac1: mac@1 {
+ 		compatible = "mediatek,eth-mac";
+ 		reg = <1>;
+-		phy-mode = "rgmii";
+-
+-		fixed-link {
+-			speed = <1000>;
+-			full-duplex;
+-			pause;
+-		};
++		phy-mode = "2500base-x";
++		phy-handle = <&phy6>;
+ 	};
+ 
+ 	mdio: mdio-bus {
+@@ -115,6 +110,22 @@ wm8960: wm8960@1a {
+ };
+ 
+ &mdio {
++	reset-gpios = <&pio 6 1>;
++	reset-delay-us = <600>;
++	reset-post-delay-us = <20000>;
++
++	phy5: phy@5 {
++		compatible = "ethernet-phy-ieee802.3-c45";
++		reg = <5>;
++		phy-mode = "2500base-x";
++	};
++
++	phy6: phy@6 {
++		compatible = "ethernet-phy-ieee802.3-c45";
++		reg = <6>;
++		phy-mode = "2500base-x";
++	};
++
+ 	switch: switch@0 {
+ 		compatible = "mediatek,mt7531";
+ 		reg = <31>;
+@@ -332,14 +343,9 @@ port@4 {
+ 
+ 		port@5 {
+ 			reg = <5>;
+-			ethernet = <&gmac1>;
+-			phy-mode = "rgmii";
+-
+-			fixed-link {
+-				speed = <1000>;
+-				full-duplex;
+-				pause;
+-			};
++			label = "lan5";
++			phy-mode = "2500base-x";
++			phy-handle = <&phy5>;
+ 		};
+ 
+ 		port@6 {
+-- 
+2.45.2
+

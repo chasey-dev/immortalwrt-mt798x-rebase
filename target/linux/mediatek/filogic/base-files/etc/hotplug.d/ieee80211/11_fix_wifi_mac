@@ -143,7 +143,7 @@ case "$board" in
 		;;
 	clx,s20p)
 		addr=$(mmc_get_mac_binary factory 0x4)
-		[ "$PHYNBR" = "0" ] && $addr > /sys${DEVPATH}/macaddress
+		[ "$PHYNBR" = "0" ] && echo "$addr" > /sys${DEVPATH}/macaddress
 		[ "$PHYNBR" = "1" ] && macaddr_setbit_la $addr > /sys${DEVPATH}/macaddress
 		;;
 	jdcloud,re-cp-03)

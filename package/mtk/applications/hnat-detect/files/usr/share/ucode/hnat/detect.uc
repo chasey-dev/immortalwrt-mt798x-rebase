@@ -199,9 +199,9 @@ log.info(`chosen: ppd = ${ppd_name || '(keep)'}, wan = ${wan_name || '(keep)'}, 
 
 const RX_PPD_NAME = "rxppd";
 const is_ext = (name) => {
-    return match(name, /^(usb|wwan|eth2)/); 
+    return match(name, /^(usb|wwan|eth)/); 
 };
-let ext_devs = filter(nat_zone.related_physdevs, d => is_ext(d));
+let ext_devs = filter(nat_zone.related_physdevs, d => is_ext(d) && !is_gmac(d));
 
 /* remove useless "dummy0" created by default */
 if (sysnet.dev_exist("dummy0")) {

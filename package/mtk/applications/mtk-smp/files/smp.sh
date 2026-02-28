@@ -676,7 +676,14 @@ scan_usbnet()
 		[ -d "$dev" ] || continue
 		dev_name=$(basename $dev)
 		dev_prefix="${dev_name%%[0-9]*}"
-		if [ "$dev_prefix" = "usb" ] || [ "$dev_prefix" = "wwan" ] || [ "$dev_name" = "eth2" ]; then
+		if [ "$dev_prefix" = "usb" ] || [ "$dev_prefix" = "wwan" ]; then
+			IS_USBNET=1
+			return
+		fi
+		
+		# filter when ethX is GMAC
+		if [ "$dev_prefix" = "eth" ] &&
+		   [ "$(grep -q "mediatek,eth-mac" "/sys/class/net/${dev_name}/of_node/compatible" 2>/dev/null)" != 0 ]; then
 			IS_USBNET=1
 			return
 		fi

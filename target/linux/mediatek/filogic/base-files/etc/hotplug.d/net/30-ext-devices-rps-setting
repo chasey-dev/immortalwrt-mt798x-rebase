@@ -5,10 +5,29 @@ NPROCS="$(grep -c "^processor.*:" /proc/cpuinfo)"
 
 IFNAME_PREFIX="${INTERFACE%%[0-9]*}"
 
-if [ "${IFNAME_PREFIX}" = "usb" ] || [ "${IFNAME_PREFIX}" = "wwan" ] || [ "${INTERFACE}" = "eth2" ]; then
-    if [ "$ACTION" = add ]; then
-        # set usb/wwan rps to cpu0
-        echo 1 > /sys/class/net/${INTERFACE}/queues/rx-0/rps_cpus
+is_ext_device() {
+    case "$IFNAME_PREFIX" in
+        usb|wwan)
+            return 0
+            ;;
+        eth)
+            # check GMAC compatible node, for ext devices always return 0
+            ! grep -q "mediatek,eth-mac" "/sys/class/net/${INTERFACE}/of_node/compatible" 2>/dev/null
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+if is_ext_device; then
+    if [ "$ACTION" = "add" ]; then
+        # set target interface rps to cpu0
+        RPS_FILE="/sys/class/net/${INTERFACE}/queues/rx-0/rps_cpus"
+        # rps file sanity check
+        if [ -f "$RPS_FILE" ]; then
+            echo 1 > "$RPS_FILE"
+        fi
     fi
     [ -f /etc/init.d/mtk_smp ] && /etc/init.d/mtk_smp restart
 fi

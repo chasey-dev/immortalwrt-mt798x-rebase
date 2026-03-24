@@ -1,0 +1,71 @@
+--- a/mt_wifi/embedded/common/ee_flash.c
++++ b/mt_wifi/embedded/common/ee_flash.c
+@@ -26,6 +26,7 @@
+ 
+ #include	"rt_config.h"
+ #include "hdev/hdev.h"
++#include <linux/of.h>
+ 
+ int mt_mtd_write_nm_wifi(char *name, loff_t to, size_t len, const u_char *buf);
+ int mt_mtd_read_nm_wifi(char *name, loff_t from, size_t len, u_char *buf);
+@@ -33,13 +34,59 @@
+ #define flash_read(_ctrl, _ptr, _offset, _len) mt_mtd_read_nm_wifi("Factory", _offset, (size_t)_len, _ptr)
+ #define flash_write(_ctrl, _ptr, _offset, _len) mt_mtd_write_nm_wifi("Factory", _offset, (size_t)_len, _ptr)
+ 
++/* Read EEPROM data from device tree when MTD Factory partition is missing */
++static int ee_read_from_dt(UCHAR *buf, ULONG offset, ULONG len)
++{
++	struct device_node *np;
++	const void *data;
++	int size;
++
++	np = of_find_compatible_node(NULL, NULL, "mediatek,mt7986-wmac");
++	if (!np)
++		np = of_find_compatible_node(NULL, NULL, "mediatek,mt7981-wmac");
++	if (!np)
++		return -ENOENT;
++
++	data = of_get_property(np, "mediatek,eeprom-data", &size);
++	of_node_put(np);
++	if (!data || size <= 0)
++		return -ENOENT;
++
++	if (offset + len > size)
++		len = size - offset;
++
++	/* DTS data is in big-endian u32, convert to little-endian bytes */
++	{
++		const __be32 *src = data;
++		int i;
++		UCHAR tmp[4];
++		ULONG pos;
++
++		for (pos = 0; pos < offset + len; pos += 4) {
++			u32 val = be32_to_cpup(src + (pos / 4));
++			tmp[0] = (val >> 24) & 0xff;
++			tmp[1] = (val >> 16) & 0xff;
++			tmp[2] = (val >> 8) & 0xff;
++			tmp[3] = val & 0xff;
++			if (pos >= offset && pos + 4 <= offset + len)
++				memcpy(buf + pos - offset, tmp, 4);
++		}
++	}
++
++	printk(KERN_INFO "mt_wifi: loaded EEPROM from device tree (%d bytes)\n", size);
++	return 0;
++}
++
+ void RtmpFlashRead(
+ 	void *hdev_ctrl,
+ 	UCHAR *p,
+ 	ULONG a,
+ 	ULONG b)
+ {
+-	flash_read(hdev_ctrl, p, a, b);
++	int ret = mt_mtd_read_nm_wifi("Factory", a, (size_t)b, p);
++	/* If Factory MTD doesn't exist, try device tree */
++	if (ret < 0)
++		ee_read_from_dt(p, a, b);
+ }
+ 
+ void RtmpFlashWrite(

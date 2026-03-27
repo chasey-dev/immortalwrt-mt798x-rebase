@@ -3508,6 +3508,7 @@ define Device/cmcc_rax3000m-nand-mtk
   DEVICE_DTS := mt7981b-cmcc-rax3000m-nand-mtk
   DEVICE_DTS_DIR := ../dts
   DEVICE_PACKAGES := kmod-usb3 f2fsck mkf2fs
+  SUPPORTED_DEVICES += cmcc,rax3000m-nand
   BLOCKSIZE := 128k
   PAGESIZE := 2048
   IMAGE_SIZE := 116736k

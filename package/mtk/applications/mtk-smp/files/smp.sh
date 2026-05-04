@@ -811,6 +811,7 @@ setup_model()
 	openwrt,one |\
 	qihoo,360t7 |\
 	routerich,ax3000* |\
+	sl,3000-emmc |\
 	snr,snr-cpe-ax2 |\
 	teltonika,rutc50 |\
 	tenbay,wr3000k |\

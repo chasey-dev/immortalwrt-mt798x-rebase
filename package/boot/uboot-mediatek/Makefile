@@ -231,6 +231,30 @@ define U-Boot/mt7981_abt_asr3000
   DEPENDS:=+trusted-firmware-a-mt7981-spim-nand-ddr3
 endef
 
+define U-Boot/mt7981_bt_r320
+  NAME:=BT R320
+  BUILD_SUBTARGET:=filogic
+  BUILD_DEVICES:=bt_r320
+  UBOOT_CONFIG:=mt7981_bt_r320
+  UBOOT_IMAGE:=u-boot.fip
+  BL2_BOOTDEV:=emmc
+  BL2_SOC:=mt7981
+  BL2_DDRTYPE:=ddr4
+  DEPENDS:=+trusted-firmware-a-mt7981-emmc-ddr4
+endef
+
+define U-Boot/mt7981_bt_rb300
+  NAME:=BT RB300
+  BUILD_SUBTARGET:=filogic
+  BUILD_DEVICES:=bt_rb300
+  UBOOT_CONFIG:=mt7981_bt_rb300
+  UBOOT_IMAGE:=u-boot.fip
+  BL2_BOOTDEV:=spim-nand
+  BL2_SOC:=mt7981
+  BL2_DDRTYPE:=ddr3
+  DEPENDS:=+trusted-firmware-a-mt7981-spim-nand-ddr3
+endef
+
 define U-Boot/mt7981_bazis-ax3000wm
   NAME:=BAZIS AX3000WM
   BUILD_SUBTARGET:=filogic

@@ -20,8 +20,7 @@
 	};
 
 	chosen: chosen {
-		bootargs-override = "root=/dev/fit0 rootwait";
-		rootdisk = <&ubi_rootdisk>;
+		bootargs = "root=PARTLABEL=rootfs rootwait";
 		stdout-path = "serial0:115200n8";
 	};
 
@@ -194,10 +193,6 @@
 							#nvmem-cell-cells = <1>;
 						};
 					};
-				};
-
-				ubi_rootdisk: block-partition-production {
-					partname = "production";
 				};
 			};
 		};

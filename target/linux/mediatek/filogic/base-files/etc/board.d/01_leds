@@ -42,6 +42,11 @@ asus,tuf-ax6000)
 	ucidef_set_led_netdev "lan5" "LAN5" "mdio-bus:05:white:lan" "lan5" "link tx rx"
 	ucidef_set_led_netdev "wan" "WAN" "mdio-bus:06:white:wan" "eth1" "link tx rx"
 	;;
+bt,r320|\
+bt,rb300)
+	ucidef_set_led_netdev "wlan2g" "2.4G" "green:wlan-2ghz" "ra0"
+	ucidef_set_led_netdev "wlan5g" "5G" "green:wlan-5ghz" "rax0"
+	;;
 bananapi,bpi-r3-mini)
 	ucidef_set_led_netdev "lan1" "LAN" "mdio-bus:0e:green:lan" "eth0" "link_2500 link_1000 tx rx"
 	ucidef_set_led_netdev "lan2" "LAN" "mdio-bus:0e:yellow:lan" "eth0" "link_2500 link_100 tx rx"

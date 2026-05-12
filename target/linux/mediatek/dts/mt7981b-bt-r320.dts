@@ -139,7 +139,6 @@
 						speed = <2500>;
 						full-duplex;
 						pause;
-					};
 				};
 			};
 		};

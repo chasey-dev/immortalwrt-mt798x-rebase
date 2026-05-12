@@ -1883,7 +1883,7 @@ define Device/bt_rb300
   DEVICE_MODEL := BT-RB300
   DEVICE_DTS := mt7981b-bt-rb300
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES :=    \ 
+  DEVICE_PACKAGES :=
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k
   PAGESIZE := 2048
@@ -1900,8 +1900,7 @@ define Device/bt_r320
   DEVICE_MODEL := BT-R320
   DEVICE_DTS := mt7981b-bt-r320
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES :=    \
-	kmod-usb3 automount e2fsprogs f2fsck mkf2fs
+  DEVICE_PACKAGES := kmod-usb3 automount e2fsprogs f2fsck mkf2fs
   KERNEL := kernel-bin | lzma | fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
   KERNEL_INITRAMFS := kernel-bin | lzma | \
 	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
@@ -2863,7 +2862,7 @@ define Device/ruijie_rg-x60
   DEVICE_DTS_CONFIG := config@ruijie_x60_gsw_en8811h_phy
   DEVICE_DTS_DIR := ../dts
   SUPPORTED_DEVICES += X60
-  DEVICE_PACKAGES := kmod-mt7915e kmod-mt7986-firmware mt7986-wo-firmware kmod-phy-airoha-en8811h
+  DEVICE_PACKAGES := kmod-phy-airoha-en8811h
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 endef
 TARGET_DEVICES += ruijie_rg-x60

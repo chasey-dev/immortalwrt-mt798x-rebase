@@ -25,6 +25,8 @@ case "$board" in
 abt,asr3000|\
 acer,predator-w6x-ubootmod|\
 asus,zenwifi-bt8-ubootmod|\
+bt,r320|\
+bt,rb300|\
 cetron,ct3003-ubootmod|\
 cmcc,a10-ubootmod|\
 comfast,cf-wr632ax-ubootmod|\

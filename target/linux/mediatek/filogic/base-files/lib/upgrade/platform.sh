@@ -90,6 +90,8 @@ platform_do_upgrade() {
 	bazis,ax3000wm|\
 	cetron,ct3003-ubootmod|\
 	cmcc,a10-ubootmod|\
+	bt,r320|\
+	bt,rb300|\
 	cmcc,rax3000m|\
 	cmcc,rax3000me|\
 	comfast,cf-wr632ax-ubootmod|\
@@ -387,6 +389,7 @@ platform_copy_config() {
 	bananapi,bpi-r4-2g5|\
 	bananapi,bpi-r4-poe|\
 	bananapi,bpi-r4-lite|\
+	bt,r320|\
 	cmcc,rax3000m|\
 	cmcc,rax3000me|\
 	gatonetworks,gdsp|\

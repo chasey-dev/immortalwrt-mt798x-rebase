@@ -9,6 +9,7 @@ mediatek_setup_interfaces()
 
 	case $board in
 	abt,asr3000|\
+	bt,r320|\
 	buffalo,wsr-6000ax8|\
 	cmcc,rax3000m|\
 	cmcc,rax3000me|\
@@ -232,6 +233,9 @@ mediatek_setup_interfaces()
 	xiaomi,redmi-router-ax6000-stock|\
 	xiaomi,redmi-router-ax6000-ubootmod)
 		ucidef_set_interfaces_lan_wan "lan2 lan3 lan4" wan
+		;;
+	bt,rb300)
+		ucidef_set_interfaces_lan_wan "lan0 lan1 lan2 lan3" wan
 		;;
 	zyxel,wx5600-t0-ubootmod)
 		ucidef_set_interface_lan "lan1 lan2"

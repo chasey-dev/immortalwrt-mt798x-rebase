@@ -9,7 +9,6 @@ mediatek_setup_interfaces()
 
 	case $board in
 	abt,asr3000|\
-	bt,r320|\
 	buffalo,wsr-6000ax8|\
 	cmcc,rax3000m|\
 	cmcc,rax3000me|\
@@ -58,6 +57,7 @@ mediatek_setup_interfaces()
 	creatlentem,clt-r30b1-112m|\
 	cudy,wr3000-v1|\
 	jcg,q30-pro|\
+	bt,r320|\
 	keenetic,kn-3711|\
 	keenetic,kn-3811|\
 	livinet,zr-3020|\

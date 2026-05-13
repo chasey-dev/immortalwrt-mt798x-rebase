@@ -2867,6 +2867,18 @@ define Device/ruijie_rg-x60
 endef
 TARGET_DEVICES += ruijie_rg-x60
 
+define Device/ruijie_rg-x60-107m
+  DEVICE_VENDOR := Ruijie
+  DEVICE_MODEL := RG-X60-107m
+  DEVICE_DTS := mt7986a-ruijie-rg-x60-107m
+  DEVICE_DTS_CONFIG := config@ruijie_x60_gsw_en8811h_phy
+  DEVICE_DTS_DIR := ../dts
+  SUPPORTED_DEVICES += X60-107m
+  DEVICE_PACKAGES := kmod-phy-airoha-en8811h
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += ruijie_rg-x60-107m
+
 define Device/ruijie_rg-x60-pro
   DEVICE_VENDOR := Ruijie
   DEVICE_MODEL := RG-X60 Pro

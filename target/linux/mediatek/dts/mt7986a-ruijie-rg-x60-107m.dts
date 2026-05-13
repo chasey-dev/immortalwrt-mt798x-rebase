@@ -71,6 +71,8 @@
 		reset-gpios = <&pio 6 GPIO_ACTIVE_LOW>;
 		reset-assert-us = <10000>;
 		reset-deassert-us = <10000>;
+		phy-mode = "2500base-x";
+		airoha,phy-handle;
 	};
 };
 

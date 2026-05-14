@@ -252,7 +252,8 @@ mediatek_setup_macs()
 	local lan_mac=""
 	local wan_mac=""
 	local label_mac=""
-
+	local b0dat="$(l1dat if2dat ra0)"
+	local b1dat="$(l1dat if2dat rax0)"
 	case $board in
 	airpi,ap3000m)
 		base_mac=$(macaddr_generate_from_mmc_cid mmcblk0)
@@ -315,6 +316,12 @@ mediatek_setup_macs()
 		lan_mac=$(mtd_get_mac_ascii factory lanMac)
 		wan_mac=$(macaddr_add "$lan_mac" 1)
 		label_mac=$wan_mac
+		;;
+	ruijie,rg-x60|\
+	ruijie,rg-x60-pro)
+		label_mac=$(mtd_get_mac_ascii product_info ethaddr)
+		wan_mac=$label_mac
+		lan_mac=$(macaddr_add "$label_mac" 1)
 		;;
 	tplink,eap683-lr)
 		label_mac=$(get_mac_binary "/tmp/factory/default-mac" 0)

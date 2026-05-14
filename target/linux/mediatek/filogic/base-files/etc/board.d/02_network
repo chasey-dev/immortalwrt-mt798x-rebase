@@ -66,6 +66,7 @@ mediatek_setup_interfaces()
 	routerich,ax3000|\
 	routerich,ax3000-ubootmod|\
 	routerich,be7200|\
+	ruijie,rg-x30e-pro|\
 	tenbay,wr3000k|\
 	tplink,tl-7dr7250-v1)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" wan
@@ -311,6 +312,11 @@ mediatek_setup_macs()
 		lan_mac=$(mtd_get_mac_ascii factory lanMac)
 		wan_mac=$(macaddr_add "$lan_mac" 1)
 		label_mac=$wan_mac
+		;;
+	ruijie,rg-x30e-pro)
+		label_mac=$(mtd_get_mac_ascii product_info ethaddr)
+		wan_mac=$label_mac
+		lan_mac=$(macaddr_add "$label_mac" 1)
 		;;
 	tplink,eap683-lr)
 		label_mac=$(get_mac_binary "/tmp/factory/default-mac" 0)

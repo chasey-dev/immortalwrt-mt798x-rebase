@@ -59,6 +59,22 @@ define Device/netcore_n60-pro-mtkuboot
 endef
 TARGET_DEVICES += netcore_n60-pro-mtkuboot
 
+define Device/ruijie_rg-x30e-pro
+  DEVICE_VENDOR := Ruijie
+  DEVICE_MODEL := RG-X30E Pro
+  DEVICE_DTS := mt7981b-ruijie-rg-x30e-pro
+  DEVICE_DTS_DIR := ../dts-ext
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE_SIZE := 114688k
+  KERNEL_IN_UBI := 1
+  IMAGES += factory.bin
+  IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += ruijie_rg-x30e-pro
+
 define Device/xiaomi_mi-router-ax3000t-mtkuboot
   DEVICE_VENDOR := Xiaomi
   DEVICE_MODEL := Mi Router AX3000T

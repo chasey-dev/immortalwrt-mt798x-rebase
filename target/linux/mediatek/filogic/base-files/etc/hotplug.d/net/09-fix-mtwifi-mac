@@ -67,20 +67,10 @@ mtwifi_set_macs()
         ;;
     ruijie,rg-x30e-pro)
         local base_mac="$(mtd_get_mac_ascii product_info ethaddr)"
-
         local b0_mac="$(macaddr_add $base_mac 2)"
-        local b0_dat="$(l1util if2dat ra0)"
-        if [ -f "$b0_dat" ]; then
-            sed -i '/MacAddress=/d' "$b0_dat"
-            echo "MacAddress=$b0_mac" >> "$b0_dat"
-        fi
-        
         local b1_mac="$(macaddr_add $base_mac 3)"
-        local b1_dat="$(l1util if2dat rax0)"
-        if [ -f "$b1_dat" ]; then
-            sed -i '/MacAddress=/d' "$b1_dat"
-            echo "MacAddress=$b1_mac" >> "$b1_dat"
-        fi
+        
+        set_macs_to_dat "$b0_mac" "$b1_mac"
         ;;
     esac
 }

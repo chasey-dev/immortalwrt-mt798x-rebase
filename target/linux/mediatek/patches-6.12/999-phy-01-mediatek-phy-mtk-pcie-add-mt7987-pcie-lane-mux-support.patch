@@ -1,3 +1,14 @@
+---
+[v1] phy: mediatek: add mt7987 pcie lane mux support
+
+Add PCIe PHY lane mux driver support for MT7987 to enable flexible lane
+allocation. Supports mediatek,1port-2lane and mediatek,2port-1lane properties
+for runtime PCIe topology configuration.
+---
+v1: Initial PCIe PHY lane mux driver support for flexible 1x2 or 2x1 lane
+    configuration on MT7987.
+---
+
 --- a/drivers/phy/mediatek/phy-mtk-pcie.c
 +++ b/drivers/phy/mediatek/phy-mtk-pcie.c
 @@ -11,6 +11,8 @@

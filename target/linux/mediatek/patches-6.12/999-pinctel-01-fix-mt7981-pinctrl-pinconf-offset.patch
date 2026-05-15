@@ -1,3 +1,13 @@
+---
+[v1] pinctrl: mediatek: fix MT7981 pinconf register offsets
+
+Fix incorrect pinconf register offset values for several MT7981 pins.
+This corrects pin configuration register access for pins 3, 4, 11, and 44,
+ensuring proper pinctrl and pinconf functionality.
+---
+v1: Fix MT7981 pinconf register offsets.
+---
+
 --- a/drivers/pinctrl/mediatek/pinctrl-mt7981.c
 +++ b/drivers/pinctrl/mediatek/pinctrl-mt7981.c
 @@ -48,7 +48,7 @@ static const struct mtk_pin_field_calc m

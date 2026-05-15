@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: add PPE packet drop support
+
+Add PPE (Packet Processing Engine) packet drop capability to WED
+for flow control and congestion management.
+---
+v2: Refined drop mechanism.
+v1: Initial PPE drop support.
+---
+
 From 933f7bc657c5f7426f01220aca53509bedb321f8 Mon Sep 17 00:00:00 2001
 From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 Date: Fri, 21 Feb 2025 11:48:53 +0800
@@ -12,9 +22,9 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
-@@ -2010,6 +2010,18 @@ void mtk_w32(struct mtk_eth *eth, u32 va
- u32 mtk_r32(struct mtk_eth *eth, unsigned reg);
+@@ -2034,6 +2034,18 @@ u32 mtk_r32(struct mtk_eth *eth, unsigne
  u32 mtk_m32(struct mtk_eth *eth, u32 mask, u32 set, unsigned int reg);
+ u64 mtk_r64(struct mtk_eth *eth, unsigned reg);
  
 +static inline void mtk_ppe_drop_config(struct mtk_eth *eth, u32 config)
 +{
@@ -28,9 +38,9 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 +		mtk_w32(eth, config, PSE_PPE_DROP(2));
 +}
 +
- int mtk_gmac_sgmii_path_setup(struct mtk_eth *eth, int mac_id);
- int mtk_gmac_2p5gphy_path_setup(struct mtk_eth *eth, int mac_id);
- int mtk_gmac_gephy_path_setup(struct mtk_eth *eth, int mac_id);
+ static inline void mtk_pse_gdm_enable(struct mtk_eth *eth, int id, bool enable)
+ {
+ 	u32 val;
 --- a/drivers/net/ethernet/mediatek/mtk_wed.c
 +++ b/drivers/net/ethernet/mediatek/mtk_wed.c
 @@ -2302,6 +2302,14 @@ mtk_wed_ppe_check(struct mtk_wed_device

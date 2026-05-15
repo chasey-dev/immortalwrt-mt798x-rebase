@@ -1,3 +1,14 @@
+---
+[v2] mtd: spinand: fix CASN page field-spanning write issues
+
+Fix field-spanning write warnings during CASN parameter page detection by
+replacing loop-based memory copy with explicit per-field assignment. This
+resolves compiler warnings and ensures correct endianness handling.
+---
+v2: Fix additional CASN page build warnings.
+v1: Fix field-spanning write warning during CASN page detection.
+---
+
 --- a/drivers/mtd/nand/spi/core.c
 +++ b/drivers/mtd/nand/spi/core.c
 @@ -1929,15 +1929,18 @@ static int spinand_init_via_casn(struct

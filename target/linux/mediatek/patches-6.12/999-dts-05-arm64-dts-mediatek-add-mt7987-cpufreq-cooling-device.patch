@@ -1,3 +1,4 @@
+---
 [v1] arm64: dts: mediatek: add mt7987 cpufreq cooling device
 
 Enable cpufreq cooling for MT7987 CPU thermal zone to allow thermal

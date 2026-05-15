@@ -1,3 +1,12 @@
+---
+[v1] net: ethernet: mtk_wed: refactor MSDU page ring initialization flow
+
+Refactor MSDU (MAC Service Data Unit) page ring initialization for
+better memory management and improved reliability.
+---
+v1: Initial MSDU page ring init refactoring.
+---
+
 From 2d633646567f6ae0d14789a4fa6fc90f759ee5d1 Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Mon, 26 Jan 2026 14:30:08 +0800
@@ -115,4 +124,3 @@ index 6079015..75da4dd 100644
  			u8 se_group_nums;
 -- 
 2.45.2
-

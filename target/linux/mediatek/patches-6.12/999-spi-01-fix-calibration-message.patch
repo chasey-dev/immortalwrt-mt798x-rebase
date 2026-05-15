@@ -1,3 +1,13 @@
+---
+[v1] spi: fix calibration failure message handling
+
+Improve SPI calibration error handling by changing error messages to info
+level and properly returning error codes. This prevents misleading error
+messages when using default calibration values.
+---
+v1: Initial calibration message handling fix.
+---
+
 --- a/drivers/mtd/nand/spi/core.c
 +++ b/drivers/mtd/nand/spi/core.c
 @@ -1285,7 +1285,7 @@ static int spinand_init(struct spinand_d

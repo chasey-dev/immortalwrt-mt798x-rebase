@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: refactor AMSDU initialization values
+
+Refactor AMSDU (Aggregate MAC Service Data Unit) initialization values
+for optimal aggregation performance.
+---
+v2: Tuned aggregation parameters.
+v1: Initial AMSDU init refactoring.
+---
+
 From cb5dc995569d515a269de321857f5684c9d3fc18 Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Wed, 6 Aug 2025 11:06:41 +0800

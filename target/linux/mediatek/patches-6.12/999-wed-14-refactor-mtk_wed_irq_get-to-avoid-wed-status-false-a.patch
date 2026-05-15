@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: refactor IRQ get to avoid false status alerts
+
+Refactor WED IRQ retrieval logic to prevent false positive status
+alerts during normal operation.
+---
+v2: Enhanced status validation.
+v1: Initial IRQ get refactoring.
+---
+
 From f23dfce995104d06c64f83350bb61f281565f395 Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Tue, 8 Apr 2025 14:25:50 +0800

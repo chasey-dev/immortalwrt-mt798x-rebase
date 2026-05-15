@@ -1,3 +1,12 @@
+---
+[v1] net: phy: mtk-2p5g: add IRQ support to all built-in PHYs
+
+Add interrupt support to all MediaTek built-in 2.5G Ethernet PHYs for
+link status change notifications and error detection.
+---
+v1: Initial IRQ support for all built-in 2.5G PHYs.
+---
+
 --- a/drivers/net/phy/mediatek/mtk-2p5ge.c
 +++ b/drivers/net/phy/mediatek/mtk-2p5ge.c
 @@ -697,49 +697,16 @@ static int mt798x_2p5ge_phy_get_features

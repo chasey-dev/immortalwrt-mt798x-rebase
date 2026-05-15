@@ -1,3 +1,12 @@
+---
+[v1] mtd: spi-nor: add support for new Macronix devices
+
+Add device support for Macronix mx25l25645g (32MB) and mx25l12833f (16MB)
+SPI-NOR flash chips with dual and quad read capabilities.
+---
+v1: Initial support for mx25l25645g and mx25l12833f.
+---
+
 --- a/drivers/mtd/spi-nor/macronix.c
 +++ b/drivers/mtd/spi-nor/macronix.c
 @@ -76,6 +76,11 @@ static const struct flash_info macronix_

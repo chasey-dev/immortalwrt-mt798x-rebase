@@ -1,3 +1,17 @@
+---
+[v1] net: ppp: Add API to acquire PPP socket for MediaTek tunnel hardware offload
+
+Some tunnel information, such as UDP port number, is stored inside socket
+structure. However, currently there is no way to acquire socket structure via
+skb or any exist API. Implement a new extern API to get socket information via
+a tunnel network device so that MediaTek tunnel offload hardware can acquire
+essential information for L2TP, PPTP tunnel hardware acceleration.
+
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 --- a/drivers/net/ppp/ppp_generic.c
 +++ b/drivers/net/ppp/ppp_generic.c
 @@ -1911,6 +1911,41 @@ ppp_send_frame(struct ppp *ppp, struct s

@@ -1,3 +1,12 @@
+---
+[v1] net: phy: airoha: add AN8801SB Gigabit Ethernet PHY support
+
+Add driver support for Airoha AN8801SB Gigabit Ethernet PHY. This includes
+full PHY initialization, auto-negotiation, and link management capabilities.
+---
+v1: Initial AN8801SB PHY driver (v1.1.9).
+---
+
 From 1097cd0f5061fbdae1798e918c31e77bc0a1a191 Mon Sep 17 00:00:00 2001
 From: Mason Chang <mason-cw.chang@mediatek.com>
 Date: Wed, 15 Oct 2025 10:56:13 +0800
@@ -1845,4 +1854,3 @@ index 0000000..6e68477
 +#endif /* End of __AN8801_H */
 -- 
 2.45.2
-

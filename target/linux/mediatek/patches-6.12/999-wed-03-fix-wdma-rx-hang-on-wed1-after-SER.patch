@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: fix WDMA RX hang on WED1 after SER
+
+Fix WDMA (WiFi DMA) RX hang issue on WED1 device that occurs after
+System Error Recovery process.
+---
+v2: Enhanced recovery mechanism.
+v1: Initial WDMA RX hang fix.
+---
+
 From 56cce216f7daed56f129c3a01a22e6b1c4edfb54 Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Fri, 27 Sep 2024 16:58:22 +0800

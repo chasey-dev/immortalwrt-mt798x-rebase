@@ -1,3 +1,14 @@
+---
+[v3] net: ethernet: mtk_wed: add hardware path WMM support
+
+Add WMM (WiFi Multimedia) QoS support to WED hardware offload path
+for proper traffic prioritization.
+---
+v3: Refined WMM queue management.
+v2: Enhanced QoS mapping.
+v1: Initial WMM hardware path support.
+---
+
 From 1eecf150f97d1f0c985302bc715ebec8121c1208 Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Mon, 23 Dec 2024 16:27:20 +0800

@@ -1,3 +1,12 @@
+---
+[v1] net: phy: align PHY library with OpenWrt 24.10
+
+Align PHY library code with OpenWrt 24.10 release for consistency and
+compatibility. This includes API updates and bug fixes from upstream.
+---
+v1: Align PHY library with OpenWrt 24.10.
+---
+
 --- a/drivers/net/phy/mediatek/mtk-phy-lib.c
 +++ b/drivers/net/phy/mediatek/mtk-phy-lib.c
 @@ -36,6 +36,20 @@ static void __mtk_tr_read(struct phy_dev

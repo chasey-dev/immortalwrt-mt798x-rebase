@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: add MT7987 hardware path support
+
+Add WED hardware offload path support for MT7987 SoC including
+platform-specific initialization and configuration.
+---
+v2: Enhanced platform compatibility.
+v1: Initial MT7987 hardware path support.
+---
+
 From 426431a2f63266bff30e9f571a263e951335c80a Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Mon, 21 Oct 2024 16:19:03 +0800

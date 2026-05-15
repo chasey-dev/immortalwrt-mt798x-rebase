@@ -1,3 +1,13 @@
+---
+[v1] spi: spi-mt65xx: fix dual/quad mode for single transfer operations
+
+Fix dual and quad SPI mode handling for single transfer operations by adding
+proper n-bit mode configuration helper. This ensures correct bus width settings
+for dual (2-bit) and quad (4-bit) SPI transfers on MT65xx controllers.
+---
+v1: Initial dual/quad mode fix for single transfer operations.
+---
+
 --- a/drivers/spi/spi-mt65xx.c
 +++ b/drivers/spi/spi-mt65xx.c
 @@ -530,6 +530,22 @@ static void mtk_spi_setup_packet(struct

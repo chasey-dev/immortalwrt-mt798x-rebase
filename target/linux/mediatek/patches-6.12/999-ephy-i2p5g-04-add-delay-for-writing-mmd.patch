@@ -1,3 +1,13 @@
+---
+[v2] net: phy: mtk-2p5g: add delay for MMD register writes
+
+Add necessary delay after MMD (MDIO Manageable Device) register writes
+to ensure proper timing and prevent write failures.
+---
+v2: Refined delay timing for better stability.
+v1: Initial delay for MMD writes.
+---
+
 --- a/drivers/net/phy/mediatek/mtk-2p5ge.c
 +++ b/drivers/net/phy/mediatek/mtk-2p5ge.c
 @@ -801,6 +801,32 @@ static int mt798x_2p5ge_phy_get_rate_mat

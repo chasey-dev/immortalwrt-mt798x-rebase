@@ -1,3 +1,14 @@
+---
+[v1] soc: mediatek: mtk-devapc: add mt798x support
+
+Add mt798x device APC support. This driver is mainly used to handle the
+situation when a transaction violates the access permission control(APC)
+configured by system. The violation information is logged for further
+analysis. If kernel can access device APC, handle the violation in kernel.
+---
+v1: Initial support for MT7981/MT7986/MT7987/MT7988 device APC
+---
+
 From c3f25accc62f18adb22abc256add6c954fa415a0 Mon Sep 17 00:00:00 2001
 From: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
 Date: Fri, 20 Mar 2026 16:16:49 +0800

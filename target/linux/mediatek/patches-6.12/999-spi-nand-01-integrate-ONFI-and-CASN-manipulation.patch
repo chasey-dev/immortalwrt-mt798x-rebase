@@ -1,3 +1,13 @@
+---
+[v1] mtd: nand: integrate ONFI and CASN parameter manipulation
+
+Refactor NAND parameter handling to share common code between ONFI and CASN
+(Common Attribute for SPI-NAND). This includes unifying CRC calculation
+and parameter page parsing logic for better code maintainability.
+---
+v1: Initial integration of ONFI and CASN manipulation.
+---
+
 --- a/drivers/mtd/nand/raw/nand_onfi.c
 +++ b/drivers/mtd/nand/raw/nand_onfi.c
 @@ -12,6 +12,7 @@

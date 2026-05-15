@@ -1,3 +1,15 @@
+---
+[v1] pcie: mediatek-gen3: Add PCIe max link width adjustment feature
+
+Add PCIe max link width adjustment feature for MediaTek Gen3 PCIe controller.
+This allows configuring the maximum supported link width (x1 or x2) via device
+tree property "max-link-width", providing flexibility for different hardware
+configurations.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 From 9c7ce8970d6cff91f49f8f768d060850596a3e18 Mon Sep 17 00:00:00 2001
 From: Jianguo Zhang <jianguo.zhang@mediatek.com>
 Date: Fri, 15 Nov 2024 09:41:41 +0800

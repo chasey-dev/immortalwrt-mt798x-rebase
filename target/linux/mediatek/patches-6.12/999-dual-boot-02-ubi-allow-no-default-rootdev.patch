@@ -1,3 +1,13 @@
+---
+[v1] mtd: ubi: allow bypassing setting default rootdev
+
+Add module parameter to allow bypassing automatic rootdev assignment to
+UBI volume. This provides flexibility for dual boot configurations where
+rootfs selection needs manual control.
+---
+v1: Initial support for no_default_rootdev module parameter.
+---
+
 From: Weijie Gao <weijie.gao@mediatek.com>
 Subject: [PATCH] mtd: ubi: allow bypassing setting default rootdev
 

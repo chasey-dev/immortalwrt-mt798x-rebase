@@ -48,11 +48,9 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  create mode 100644 drivers/net/phy/as21xx_bbu_api/as21xx_debugfs.h
  create mode 100644 drivers/net/phy/as21xxx.h
 
-diff --git a/drivers/net/phy/Makefile b/drivers/net/phy/Makefile
-index a20b99d..68aa831 100644
 --- a/drivers/net/phy/Makefile
 +++ b/drivers/net/phy/Makefile
-@@ -58,7 +58,8 @@ obj-$(CONFIG_AIR_EN8811H_PHY)   += air_en8811h.o
+@@ -58,7 +58,8 @@ obj-$(CONFIG_AIR_EN8811H_PHY)   += air_e
  obj-$(CONFIG_AMD_PHY)		+= amd.o
  obj-$(CONFIG_AMCC_QT2025_PHY)	+= qt2025.o
  obj-$(CONFIG_AQUANTIA_PHY)	+= aquantia/
@@ -62,9 +60,6 @@ index a20b99d..68aa831 100644
  ifdef CONFIG_AX88796B_RUST_PHY
    obj-$(CONFIG_AX88796B_PHY)	+= ax88796b_rust.o
  else
-diff --git a/drivers/net/phy/as21xx_bbu_api/as21xx_api.c b/drivers/net/phy/as21xx_bbu_api/as21xx_api.c
-new file mode 100644
-index 0000000..91ee731
 --- /dev/null
 +++ b/drivers/net/phy/as21xx_bbu_api/as21xx_api.c
 @@ -0,0 +1,1867 @@
@@ -1935,9 +1930,6 @@ index 0000000..91ee731
 +	aeon_ipc_operation(phydev, IPC_DBGCMD_CU_AN, IPC_CMD_CU_AN_PARA_DET, data,
 +			   data_size, IPC_DATA_UINT8, NULL, 0, IPC_DATA_UINT8);
 +}
-diff --git a/drivers/net/phy/as21xx_bbu_api/as21xx_api.h b/drivers/net/phy/as21xx_bbu_api/as21xx_api.h
-new file mode 100644
-index 0000000..d7d6aa0
 --- /dev/null
 +++ b/drivers/net/phy/as21xx_bbu_api/as21xx_api.h
 @@ -0,0 +1,923 @@
@@ -2864,9 +2856,6 @@ index 0000000..d7d6aa0
 + */
 +void aeon_ipc_cnt_clr(struct phy_device *phydev);
 +#endif
-diff --git a/drivers/net/phy/as21xx_bbu_api/as21xx_debugfs.c b/drivers/net/phy/as21xx_bbu_api/as21xx_debugfs.c
-new file mode 100644
-index 0000000..8b51cc7
 --- /dev/null
 +++ b/drivers/net/phy/as21xx_bbu_api/as21xx_debugfs.c
 @@ -0,0 +1,3774 @@
@@ -6644,9 +6633,6 @@ index 0000000..8b51cc7
 +	debugfs_remove_recursive(priv->debugfs_root);
 +	priv->debugfs_root = NULL;
 +}
-diff --git a/drivers/net/phy/as21xx_bbu_api/as21xx_debugfs.h b/drivers/net/phy/as21xx_bbu_api/as21xx_debugfs.h
-new file mode 100644
-index 0000000..f11d6e2
 --- /dev/null
 +++ b/drivers/net/phy/as21xx_bbu_api/as21xx_debugfs.h
 @@ -0,0 +1,45 @@
@@ -6695,8 +6681,6 @@ index 0000000..f11d6e2
 +void as21xxx_debugfs_remove(struct phy_device *phydev);
 +
 +#endif
-diff --git a/drivers/net/phy/as21xxx.c b/drivers/net/phy/as21xxx.c
-index 0052773..2b2a96f 100644
 --- a/drivers/net/phy/as21xxx.c
 +++ b/drivers/net/phy/as21xxx.c
 @@ -10,6 +10,7 @@
@@ -6983,7 +6967,7 @@ index 0052773..2b2a96f 100644
  static struct as21xxx_led_pattern_info as21xxx_led_supported_pattern[] = {
  	{
  		.pattern = BIT(TRIGGER_NETDEV_LINK_10),
-@@ -294,6 +458,129 @@ static struct as21xxx_led_pattern_info as21xxx_led_supported_pattern[] = {
+@@ -294,6 +458,129 @@ static struct as21xxx_led_pattern_info a
  	}
  };
  
@@ -7113,7 +7097,7 @@ index 0052773..2b2a96f 100644
  static int aeon_firmware_boot(struct phy_device *phydev, const u8 *data,
  			      size_t size)
  {
-@@ -326,7 +613,6 @@ static int aeon_firmware_boot(struct phy_device *phydev, const u8 *data,
+@@ -326,7 +613,6 @@ static int aeon_firmware_boot(struct phy
  	/* Firmware is always aligned to u16 */
  	for (i = 0; i < size; i += 2) {
  		val = data[i + 1] << 8 | data[i];
@@ -7121,7 +7105,7 @@ index 0052773..2b2a96f 100644
  		ret = phy_write_mmd(phydev, MDIO_MMD_VEND1,
  				    VEND1_GLB_REG_MDIO_INDIRECT_LOAD, val);
  		if (ret)
-@@ -349,6 +635,83 @@ static int aeon_firmware_boot(struct phy_device *phydev, const u8 *data,
+@@ -349,6 +635,83 @@ static int aeon_firmware_boot(struct phy
  			      VEND1_GLB_CPU_CTRL_MASK, AEON_CPU_CTRL_FW_START);
  }
  
@@ -7205,7 +7189,7 @@ index 0052773..2b2a96f 100644
  static int aeon_firmware_load(struct phy_device *phydev)
  {
  	struct device *dev = &phydev->mdio.dev;
-@@ -369,45 +732,18 @@ static int aeon_firmware_load(struct phy_device *phydev)
+@@ -369,45 +732,18 @@ static int aeon_firmware_load(struct phy
  	}
  
  	ret = aeon_firmware_boot(phydev, fw->data, fw->size);
@@ -7252,7 +7236,7 @@ index 0052773..2b2a96f 100644
  
  	/* The IPC sync by using a single parity bit.
  	 * Each CMD have alternately this bit set or clear
-@@ -416,7 +752,6 @@ static int aeon_ipc_send_cmd(struct phy_device *phydev,
+@@ -416,7 +752,6 @@ static int aeon_ipc_send_cmd(struct phy_
  	curr_parity = priv->parity_status;
  	if (priv->parity_status)
  		cmd |= AEON_IPC_CMD_PARITY;
@@ -7260,7 +7244,7 @@ index 0052773..2b2a96f 100644
  	/* Always update parity for next packet */
  	priv->parity_status = !priv->parity_status;
  
-@@ -426,39 +761,40 @@ static int aeon_ipc_send_cmd(struct phy_device *phydev,
+@@ -426,39 +761,40 @@ static int aeon_ipc_send_cmd(struct phy_
  
  	/* Wait for packet to be processed */
  	usleep_range(AEON_IPC_DELAY, AEON_IPC_DELAY + 5000);
@@ -7319,7 +7303,7 @@ index 0052773..2b2a96f 100644
  	int ret;
  	int i;
  
-@@ -468,55 +804,50 @@ static int aeon_ipc_send_msg(struct phy_device *phydev,
+@@ -468,55 +804,50 @@ static int aeon_ipc_send_msg(struct phy_
  	if (data_len > AEON_IPC_DATA_MAX)
  		return -EINVAL;
  
@@ -7402,7 +7386,7 @@ index 0052773..2b2a96f 100644
  }
  
  static int aeon_ipc_noop(struct phy_device *phydev,
-@@ -542,18 +873,13 @@ static int aeon_ipc_sync_parity(struct phy_device *phydev,
+@@ -542,18 +873,13 @@ static int aeon_ipc_sync_parity(struct p
  	int ret;
  
  	mutex_lock(&priv->ipc_lock);
@@ -7421,7 +7405,7 @@ index 0052773..2b2a96f 100644
  	/* We expect to return -EINVAL */
  	if (ret != -EINVAL)
  		return ret;
-@@ -570,21 +896,22 @@ static int aeon_ipc_sync_parity(struct phy_device *phydev,
+@@ -570,21 +896,22 @@ static int aeon_ipc_sync_parity(struct p
  static int aeon_ipc_get_fw_version(struct phy_device *phydev)
  {
  	u16 ret_data[AEON_IPC_DATA_NUM_REGISTERS], data[1];
@@ -7451,7 +7435,7 @@ index 0052773..2b2a96f 100644
  
  	return 0;
  }
-@@ -592,15 +919,113 @@ static int aeon_ipc_get_fw_version(struct phy_device *phydev)
+@@ -592,15 +919,113 @@ static int aeon_ipc_get_fw_version(struc
  static int aeon_dpc_ra_enable(struct phy_device *phydev)
  {
  	u16 data[2];
@@ -7567,7 +7551,7 @@ index 0052773..2b2a96f 100644
  {
  	struct as21xxx_priv *priv;
  	int ret;
-@@ -610,9 +1035,10 @@ static int as21xxx_probe(struct phy_device *phydev)
+@@ -610,9 +1035,10 @@ static int as21xxx_probe(struct phy_devi
  	if (!priv)
  		return -ENOMEM;
  	phydev->priv = priv;
@@ -7581,7 +7565,7 @@ index 0052773..2b2a96f 100644
  	if (ret)
  		return ret;
  
-@@ -624,169 +1050,268 @@ static int as21xxx_probe(struct phy_device *phydev)
+@@ -624,169 +1050,268 @@ static int as21xxx_probe(struct phy_devi
  	if (ret)
  		return ret;
  
@@ -7636,14 +7620,14 @@ index 0052773..2b2a96f 100644
 +
 +	return 0;
 +}
- 
--	/* Autoneg is being started, therefore disregard current
--	 * link status and report link as down.
++
 +static int aeon_update_link(struct phy_device *phydev)
 +{
 +	int status = 0, bmcr;
 +	bool link_up;
-+
+ 
+-	/* Autoneg is being started, therefore disregard current
+-	 * link status and report link as down.
 +	bmcr = phy_read_mmd(phydev, MDIO_MMD_AN, AS21XXX_MDIO_AN_C22 + MII_BMCR);
 +	if (bmcr < 0)
 +		return bmcr;
@@ -7700,6 +7684,10 @@ index 0052773..2b2a96f 100644
 -			     AS21XXX_MDIO_AN_C22 + MII_STAT1000);
 -	if (lpagb < 0)
 -		return lpagb;
+-
+-	if (lpagb & LPA_1000MSFAIL) {
+-		int adv = phy_read_mmd(phydev, MDIO_MMD_AN,
+-				       AS21XXX_MDIO_AN_C22 + MII_CTRL1000);
 +	if (phydev->autoneg == AUTONEG_ENABLE) {
 +		if (!phydev->autoneg_complete) {
 +			mii_stat1000_mod_linkmode_lpa_t(phydev->lp_advertising,
@@ -7707,10 +7695,7 @@ index 0052773..2b2a96f 100644
 +			mii_lpa_mod_linkmode_lpa_t(phydev->lp_advertising, 0);
 +			return 0;
 +		}
- 
--	if (lpagb & LPA_1000MSFAIL) {
--		int adv = phy_read_mmd(phydev, MDIO_MMD_AN,
--				       AS21XXX_MDIO_AN_C22 + MII_CTRL1000);
++
 +		if (phydev->is_gigabit_capable) {
 +			lpagb = phy_read_mmd(phydev, MDIO_MMD_AN,
 +					     AS21XXX_MDIO_AN_C22 + MII_STAT1000);
@@ -7732,9 +7717,7 @@ index 0052773..2b2a96f 100644
 +			mii_stat1000_mod_linkmode_lpa_t(phydev->lp_advertising,
 +							lpagb);
 +		}
- 
--		if (adv < 0)
--			return adv;
++
 +		lpa = phy_read_mmd(phydev, MDIO_MMD_AN, AS21XXX_MDIO_AN_C22 + MII_LPA);
 +		if (lpa < 0)
 +			return lpa;
@@ -7750,12 +7733,14 @@ index 0052773..2b2a96f 100644
 +	return 0;
 +}
  
--		if (adv & CTL1000_ENABLE_MASTER)
--			phydev_err(phydev, "Master/Slave resolution failed, maybe conflicting manual settings?\n");
+-		if (adv < 0)
+-			return adv;
 +static void aeon_read_speed(struct phy_device *phydev)
 +{
 +	int bmcr, speed;
-+
+ 
+-		if (adv & CTL1000_ENABLE_MASTER)
+-			phydev_err(phydev, "Master/Slave resolution failed, maybe conflicting manual settings?\n");
 +	bmcr = phy_read_mmd(phydev, MDIO_MMD_AN, AS21XXX_MDIO_AN_C22 + MII_BMCR);
 +	if (bmcr < 0)
 +		return;
@@ -7863,15 +7848,16 @@ index 0052773..2b2a96f 100644
 +	u16 cfg[7] = {
 +		led0, led1, led2, led3, led4, polarity, blink
 +	};
++
++	ret_size = aeon_ipc_sync_parity(phydev, phydev->priv);
++	if (ret_size)
++		return ret_size;
  
 -		speed = phy_read_mmd(phydev, MDIO_MMD_VEND1,
 -				     VEND1_SPEED_STATUS);
 -		if (speed < 0)
 -			return speed;
-+	ret_size = aeon_ipc_sync_parity(phydev, phydev->priv);
-+	if (ret_size)
-+		return ret_size;
- 
+-
 -		switch (speed & VEND1_SPEED_STATUS) {
 -		case VEND1_SPEED_10000:
 -			phydev->speed = SPEED_10000;
@@ -7924,11 +7910,6 @@ index 0052773..2b2a96f 100644
 -
  	if (value)
 -		val = VEND1_LED_REG_A_EVENT_ON;
--
--	return phy_modify_mmd(phydev, MDIO_MMD_VEND1,
--			      VEND1_LED_REG(index),
--			      VEND1_LED_REG_A_EVENT,
--			      FIELD_PREP(VEND1_LED_REG_A_EVENT, val));
 +		val = LED_MODE_ON;
 +
 +	if (index == AEON_LED0)
@@ -7943,7 +7924,11 @@ index 0052773..2b2a96f 100644
 +		custome_cfg[4] = val;
 +	else
 +		phydev_dbg(phydev, "AEON support five leds, check index\r\n");
-+
+ 
+-	return phy_modify_mmd(phydev, MDIO_MMD_VEND1,
+-			      VEND1_LED_REG(index),
+-			      VEND1_LED_REG_A_EVENT,
+-			      FIELD_PREP(VEND1_LED_REG_A_EVENT, val));
 +	aeon_ipc_set_led_cfg(custome_cfg[0], custome_cfg[1], custome_cfg[2], custome_cfg[3],
 +			     custome_cfg[4], custome_cfg[5], custome_cfg[6], phydev);
 +
@@ -7957,7 +7942,7 @@ index 0052773..2b2a96f 100644
  {
  	int i;
  
-@@ -800,19 +1325,37 @@ static int as21xxx_led_hw_is_supported(struct phy_device *phydev, u8 index,
+@@ -800,19 +1325,37 @@ static int as21xxx_led_hw_is_supported(s
  	return -EOPNOTSUPP;
  }
  
@@ -8001,7 +7986,7 @@ index 0052773..2b2a96f 100644
  	for (i = 0; i < ARRAY_SIZE(as21xxx_led_supported_pattern); i++)
  		if (val == as21xxx_led_supported_pattern[i].val) {
  			*rules = as21xxx_led_supported_pattern[i].pattern;
-@@ -823,32 +1366,35 @@ static int as21xxx_led_hw_control_get(struct phy_device *phydev, u8 index,
+@@ -823,32 +1366,35 @@ static int as21xxx_led_hw_control_get(st
  	return -EINVAL;
  }
  
@@ -8021,11 +8006,6 @@ index 0052773..2b2a96f 100644
 -			val = as21xxx_led_supported_pattern[i].val;
 -			break;
 -		}
--
--	return phy_modify_mmd(phydev, MDIO_MMD_VEND1,
--			      VEND1_LED_REG(index),
--			      VEND1_LED_REG_A_EVENT,
--			      FIELD_PREP(VEND1_LED_REG_A_EVENT, val));
 +	if (index == AEON_LED0)
 +		custome_cfg[0] = rules;
 +	else if (index == AEON_LED1)
@@ -8041,7 +8021,11 @@ index 0052773..2b2a96f 100644
 +
 +	aeon_ipc_set_led_cfg(custome_cfg[0], custome_cfg[1], custome_cfg[2], custome_cfg[3],
 +			     custome_cfg[4], custome_cfg[5], custome_cfg[6], phydev);
-+
+ 
+-	return phy_modify_mmd(phydev, MDIO_MMD_VEND1,
+-			      VEND1_LED_REG(index),
+-			      VEND1_LED_REG_A_EVENT,
+-			      FIELD_PREP(VEND1_LED_REG_A_EVENT, val));
 +	return 1;
  }
  
@@ -8055,7 +8039,7 @@ index 0052773..2b2a96f 100644
  	u32 mode;
  
  	if (index > AEON_MAX_LEDS)
-@@ -867,83 +1413,279 @@ static int as21xxx_led_polarity_set(struct phy_device *phydev, int index,
+@@ -867,83 +1413,279 @@ static int as21xxx_led_polarity_set(stru
  		}
  	}
  
@@ -8063,13 +8047,13 @@ index 0052773..2b2a96f 100644
  	if (led_active_low)
 -		val = VEND1_GLB_CPU_CTRL_LED_POLARITY(index);
 +		custome_cfg[5] |= (1 << index);
-+
-+	aeon_ipc_set_led_cfg(custome_cfg[0], custome_cfg[1], custome_cfg[2], custome_cfg[3],
-+			     custome_cfg[4], custome_cfg[5], custome_cfg[6], phydev);
  
 -	return phy_modify_mmd(phydev, MDIO_MMD_VEND1,
 -			      VEND1_GLB_REG_CPU_CTRL,
 -			      mask, val);
++	aeon_ipc_set_led_cfg(custome_cfg[0], custome_cfg[1], custome_cfg[2], custome_cfg[3],
++			     custome_cfg[4], custome_cfg[5], custome_cfg[6], phydev);
++
 +	return 0;
  }
  
@@ -8170,15 +8154,15 @@ index 0052773..2b2a96f 100644
 +	return read_poll_timeout(aeon_ipc_get_fw_version, val,
 +				 val == 0, 10000, 2000000, false, phydev);
 +}
-+
-+static int aeon_gen1_config_init(struct phy_device *phydev)
-+{
-+	int ret = aeon_wait_reset_complete(phydev);
  
 -	/* Skip PHY that are not AS21xxx */
 -	if (!phy_id_compare_vendor(phydev->c45_ids.device_ids[MDIO_MMD_PCS],
 -				   PHY_VENDOR_AEONSEMI))
 -		return genphy_match_phy_device(phydev, phydrv);
++static int aeon_gen1_config_init(struct phy_device *phydev)
++{
++	int ret = aeon_wait_reset_complete(phydev);
++
 +	if (ret) {
 +		aeon_cl45_write(phydev, MDIO_MMD_VEND1, VEND1_PTP_CLK, 0x48);
 +		ret = aeon_firmware_load(phydev);
@@ -8333,7 +8317,10 @@ index 0052773..2b2a96f 100644
 -		goto out;
 +	return 1;
 +}
-+
+ 
+-out:
+-	mutex_destroy(&priv->ipc_lock);
+-	kfree(priv);
 +static int aeon_gen1_c45_check_and_restart_aneg(struct phy_device *phydev, bool restart)
 +{
 +	int ret = 0;
@@ -8350,10 +8337,6 @@ index 0052773..2b2a96f 100644
 +	if (restart)
 +		ret = aeon_gen1_c45_restart_aneg(phydev);
  
--out:
--	mutex_destroy(&priv->ipc_lock);
--	kfree(priv);
--
 -	/* Return can either be 0 or a negative error code.
 -	 * Returning 0 here means THIS is NOT a suitable PHY.
 -	 *
@@ -8387,7 +8370,7 @@ index 0052773..2b2a96f 100644
  	{
  		/* PHY expose in C45 as 0x7500 0x9410
  		 * before firmware is loaded.
-@@ -952,136 +1694,183 @@ static struct phy_driver as21xxx_drivers[] = {
+@@ -952,136 +1694,183 @@ static struct phy_driver as21xxx_drivers
  		 */
  		PHY_ID_MATCH_EXACT(PHY_ID_AS21XXX),
  		.name		= "Aeonsemi AS21xxx",
@@ -8655,9 +8638,6 @@ index 0052773..2b2a96f 100644
  
  MODULE_DESCRIPTION("Aeonsemi AS21xxx PHY driver");
  MODULE_AUTHOR("Christian Marangi <ansuelsmth@gmail.com>");
-diff --git a/drivers/net/phy/as21xxx.h b/drivers/net/phy/as21xxx.h
-new file mode 100644
-index 0000000..d3bfa7e
 --- /dev/null
 +++ b/drivers/net/phy/as21xxx.h
 @@ -0,0 +1,65 @@
@@ -8726,6 +8706,3 @@ index 0000000..d3bfa7e
 +		   unsigned int phy_reg);
 +void aeon_cl45_write(struct phy_device *phydev, int dev_addr,
 +		     unsigned int phy_reg, unsigned short phy_data);
--- 
-2.45.2
-

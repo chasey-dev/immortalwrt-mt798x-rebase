@@ -1,3 +1,13 @@
+---
+[v1] init: do not mount ubi rootfs if dual boot is enabled
+
+Prevent automatic UBI rootfs mounting when dual boot mode is active.
+In dual boot configuration, the UBIFS-type rootfs volume is specified
+by U-Boot through device tree properties.
+---
+v1: Initial dual boot support for UBI rootfs mounting control.
+---
+
 From: Weijie Gao <weijie.gao@mediatek.com>
 Subject: [PATCH] init: do not mount ubi rootfs if dual boot is enabled
 

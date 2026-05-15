@@ -1,3 +1,13 @@
+---
+[v1] block: fitblk: add ramdisk image parsing and mounting support
+
+Extend fitblk driver to parse and mount ramdisk-type images from FIT.
+When ramdisk is used as rootfs, treat it the same as loadable images
+and allow both filesystem and ramdisk types to be mapped as partitions.
+---
+v1: Initial ramdisk support for FIT block device.
+---
+
 --- a/drivers/block/fitblk.c
 +++ b/drivers/block/fitblk.c
 @@ -463,6 +463,11 @@ static int parse_fit_on_dev(struct devic

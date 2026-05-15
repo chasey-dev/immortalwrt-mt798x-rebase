@@ -1,3 +1,12 @@
+---
+[v1] net: netdevice: add MACVLAN device path type
+
+Add MACVLAN device path type to network device classification for proper
+hardware offload path identification and flow control.
+---
+v1: Initial MACVLAN device path type support.
+---
+
 --- a/include/linux/netdevice.h
 +++ b/include/linux/netdevice.h
 @@ -836,6 +836,7 @@ enum net_device_path_type {

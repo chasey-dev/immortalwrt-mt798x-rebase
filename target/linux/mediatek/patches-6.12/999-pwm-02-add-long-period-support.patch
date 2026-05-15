@@ -1,3 +1,13 @@
+---
+[v1] pwm: mediatek: add long period support
+
+Add support for longer PWM periods by implementing clock divider selection
+(clksel) mechanism. The source clock can be divided by 2^clkdiv or by
+(2^clkdiv*1625) when clksel is enabled, allowing much longer PWM periods.
+---
+v1: Initial long period support with clksel mechanism.
+---
+
 --- a/drivers/pwm/pwm-mediatek.c
 +++ b/drivers/pwm/pwm-mediatek.c
 @@ -143,8 +143,12 @@ static int pwm_mediatek_config(struct pw

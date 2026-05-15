@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: fix memory leak on WiFi module reinsertion
+
+Fix memory leak that occurs when WiFi module is removed and reinserted.
+Properly cleanup resources on module removal.
+---
+v2: Complete resource cleanup.
+v1: Initial memory leak fix.
+---
+
 From dbfb21802c5516fb1c67d3218a90c116e717c51a Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Tue, 1 Oct 2024 14:07:22 +0800

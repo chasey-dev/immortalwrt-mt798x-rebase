@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: refactor WDMA init to avoid double initialization
+
+Refactor WDMA initialization flow to prevent double initialization
+that can cause resource conflicts.
+---
+v2: Added initialization guard.
+v1: Initial WDMA init refactoring.
+---
+
 From 38b51269aabf06cdbe2883a2dbf38edc37c65a62 Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Fri, 12 Dec 2025 16:47:10 +0800

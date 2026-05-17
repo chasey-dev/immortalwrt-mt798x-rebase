@@ -1,3 +1,17 @@
+---
+[v2] pcie: mediatek-gen3: Add soft off and soft on API
+
+Add soft off and soft on API for MediaTek Gen3 PCIe controller. These APIs
+provide software-controlled PCIe link management, allowing graceful shutdown
+and restart of PCIe devices without full hardware reset, useful for power
+management and device recovery scenarios.
+---
+v2: Update quilt refresh to re-sync the patch and ensure it applies cleanly
+    with the latest source code.
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 From 6ca5849bee7d577fc97e08d7f575b588c4157630 Mon Sep 17 00:00:00 2001
 From: Jianguo Zhang <jianguo.zhang@mediatek.com>
 Date: Tue, 14 Oct 2025 16:48:46 +0800

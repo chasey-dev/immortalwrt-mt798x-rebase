@@ -1,3 +1,13 @@
+---
+[v1] pwm: mediatek: add MT7987 hardware breathing light support
+
+Add hardware breathing light support for MT7987 PWM controller. This feature
+enables automatic LED brightness ramping in hardware without CPU intervention,
+supporting configurable breathing thresholds and patterns.
+---
+v1: Initial MT7987 hardware breathing light support.
+---
+
 From eecc1e7982d4f5da63b129e5437d79ced3aeb26f Mon Sep 17 00:00:00 2001
 From: Sam Shih <sam.shih@mediatek.com>
 Date: Mon, 3 Mar 2025 14:38:41 +0800

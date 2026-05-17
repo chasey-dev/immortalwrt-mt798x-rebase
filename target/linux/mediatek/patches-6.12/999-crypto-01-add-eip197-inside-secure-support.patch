@@ -1,3 +1,14 @@
+---
+[v1] crypto: inside-secure - Add EIP197 hardware crypto accelerator support
+
+Add support for EIP197 Inside Secure hardware crypto accelerator with
+mini-firmware. Configures firmware paths, enables mini-firmware mode by
+default, and adds proper firmware release handling to support MediaTek
+platforms with EIP197 inline crypto engine.
+---
+v1: Add EIP197 hardware crypto accelerator support
+---
+
 --- a/drivers/crypto/inside-secure/safexcel.c
 +++ b/drivers/crypto/inside-secure/safexcel.c
 @@ -414,13 +414,13 @@ static int eip197_load_firmwares(struct
@@ -6,7 +17,7 @@
  	int i, j, ret = 0, pe;
 -	int ipuesz, ifppsz, minifw = 0;
 +	int ipuesz, ifppsz, minifw = 1;
- 
+
  	if (priv->data->version == EIP197D_MRVL)
  		dir = "eip197d";
  	else if (priv->data->version == EIP197B_MRVL ||
@@ -17,9 +28,9 @@
  		dir = "eip197c";
  	else
 @@ -455,6 +455,9 @@ retry_fw:
- 
+
  	ipuesz = eip197_write_firmware(priv, fw[FW_IPUE]);
- 
+
 +	for (j = 0; j < i; j++)
 +		release_firmware(fw[j]);
 +
@@ -41,7 +52,7 @@
 @@ -805,6 +813,12 @@ static int safexcel_hw_init(struct safex
  			return ret;
  	}
- 
+
 +	/* Allow clocks to be forced on for EIP197 */
 +	if (priv->flags & SAFEXCEL_HW_EIP197) {
 +		writel(0xffffffff, EIP197_HIA_GEN_CFG(priv) + EIP197_FORCE_CLOCK_ON);

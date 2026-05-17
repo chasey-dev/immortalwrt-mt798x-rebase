@@ -32,6 +32,10 @@ cmcc,a10-ubootmod|\
 comfast,cf-wr632ax-ubootmod|\
 cudy,tr3000-v1-ubootmod|\
 cudy,wbr3000uax-v1-ubootmod|\
+cudy,wr3000e-v1-ubootmod|\
+cudy,wr3000s-v1-ubootmod|\
+cudy,wr3000h-v1-ubootmod|\
+cudy,wr3000p-v1-ubootmod|\
 h3c,magic-nx30-pro|\
 imou,hx21|\
 jcg,q30-pro|\
@@ -71,7 +75,8 @@ glinet,gl-mt6000|\
 glinet,gl-x3000|\
 glinet,gl-xe3000|\
 huasifei,wh3000-emmc|\
-nradio,c8-668gl)
+nradio,c8-668gl|\
+sl,3000-emmc)
 	ubootenv_add_mmc "u-boot-env" "" "0x0" "0x80000"
 	;;
 asiarf,ap7986-003|\
@@ -81,6 +86,7 @@ edgecore,eap111|\
 h3c,magic-nx30-pro-mtkuboot|\
 livinet,zr-3020|\
 netgear,wax220|\
+ruijie,rg-x30e-pro|\
 zbtlink,zbt-z8102ax|\
 zbtlink,zbt-z8103ax)
 	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x20000" "0x20000"

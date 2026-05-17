@@ -1,3 +1,14 @@
+---
+[v1] usb: Add embedded host feature support
+
+Add embedded host feature support for USB subsystem. Implements device filtering
+and enhanced error reporting for embedded USB host scenarios where only specific
+whitelisted devices are allowed to connect.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 From 521a73dc3a4ab5f13ae3b67924fbdbc244f1c7c0 Mon Sep 17 00:00:00 2001
 From: Zhanyong Wang <zhanyong.wang@mediatek.com>
 Date: Fri, 2 Jun 2023 13:06:27 +0800

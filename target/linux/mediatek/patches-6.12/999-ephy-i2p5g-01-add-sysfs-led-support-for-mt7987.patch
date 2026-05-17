@@ -1,3 +1,12 @@
+---
+[v1] net: phy: mtk-2p5g: add sysfs LED control support for MT7987
+
+Add sysfs interface for controlling LED behavior on MT7987 built-in
+2.5G Ethernet PHY. This enables userspace LED configuration.
+---
+v1: Initial sysfs LED support for MT7987 2.5G PHY.
+---
+
 --- a/drivers/net/phy/mediatek/mtk-2p5ge.c
 +++ b/drivers/net/phy/mediatek/mtk-2p5ge.c
 @@ -1,116 +1,146 @@

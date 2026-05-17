@@ -1,3 +1,13 @@
+---
+[v1] iio: pressure: add Zilltek ZTS8032 barometric sensor driver
+
+Add driver support for Zilltek ZTS8032 barometric pressure and temperature
+sensor. The driver provides IIO interface for reading pressure and temperature
+measurements via I2C.
+---
+v1: Initial ZTS8032 driver support.
+---
+
 --- a/drivers/iio/pressure/Kconfig
 +++ b/drivers/iio/pressure/Kconfig
 @@ -339,4 +339,11 @@ config ZPA2326_SPI

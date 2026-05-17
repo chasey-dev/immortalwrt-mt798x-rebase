@@ -1,3 +1,13 @@
+---
+[v1] mtd: spinand: add CASN support
+
+Add support for CASN (Common Attribute for SPI-NAND) parameter page
+parsing for SPI-NAND devices. CASN provides standardized NAND configuration
+information similar to ONFI but specifically designed for SPI-NAND devices.
+---
+v1: Initial CASN support for SPI-NAND.
+---
+
 From f588443bf5be9b8fda24fbdc80187ce8f015dcf1 Mon Sep 17 00:00:00 2001
 From: "SkyLake.Huang" <skylake.huang@mediatek.com>
 Date: Mon, 31 Jul 2023 10:40:09 +0800

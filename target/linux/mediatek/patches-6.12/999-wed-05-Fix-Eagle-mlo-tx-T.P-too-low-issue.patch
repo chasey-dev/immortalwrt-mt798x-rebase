@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: fix Eagle MLO TX throughput issue
+
+Fix low TX throughput issue on Eagle platform when using MLO
+(Multi-Link Operation) with WED hardware offload.
+---
+v2: Enhanced TX path optimization.
+v1: Initial throughput optimization.
+---
+
 From d21aa6584008b2aceae1b7962b5e2c7d96811a33 Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Tue, 1 Oct 2024 14:20:09 +0800

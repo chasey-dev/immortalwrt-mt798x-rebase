@@ -6,47 +6,29 @@ This repository is worked on ImmortalWrt with MTK OpenWrt Feeds patches imported
 
 ## Commit Cutoff Revisions
 
-### ImmortalWrt: [2777fc6](https://github.com/immortalwrt/immortalwrt/commit/2777fc61da4bbcc66b5c73769ea7bce1f868f940) - OpenWrt 25.12.3
+### ImmortalWrt: [e660cbc](https://github.com/immortalwrt/immortalwrt/commit/e660cbc917924389164967211777106020b3cd56) - OpenWrt 25.12.4
 
 ```
-xdp-tools: fix BPFTOOL detection
-
-Fix sh syntax error in configure script.
+Merge Official Source
 
 Signed-off-by: Tianling Shen <cnsztl@immortalwrt.org>
 ```
 
-### MTK OpenWrt Feeds: [c0ef0ca](https://git01.mediatek.com/plugins/gitiles/openwrt/feeds/mtk-openwrt-feeds/+/c0ef0ca705bc7dad741fdfc65c60052725c3d7c1)
+### MTK OpenWrt Feeds: [9372bc8](https://git01.mediatek.com/plugins/gitiles/openwrt/feeds/mtk-openwrt-feeds/+/9372bc8b1266463da068e5e9a59136d91fd004fb)
 
 ```
-[][HIGH][kernel-6.12][mt7988][eth][Refactor XGMAC force mode to prevent from XGMAC Rx FIFO overflow]
+[][openwrt-25][common][bsp][Add the extra_firmware variable to facilitate appending built-in firmware names in other rules scripts]
 
 [Description]
-Refactor XGMAC force mode to prevent from XGMAC Rx FIFO overflow.
+Add the extra_firmware variable to facilitate appending built-in
+firmware names in other rules scripts.
 
-[Root Cause]
-After an ETH hardware reset, the XGMAC link is up by default, and the
-external 10G PHY may establish a link before mtk_mac_prepare() is
-executed. Therefore, the ETH driver is unable to block traffic from
-entering XGMAC before enabling XGMAC LOGIC_RESET.
-As a result, we observed that this unexpected behavior can cause an
-XGMAC Rx FIFO overflow when the ETH driver enables the XGMAC LOGIC_RESET
-in mtk_mac_link_up().
-
-[Solution]
-Move the XGMAC force link down operation from mtk_mac_prepare() to
-mtk_hw_init() to prevent traffic from entering XGMAC before enabling
-XGMAC LOGIC_RESET.
-
-[How to Verify]
-N/A
-
-[Info to Customer]
+[Release-log]
 N/A
 
 
-Change-Id: I663b9f34873be7410fe94711ee91b199b1c33357
-Reviewed-on: https://gerrit.mediatek.inc/c/openwrt/feeds/mtk_openwrt_feeds/+/12074397
+Change-Id: Ie471c6e3fcf85103ade3d547efdb34ad117e5d77
+Reviewed-on: https://gerrit.mediatek.inc/c/openwrt/feeds/mtk_openwrt_feeds/+/12086920
 ```
 
 ### l1parser: [081bb31](https://github.com/chasey-dev/l1parser/commit/081bb31211efc74594d25bfd1bb5811f3408a205)

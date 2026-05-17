@@ -1,3 +1,16 @@
+---
+[v1] phy: mtk-tphy: Add auto load valid check mechanism
+
+Add auto load valid check mechanism for MediaTek T-PHY driver to verify efuse
+calibration data validity before applying. Enhances reliability by checking
+if efuse values are properly programmed, with separate validation for both USB3
+PHY and dual-lane PCIe PHY configurations.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
+
 From 1df12b771bb3db3c59c4c976a2b70aac56b039c4 Mon Sep 17 00:00:00 2001
 From: Zhanyong Wang <zhanyong.wang@mediatek.com>
 Date: Fri, 2 Jun 2023 13:06:25 +0800

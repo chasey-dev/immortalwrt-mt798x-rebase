@@ -1,3 +1,12 @@
+---
+[v1] net: phy: aquantia: increase timeout threshold for AQR113C 100M register polling
+
+Increase timeout threshold when polling AQR113C 100M mode registers to
+accommodate slower response times on some hardware configurations.
+---
+v1: Increased AQR113C 100M register polling timeout.
+---
+
 From f163d6752765187250a2f57cbf95456d2737c049 Mon Sep 17 00:00:00 2001
 From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 Date: Fri, 3 Oct 2025 17:35:14 +0800
@@ -27,4 +36,3 @@ index 1bc1d5c..217095c 100644
  
 -- 
 2.45.2
-

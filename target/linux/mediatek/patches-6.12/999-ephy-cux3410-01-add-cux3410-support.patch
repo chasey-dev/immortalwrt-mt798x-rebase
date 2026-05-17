@@ -1,3 +1,12 @@
+---
+[v1] net: phy: add MaxLinear CUX3410 10GBase-T PHY support
+
+Add driver support for MaxLinear CUX3410 10GBase-T Ethernet PHY including
+initialization, auto-negotiation, and link management.
+---
+v1: Initial CUX3410 10GBase-T PHY driver support.
+---
+
 From 0839c533136f039ca63e72871d955e9a6c1e3a1f Mon Sep 17 00:00:00 2001
 From: Mason Chang <mason-cw.chang@mediatek.com>
 Date: Mon, 13 Oct 2025 15:42:49 +0800
@@ -139,4 +148,3 @@ index 217095c..95a15ce 100644
  
 -- 
 2.45.2
-

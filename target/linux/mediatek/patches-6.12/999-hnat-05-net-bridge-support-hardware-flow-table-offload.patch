@@ -8,7 +8,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 ---
 
 diff --git a/net/bridge/br_device.c b/net/bridge/br_device.c
-index 26b79fe..6192d48 100644
+index 3768cc9..199ba8a 100644
 --- a/net/bridge/br_device.c
 +++ b/net/bridge/br_device.c
 @@ -14,6 +14,10 @@
@@ -22,25 +22,41 @@ index 26b79fe..6192d48 100644
  
  #include <linux/uaccess.h>
  #include "br_private.h"
-@@ -434,6 +438,28 @@ static const struct ethtool_ops br_ethtool_ops = {
+@@ -434,6 +438,44 @@ static const struct ethtool_ops br_ethtool_ops = {
  	.get_link_ksettings	 = br_get_link_ksettings,
  };
  
 +#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++/* Resolve egress path for (DMAC, vid) on a bridge.
++ *
++ * Returns 0 on FDB hit; -ENOENT on miss (unknown unicast / would flood).
++ * On a forwarding hit, path->dev is updated to the egress slave; on a
++ * BR_FDB_LOCAL hit, path->dev is left unchanged so callers can tell
++ * host-bound from forwarded.
++ */
 +static int br_flow_offload_check(struct flow_offload_hw_path *path)
 +{
 +	struct net_device *dev = path->dev;
 +	struct net_bridge *br = netdev_priv(dev);
-+	struct net_bridge_fdb_entry *dst;
++	struct net_bridge_fdb_entry *f;
++	struct net_bridge_port *dst;
 +
 +	if (!(path->flags & BIT(DEV_PATH_ETHERNET)))
 +		return -EINVAL;
 +
-+	dst = br_fdb_find_rcu(br, path->eth_dest, path->vlan_id);
-+	if (!dst || !dst->dst)
++	f = br_fdb_find_rcu(br, path->eth_dest, path->vlan_id);
++	if (!f)
 +		return -ENOENT;
 +
-+	path->dev = dst->dst->dev;
++	/* Host-bound: bridge/port self or user-added permanent entry. */
++	if (test_bit(BR_FDB_LOCAL, &f->flags))
++		return 0;
++
++	dst = READ_ONCE(f->dst);
++	if (!dst)
++		return -ENOENT;
++
++	path->dev = dst->dev;
 +	if (path->dev->netdev_ops->ndo_flow_offload_check)
 +		return path->dev->netdev_ops->ndo_flow_offload_check(path);
 +
@@ -51,7 +67,7 @@ index 26b79fe..6192d48 100644
  static const struct net_device_ops br_netdev_ops = {
  	.ndo_open		 = br_dev_open,
  	.ndo_stop		 = br_dev_stop,
-@@ -469,6 +495,9 @@ static const struct net_device_ops br_netdev_ops = {
+@@ -469,6 +511,9 @@ static const struct net_device_ops br_netdev_ops = {
  	.ndo_bridge_dellink	 = br_dellink,
  	.ndo_features_check	 = passthru_features_check,
  	.ndo_fill_forward_path	 = br_fill_forward_path,

@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: refactor WED assignment independent of PCI domain
+
+Refactor WED device assignment logic to not rely on PCI domain numbering,
+improving flexibility for different hardware configurations.
+---
+v2: Improved assignment algorithm.
+v1: Initial refactoring of WED assignment.
+---
+
 From 5762627f5a1dba21197ee6cd0cadfe28bffa542c Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Fri, 27 Sep 2024 14:17:12 +0800

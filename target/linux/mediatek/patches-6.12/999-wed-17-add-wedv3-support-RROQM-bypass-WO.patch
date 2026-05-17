@@ -1,3 +1,12 @@
+---
+[v1] net: ethernet: mtk_wed: add WEDv3 RROQM bypass WO support
+
+Add support for RROQM (Receive Reorder Queue Manager) bypass WO
+(Wireless Offload) mode in WED version 3 hardware.
+---
+v1: Initial WEDv3 RROQM bypass WO support.
+---
+
 From e336e92ab95d199f23a3b2447d6dce06fe602769 Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Wed, 11 Mar 2026 14:52:49 +0800
@@ -59,4 +68,3 @@ index 54c5333..0421956 100644
  #define MTK_WED_RROQM_RST_IDX_FDBK			BIT(4)
 -- 
 2.45.2
-

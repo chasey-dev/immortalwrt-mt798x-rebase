@@ -1,3 +1,17 @@
+---
+[v2] pcie: mediatek-gen3: Add PCIe IRQ affinity support
+
+Add PCIe IRQ affinity support for MediaTek Gen3 PCIe controller. This feature
+introduces MSI group management and IRQ affinity control, allowing MSI interrupts
+to be distributed across different groups and bound to specific CPUs for improved
+performance and load balancing.
+---
+v2: Update quilt refresh to re-sync the patch and ensure it applies cleanly
+    with the latest source code.
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 From 0c0e3ff8b24d2b355c35eaeee81dcc91b77e9d5a Mon Sep 17 00:00:00 2001
 From: Jianguo Zhang <jianguo.zhang@mediatek.com>
 Date: Mon, 13 Oct 2025 17:08:00 +0800

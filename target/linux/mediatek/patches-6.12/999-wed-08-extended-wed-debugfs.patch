@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: extend debugfs interface
+
+Extend WED debugfs interface with additional statistics and diagnostic
+capabilities for troubleshooting and performance monitoring.
+---
+v2: Added more diagnostic counters.
+v1: Initial debugfs extensions.
+---
+
 From 96f73e8c2a51555f7c663d2a255f7b2fe75f3846 Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Wed, 5 Jun 2024 10:30:28 +0800

@@ -1,3 +1,14 @@
+---
+[v1] phy: mtk-tphy: Add PCIe 2-lane efuse support
+
+Add PCIe 2-lane efuse support for MediaTek T-PHY driver. Introduces PHY V4
+with dual-lane efuse calibration data support for improved signal quality
+and impedance matching on PCIe 2-lane configurations across MT798x platforms.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 From 8d201dc76a54c8cffdb4d5ceb899d50d48c2a8da Mon Sep 17 00:00:00 2001
 From: Zhanyong Wang <zhanyong.wang@mediatek.com>
 Date: Fri, 2 Jun 2023 13:06:25 +0800

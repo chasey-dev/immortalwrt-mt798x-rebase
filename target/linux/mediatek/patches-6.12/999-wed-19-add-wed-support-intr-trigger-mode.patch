@@ -1,3 +1,12 @@
+---
+[v1] net: ethernet: mtk_wed: add interrupt trigger mode support
+
+Add configurable interrupt trigger mode support to WED for better
+interrupt handling performance tuning.
+---
+v1: Initial interrupt trigger mode support.
+---
+
 From e7a3b555bbbcecadf2dcfb6ce43f8feb754879e0 Mon Sep 17 00:00:00 2001
 From: Rex Lu <rex.lu@mediatek.com>
 Date: Fri, 24 Apr 2026 17:15:40 +0800
@@ -130,4 +139,3 @@ index 75da4dd..0721ca5 100644
  #endif
 -- 
 2.45.2
-

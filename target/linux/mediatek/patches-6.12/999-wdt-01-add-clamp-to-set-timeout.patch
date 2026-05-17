@@ -1,3 +1,13 @@
+---
+[v1] watchdog: mtk_wdt: add timeout clamping to max hardware heartbeat
+
+Clamp watchdog timeout value to maximum hardware heartbeat limit to prevent
+overflow. This ensures the hardware timeout stays within supported range
+while maintaining software timeout tracking.
+---
+v1: Initial timeout clamping to max hardware heartbeat.
+---
+
 --- a/drivers/watchdog/mtk_wdt.c
 +++ b/drivers/watchdog/mtk_wdt.c
 @@ -262,21 +262,24 @@ static int mtk_wdt_set_timeout(struct wa

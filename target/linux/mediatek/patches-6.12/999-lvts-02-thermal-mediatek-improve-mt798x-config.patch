@@ -1,3 +1,13 @@
+---
+[v1] thermal: mediatek: improve mt798x lvts configuration
+
+Improve MT798x LVTS common configuration to avoid corner cases and
+increase temperature accuracy. Also add HW thermal reset configuration.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 From d7834395e9c7edba3a7d6707def76ccf20f68d5f Mon Sep 17 00:00:00 2001
 From: Mason Chang <mason-cw.chang@mediatek.com>
 Date: Wed, 26 Nov 2025 19:47:58 +0800

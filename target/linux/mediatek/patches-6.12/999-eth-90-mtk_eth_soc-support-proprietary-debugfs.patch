@@ -3451,7 +3451,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  {
  	int ret;
  
-@@ -1375,6 +1387,7 @@ static int mtk_set_mac_address(struct ne
+@@ -1409,6 +1421,7 @@ static int mtk_set_mac_address(struct ne
  static void mtk_stats_update_gmac_ext(struct mtk_mac *mac)
  {
  	struct mtk_hw_stats *hw_stats = mac->hw_stats;
@@ -3459,7 +3459,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  
  	hw_stats->rx_unicast_packets +=
  		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x00);
-@@ -1401,6 +1414,8 @@ static void mtk_stats_update_gmac_ext(st
+@@ -1435,6 +1448,8 @@ static void mtk_stats_update_gmac_ext(st
  		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x50);
  	hw_stats->tx_broadcast_bytes +=
  		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x58);
@@ -3468,7 +3468,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  }
  
  static void mtk_stats_update_xgmac(struct mtk_mac *mac)
-@@ -1456,6 +1471,8 @@ static void mtk_stats_update_xgmac(struc
+@@ -1490,6 +1505,8 @@ static void mtk_stats_update_xgmac(struc
  	hw_stats->tx_broadcast_bytes +=
  		mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x178);
  
@@ -3477,7 +3477,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	mtk_m32(mac->hw, XMAC_GLB_CNTCLR, 0x1, MTK_XMAC_CNT_CTRL(mac->id));
  }
  
-@@ -2905,6 +2922,12 @@ static int mtk_poll_rx(struct napi_struc
+@@ -2939,6 +2956,12 @@ static int mtk_poll_rx(struct napi_struc
  		if (reason == MTK_PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED)
  			mtk_ppe_check_skb(eth->ppe[ppe_idx], skb, hash);
  
@@ -3490,7 +3490,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  		skb_record_rx_queue(skb, 0);
  		napi_gro_receive(napi, skb);
  
-@@ -5792,6 +5815,12 @@ static void mtk_restore_qdma_cfg(struct
+@@ -5826,6 +5849,12 @@ static void mtk_restore_qdma_cfg(struct
  			reg_map->qdma.tx_sch_rate + 0x4);
  }
  
@@ -3503,7 +3503,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  static void mtk_prepare_for_reset(struct mtk_eth *eth)
  {
  	struct mtk_mac *mac;
-@@ -6383,6 +6412,7 @@ static const struct net_device_ops mtk_n
+@@ -6417,6 +6446,7 @@ static const struct net_device_ops mtk_n
  	.ndo_set_mac_address	= mtk_set_mac_address,
  	.ndo_validate_addr	= eth_validate_addr,
  	.ndo_eth_ioctl		= mtk_do_ioctl,
@@ -3511,7 +3511,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	.ndo_change_mtu		= mtk_change_mtu,
  	.ndo_tx_timeout		= mtk_tx_timeout,
  	.ndo_get_stats64        = mtk_get_stats64,
-@@ -7262,6 +7292,8 @@ static int mtk_probe(struct platform_dev
+@@ -7296,6 +7326,8 @@ static int mtk_probe(struct platform_dev
  			goto err_deinit_ppe;
  	}
  

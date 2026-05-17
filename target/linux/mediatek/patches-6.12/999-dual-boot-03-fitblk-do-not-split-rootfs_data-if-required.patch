@@ -1,3 +1,13 @@
+---
+[v1] block: fitblk: allow bypassing creation of fitrw partition
+
+Add device tree property to bypass automatic fitrw (rootfs_data) partition
+creation. When mediatek,no-split-fitrw is set, the fitblk driver will not
+split remaining space for writable partition.
+---
+v1: Initial support for mediatek,no-split-fitrw property.
+---
+
 From: Weijie Gao <weijie.gao@mediatek.com>
 Subject: [PATCH] block: fitblk: allow bypassing creation of fitrw
 

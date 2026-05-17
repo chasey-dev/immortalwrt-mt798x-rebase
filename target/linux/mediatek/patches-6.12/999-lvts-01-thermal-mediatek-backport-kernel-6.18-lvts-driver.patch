@@ -1,3 +1,13 @@
+---
+[v1] thermal: mediatek: backport lvts driver fixes from kernel-6.18
+
+We backported platform-generic fixes from kernel-6.18 to improve the driver and
+avoid errors, which will also simplify future upstream syncs and maintenance.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 From 88c0b41df5a1506321d3c0b81eb2e1fcedb065c0 Mon Sep 17 00:00:00 2001
 From: Mason Chang <mason-cw.chang@mediatek.com>
 Date: Thu, 20 Nov 2025 17:26:01 +0800

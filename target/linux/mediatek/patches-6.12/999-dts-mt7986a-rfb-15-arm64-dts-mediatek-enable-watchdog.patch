@@ -1,3 +1,15 @@
+---
+[v1] arm64: dts: mediatek: enable watchdog for MT7986a-RFB
+
+Enable watchdog device for MT7986a reference board to provide system
+watchdog functionality.
+
+Enabling the watchdog is required for proper operation of the WiFi
+driver, as it uses the watchdog as a reset controller.
+---
+v1: Initial watchdog support for MT7986a-RFB.
+---
+
 Index: linux-6.12.79/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
 ===================================================================
 --- linux-6.12.79.orig/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts

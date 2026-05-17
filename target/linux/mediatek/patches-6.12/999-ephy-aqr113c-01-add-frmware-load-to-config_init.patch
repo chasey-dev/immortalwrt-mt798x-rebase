@@ -1,3 +1,12 @@
+---
+[v1] net: phy: aquantia: add firmware load to config_init for AQR113C
+
+The PHY firmware will be lost after a GPIO reset. Therefore, we have added an
+additional firmware loading step to config_init to reload firmware.
+---
+v1: Add firmware reload to config_init.
+---
+
 From 9acfe9cec63854167bafcb811bc2f18bbe46bcc5 Mon Sep 17 00:00:00 2001
 From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 Date: Fri, 3 Oct 2025 17:29:23 +0800
@@ -41,4 +50,3 @@ index f25e634..1bc1d5c 100644
  }
 -- 
 2.45.2
-

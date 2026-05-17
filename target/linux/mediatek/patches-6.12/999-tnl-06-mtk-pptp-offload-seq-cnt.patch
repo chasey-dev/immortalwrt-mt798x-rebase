@@ -1,3 +1,16 @@
+---
+[v1] net: pptp: Use MediaTek API to maintain sequence number
+
+PPTP is required to tag each packet with continuous and ordered sequence ID or
+the network will consider itself having some error. Provide an API to assign
+PPTP sequence ID between software and hardware path to prevent PPTP tunnel from
+out-of-order sequence ID network failure.
+
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 --- a/drivers/net/ppp/pptp.c
 +++ b/drivers/net/ppp/pptp.c
 @@ -41,6 +41,9 @@

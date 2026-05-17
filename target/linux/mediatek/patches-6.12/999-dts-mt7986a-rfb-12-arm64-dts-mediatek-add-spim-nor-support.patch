@@ -1,3 +1,14 @@
+---
+[v2] arm64: dts: mediatek: add SPI-NOR flash overlay for MT7986a
+
+Add device tree overlay for SPI-NOR flash support on MT7986a. Includes
+flash partitions for bootloader, firmware, and root filesystem with
+quad-SPI configuration.
+---
+v2: Add SFP support for eth1 interface.
+v1: Initial SPI-NOR overlay support.
+---
+
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7986-spim-nor.dtso
 @@ -0,0 +1,50 @@

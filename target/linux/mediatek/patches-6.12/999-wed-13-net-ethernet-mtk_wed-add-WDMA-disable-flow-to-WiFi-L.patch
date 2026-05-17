@@ -1,3 +1,13 @@
+---
+[v2] net: ethernet: mtk_wed: add WDMA disable flow for WiFi link down
+
+Add proper WDMA disable flow when WiFi link goes down to prevent
+resource leaks and ensure clean state transitions.
+---
+v2: Improved state machine handling.
+v1: Initial WDMA disable flow.
+---
+
 From 9fef95a165ffdf921eeb5b5e58600cd912746f6b Mon Sep 17 00:00:00 2001
 From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 Date: Tue, 29 Apr 2025 22:15:57 +0800
@@ -17,8 +27,8 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
-@@ -2022,6 +2022,18 @@ static inline void mtk_ppe_drop_config(s
- 		mtk_w32(eth, config, PSE_PPE_DROP(2));
+@@ -2058,6 +2058,18 @@ static inline void mtk_pse_gdm_enable(st
+ 	mtk_w32(eth, val, MTK_FE_GLO_CFG(PSE_GDM_PORT(id)));
  }
  
 +static inline void mtk_pse_wdma_enable(struct mtk_eth *eth, int id, bool enable)

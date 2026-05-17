@@ -1,3 +1,12 @@
+---
+[v1] net: phy: aquantia: add software reset to AQR107 probe
+
+Add software reset during AQR107/AQR113C PHY probe to ensure clean
+initialization state. This fixes initialization issues on some platforms.
+---
+v1: Added software reset to AQR107 probe.
+---
+
 From 31af1c426cff72c4d6093ff2d3989c5cfe872f2a Mon Sep 17 00:00:00 2001
 From: Mason Chang <mason-cw.chang@mediatek.com>
 Date: Tue, 30 Dec 2025 10:33:19 +0800
@@ -61,4 +70,3 @@ index 95a15ce..972fa89 100644
  		return ret;
 -- 
 2.45.2
-

@@ -1,7 +1,26 @@
+---
+[v1] usb: xhci-mtk: Add MT79xx USB 2.0 USBIF compliance debugfs support
+
+Add debugfs support for USB 2.0 USB-IF compliance testing on MT79xx xHCI
+controllers. Enables runtime PHY parameter tuning and signal quality verification
+required for USB certification process.
+
+NOTE: For USB compliance mode to work in production, customers need additional
+compliance mode driver files (not included in normal firmware). These files are
+available at:
+https://git01.mediatek.com/plugins/gitiles/openwrt/feeds/mtk-openwrt-feeds/+/refs/heads/master/25.12/files/target/linux/mediatek/files-6.12/drivers/usb/host
+
+These patches plus the compliance mode driver files are required together for
+USB-IF compliance testing.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 From 22e63c3caf830e3234ef6ebb7870e14c10308269 Mon Sep 17 00:00:00 2001
 From: Zhanyong Wang <zhanyong.wang@mediatek.com>
 Date: Sat, 30 Nov 2024 09:26:02 +0800
-Subject: [PATCH 5/6] 
+Subject: [PATCH 5/6]
  999-xHCI-02-xhci-mtk-mt79xx-USB-2.0-USBIF-compliance-toolkit.patch
 
 ---

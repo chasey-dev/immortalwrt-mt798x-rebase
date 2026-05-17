@@ -1,0 +1,29 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
+@@ -1446,6 +1446,7 @@ static int hnat_bridge_flood_check(struc
+ 				    const struct net_device *in)
+ {
+ 	struct flow_offload_hw_path hw_path = {};
++	struct foe_entry *entry;
+ 	struct net_device *br_dev;
+ 	u16 vid = 0;
+ 
+@@ -1455,6 +1456,18 @@ static int hnat_bridge_flood_check(struc
+ 	if (skb_hnat_alg(skb) || skb_hnat_reason(skb) != HIT_UNBIND_RATE_REACH)
+ 		return 0;
+ 
++	if (skb_hnat_entry(skb) >= hnat_priv->foe_etry_num ||
++	    skb_hnat_ppe(skb) >= CFG_PPE_NUM)
++		return 0;
++
++	entry = &hnat_priv->foe_table_cpu[skb_hnat_ppe(skb)][skb_hnat_entry(skb)];
++	/* only check for L2 Bridge type pkts.
++	 * here ususally Rx PPD -> GE triggers FDB error,
++	 * but they are L3 pkts and Ext HNAT needs the ping-pong path.
++	 */
++	if (entry->udib1.pkt_type != L2_BRIDGE)
++		return 0;
++
+ 	if (!is_unicast_ether_addr(eth_hdr(skb)->h_dest))
+ 		return 0;
+ 

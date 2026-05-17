@@ -1,3 +1,15 @@
+---
+[v1] net: pptp: Bypass sequence check for data packets in multi-core scenario
+
+Bypass PPTP sequence number checking for data packets to prevent severe
+packet drops in multi-core scenarios. Sequence checking is maintained for
+control packets (LCP echo requests/replies) while data packets bypass
+validation as a workaround for multi-core performance issues.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 --- a/drivers/net/ppp/pptp.c
 +++ b/drivers/net/ppp/pptp.c
 @@ -356,6 +356,15 @@ static int pptp_rcv_core(struct sock *sk

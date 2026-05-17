@@ -1,3 +1,13 @@
+---
+[v1] arm64: dts: mediatek: align spi compatible string for mt798x
+
+Align SPI compatible strings to use generic "mediatek,spi-ipm" instead of
+SoC-specific variants. This simplifies device tree maintenance and follows
+the standard binding approach across MT7981, MT7986, MT7987, and MT7988.
+---
+v1: Initial alignment of SPI compatible strings across MT798x platforms.
+---
+
 --- a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
 +++ b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
 @@ -241,7 +241,7 @@

@@ -1,6 +1,5 @@
 ---
 [v3] arm64: dts: mt7981 rfb: add pwm pin and devices
-
 Add PWM pin configuration and PWM LED device support for MT7981 RFB including
 single PWM LED and RGB multi-color LED for system status indicators.
 ---

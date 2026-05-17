@@ -1,3 +1,14 @@
+---
+[v1] phy: mtk-tphy: Unified TTSSC frequency deviation setting
+
+Add unified TTSSC frequency deviation setting for MediaTek T-PHY driver.
+to ensure consistent spread spectrum performance across mt798x SoC and
+manufacturing process variations.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
 From 1a5aff4e4818671decde5efbe415c0f2985157c0 Mon Sep 17 00:00:00 2001
 From: Zhanyong Wang <zhanyong.wang@mediatek.com>
 Date: Fri, 2 Jun 2023 13:06:26 +0800

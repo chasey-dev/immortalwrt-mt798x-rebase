@@ -1,3 +1,12 @@
+---
+[v1] net: phy: mtk-2p5g: fix register helper and add firmware lock protection
+
+Fix register access helper functions and add firmware lock protection
+to prevent race conditions during firmware operations.
+---
+v1: Fix register helper and add firmware lock protection.
+---
+
 --- a/drivers/net/phy/mediatek/mtk-2p5ge.c
 +++ b/drivers/net/phy/mediatek/mtk-2p5ge.c
 @@ -218,24 +218,24 @@ static inline void reg_writew(struct mtk

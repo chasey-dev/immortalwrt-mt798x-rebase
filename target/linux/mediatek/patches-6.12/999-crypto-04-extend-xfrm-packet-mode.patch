@@ -1,21 +1,33 @@
+---
+[v1] xfrm: Extend packet mode offload for hardware crypto acceleration
+
+Extend XFRM packet mode to support hardware offload by preserving HW_ESP
+feature in VLAN devices, modifying output path to bypass normal XFRM
+processing for packet offload, and allowing inbound hardware offloaded
+packets to pass policy checks directly. This enables full hardware
+acceleration for IPsec packet processing in both tunnel and transport modes.
+---
+v1: Extend XFRM packet mode for hardware offload support
+---
+
 --- a/net/8021q/vlan_dev.c
 +++ b/net/8021q/vlan_dev.c
 @@ -641,6 +641,9 @@ static netdev_features_t vlan_dev_fix_fe
  	features = netdev_intersect_features(features, lower_features);
  	features |= old_features & (NETIF_F_SOFT_FEATURES | NETIF_F_GSO_SOFTWARE_ALL);
- 
+
 +	if (old_features & NETIF_F_HW_ESP)
 +		features |= NETIF_F_HW_ESP;
 +
  	return features;
  }
- 
+
 --- a/net/xfrm/xfrm_output.c
 +++ b/net/xfrm/xfrm_output.c
 @@ -610,40 +610,6 @@ out:
  }
  EXPORT_SYMBOL_GPL(xfrm_output_resume);
- 
+
 -static int xfrm_dev_direct_output(struct sock *sk, struct xfrm_state *x,
 -				  struct sk_buff *skb)
 -{
@@ -56,7 +68,7 @@
 @@ -763,18 +729,16 @@ int xfrm_output(struct sock *sk, struct
  			return -EHOSTUNREACH;
  		}
- 
+
 -		/* Exclusive direct xmit for tunnel mode, as
 -		 * some filtering or matching rules may apply
 -		 * in transport mode.
@@ -74,18 +86,18 @@
 +			kfree_skb(skb);
 +			return -EHOSTUNREACH;
 +		}
- 
+
 -		return xfrm_output_resume(sk, skb, 0);
 +		return 0;
  	}
- 
+
  	secpath_reset(skb);
 --- a/net/xfrm/xfrm_policy.c
 +++ b/net/xfrm/xfrm_policy.c
 @@ -3790,6 +3790,13 @@ int __xfrm_policy_check(struct sock *sk,
  	}
  #endif
- 
+
 +	/* Inbound HW offload packets, pass the check directly */
 +	if (pol->xdo.type == XFRM_DEV_OFFLOAD_PACKET &&
 +	    (pol->xdo.dir == XFRM_DEV_OFFLOAD_IN || pol->xdo.dir == XFRM_DEV_OFFLOAD_FWD)) {
@@ -99,7 +111,7 @@
 @@ -3798,6 +3805,16 @@ int __xfrm_policy_check(struct sock *sk,
  		int ti = 0;
  		int i, k;
- 
+
 +		/* Strongswan install FWD policy for inbound HW offload
 +		* packets. But cannot find corresponding packet offload
 +		* state here and will be drop. So, we bypass following

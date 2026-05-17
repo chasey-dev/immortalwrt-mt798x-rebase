@@ -13,6 +13,7 @@
 
 #include <linux/netfilter_bridge.h>
 #include <linux/netfilter_ipv6.h>
+#include <linux/if_bridge.h>
 
 #include <net/arp.h>
 #include <net/neighbour.h>
@@ -1354,6 +1355,54 @@ drop:
 	return NF_DROP;
 }
 
+/* Don't bind unknown-unicast (FDB miss) flows to the PPE — that would
+ * pin them to one egress port and break bridge MAC learning.
+ */
+static int hnat_bridge_flood_check(struct sk_buff *skb,
+				    const struct net_device *in)
+{
+	struct flow_offload_hw_path hw_path = {};
+	struct net_device *br_dev;
+	u16 vid = 0;
+
+	if (!netif_is_bridge_port(in))
+		return 0;
+
+	if (skb_hnat_alg(skb) || skb_hnat_reason(skb) != HIT_UNBIND_RATE_REACH)
+		return 0;
+
+	if (!is_unicast_ether_addr(eth_hdr(skb)->h_dest))
+		return 0;
+
+	br_dev = netdev_master_upper_dev_get_rcu((struct net_device *)in);
+	if (!br_dev || !br_dev->netdev_ops->ndo_flow_offload_check)
+		return 0;
+
+	if (br_vlan_enabled(br_dev)) {
+		if (skb_vlan_tag_present(skb))
+			vid = skb_vlan_tag_get_id(skb);
+		else
+			br_vlan_get_pvid_rcu(in, &vid);
+	}
+
+	hw_path.dev = br_dev;
+	hw_path.vlan_id = vid;
+	hw_path.flags |= BIT(DEV_PATH_ETHERNET);
+	ether_addr_copy(hw_path.eth_dest, eth_hdr(skb)->h_dest);
+
+	if (br_dev->netdev_ops->ndo_flow_offload_check(&hw_path) < 0) {
+		skb_hnat_alg(skb) = 1;
+
+		if (debug_level >= 7)
+			printk_ratelimited(KERN_WARNING
+					   "Bypass HNAT offload for %pM due to flooding check\n",
+					   eth_hdr(skb)->h_dest);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static unsigned int
 mtk_hnat_br_nf_local_in(void *priv, struct sk_buff *skb,
 			const struct nf_hook_state *state)
@@ -1386,6 +1435,9 @@ mtk_hnat_br_nf_local_in(void *priv, struct sk_buff *skb,
 	    is_magic_tag_valid(skb) &&
 	    skb_hnat_iface(skb) == FOE_MAGIC_GE_VIRTUAL &&
 	    mtk_tnl_decap_offload && !mtk_tnl_decap_offload(skb))
+		return NF_ACCEPT;
+
+	if (hnat_bridge_flood_check(skb, state->in) < 0)
 		return NF_ACCEPT;
 
 	pre_routing_print(skb, state->in, state->out, __func__);

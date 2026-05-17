@@ -1,3 +1,13 @@
+---
+[v1] pmdomain: mediatek: add MT7988 power domain driver
+
+Add power domain driver for MT7988 SoC supporting TOPS0, TOPS1, and ETH2P5
+power domains. This enables dynamic power management for network processor
+and Ethernet subsystems.
+---
+v1: Initial MT7988 power domain driver support.
+---
+
 --- /dev/null
 +++ b/include/dt-bindings/power/mt7988-power.h
 @@ -0,0 +1,13 @@

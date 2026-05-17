@@ -1,3 +1,17 @@
+---
+[v2] pcie: mediatek-gen3: Adjust WiFi hardware reset flow
+
+Adjust WiFi hardware reset flow for MediaTek Gen3 PCIe controller to improve
+WiFi module initialization stability. Adds configurable deassert delay after
+reset and allows external modules to control the WiFi reset GPIO to support
+multi-PCIe WiFi configurations like MT7988D.
+---
+v2: Add WiFi hardware reset deassert delay to improve stability and ensure
+    proper initialization of WiFi modules.
+v1: Update PCIE wifi-hw-reset mechanism and fix mt7988d wifi-reset problem.
+    Handle PCIe probe order and prevent duplicate GPIO acquisition issues.
+---
+
 --- a/drivers/pci/controller/pcie-mediatek-gen3.c
 +++ b/drivers/pci/controller/pcie-mediatek-gen3.c
 @@ -201,6 +201,7 @@ struct mtk_pcie_irq {

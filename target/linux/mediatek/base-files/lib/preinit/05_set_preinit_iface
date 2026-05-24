@@ -37,6 +37,7 @@ set_preinit_iface() {
 	xiaomi,mi-router-wr30u-ubootmod|\
 	xiaomi,mi-router-wr30u-mtkuboot|\
 	xiaomi,redmi-router-ax6000-stock|\
+	xiaomi,redmi-router-ax6000-mtkuboot|\
 	xiaomi,redmi-router-ax6000-ubootmod)
 		ip link set eth0 up
 		ifname=lan4

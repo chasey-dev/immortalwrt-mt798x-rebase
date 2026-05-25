@@ -188,8 +188,6 @@ export function setup(uci_cfg, all_devs) {
 	}
 	
 	// no matter if it is DBDC card, we assume ifup main_vif is time-costy
-	// we dont want latter netifd setup sessions come up so early
-	// so we check here and decide whether we should sleep after creating the async task
 	let main_vif = "";
 	if (is_dbdc) {
 		// concat main dev name: ChipName_ChipIndex_1

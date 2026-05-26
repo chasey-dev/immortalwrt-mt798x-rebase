@@ -776,6 +776,7 @@ setup_model()
 	cetron,ct3003* |\
 	cmcc,a10* |\
 	cmcc,rax3000m* |\
+	cmcc,xr30-stock |\
 	comfast,cf-e393ax |\
 	comfast,cf-wr632ax* |\
 	confiabits,mt7981 |\

@@ -1,0 +1,126 @@
+---
+[v1] l2tp: Add fill_forward_path callback support
+
+Add fill_forward_path callback to L2TP PPP channel operations to enable hardware
+offload for L2TP tunnels. This patch implements the `pppol2tp_fill_forward_path`
+function and adds the `mtk_npu_l2tp_offloadable` callback hook.
+
+The fill_forward_path callback is part of the kernel's flow offload infrastructure,
+allowing L2TP tunnel devices to participate in hardware-accelerated packet forwarding.
+The `mtk_npu_l2tp_offloadable` function pointer enables vendor-specific checks to
+determine whether a particular L2TP session can be offloaded to NPU hardware.
+
+This support enables L2TP VPN traffic to be processed by hardware acceleration when
+supported by the underlying network device, significantly improving VPN performance.
+
+---
+v1: Add 'fill_forward_path' callback support in L2TP
+---
+
+--- a/net/l2tp/l2tp_ppp.c
++++ b/net/l2tp/l2tp_ppp.c
+@@ -92,6 +92,8 @@
+ #include <net/ip.h>
+ #include <net/udp.h>
+ #include <net/inet_common.h>
++#include <net/neighbour.h>
++#include <net/route.h>
+ 
+ #include <asm/byteorder.h>
+ #include <linux/atomic.h>
+@@ -122,9 +124,13 @@ struct pppol2tp_session {
+ };
+ 
+ static int pppol2tp_xmit(struct ppp_channel *chan, struct sk_buff *skb);
++static int pppol2tp_fill_forward_path(struct net_device_path_ctx *ctx,
++				      struct net_device_path *path,
++				      const struct ppp_channel *chan);
+ 
+ static const struct ppp_channel_ops pppol2tp_chan_ops = {
+ 	.start_xmit =  pppol2tp_xmit,
++	.fill_forward_path = pppol2tp_fill_forward_path,
+ };
+ 
+ static const struct proto_ops pppol2tp_ops;
+@@ -373,6 +379,81 @@ abort:
+ 	return 1;
+ }
+ 
++static int pppol2tp_fill_forward_path(struct net_device_path_ctx *ctx,
++				      struct net_device_path *path,
++				      const struct ppp_channel *chan)
++{
++	struct sock *sk = chan->private;
++	struct l2tp_session *session;
++	struct l2tp_tunnel *tunnel;
++	struct inet_sock *inet;
++	struct dst_entry *dst;
++	struct neighbour *n;
++
++	if (sock_flag(sk, SOCK_DEAD) || !(sk->sk_state & PPPOX_CONNECTED))
++		return -1;
++
++	path->type = DEV_PATH_L2TP;
++	if (!mtk_flow_tnl_offloadable || !mtk_flow_tnl_offloadable(path))
++		return -1;
++
++	session = pppol2tp_sock_to_session(sk);
++	if (!session)
++		return -1;
++
++	tunnel = session->tunnel;
++	inet = inet_sk(tunnel->sock);
++	dst = sk_dst_get(tunnel->sock);
++	if (!dst)
++		goto err_put_sess;
++
++	switch (tunnel->sock->sk_family) {
++	case AF_INET:
++		n = dst_neigh_lookup(dst, &inet->inet_daddr);
++		if (!n)
++			goto err_put_dst;
++		path->tunnel.sip.ip = inet->inet_saddr;
++		path->tunnel.dip.ip = inet->inet_daddr;
++		break;
++	case AF_INET6:
++		n = dst_neigh_lookup(dst, &tunnel->sock->sk_v6_daddr);
++		if (!n)
++			goto err_put_dst;
++		path->tunnel.sip.in6 = tunnel->sock->sk_v6_rcv_saddr;
++		path->tunnel.dip.in6 = tunnel->sock->sk_v6_daddr;
++		break;
++	default:
++		goto err_put_dst;
++	}
++
++	neigh_ha_snapshot(path->encap.h_dest, n, n->dev);
++	memcpy(path->encap.h_source, n->dev->dev_addr, ETH_ALEN);
++
++	/* Set L2TP path information */
++	path->tunnel.sport = inet->inet_sport;
++	path->tunnel.dport = inet->inet_dport;
++	path->tunnel.l2tp.dl_tid = htons(tunnel->tunnel_id);
++	path->tunnel.l2tp.ul_tid = htons(tunnel->peer_tunnel_id);
++	path->tunnel.l2tp.dl_sid = htons(session->session_id);
++	path->tunnel.l2tp.ul_sid = htons(session->peer_session_id);
++	path->dev = ctx->dev;
++	ctx->dev = n->dev;
++
++	neigh_release(n);
++	dst_release(dst);
++	l2tp_session_put(session);
++
++	return 0;
++
++err_put_dst:
++	dst_release(dst);
++
++err_put_sess:
++	l2tp_session_put(session);
++
++	return -1;
++}
++
+ /*****************************************************************************
+  * Session (and tunnel control) socket create/destroy.
+  *****************************************************************************/

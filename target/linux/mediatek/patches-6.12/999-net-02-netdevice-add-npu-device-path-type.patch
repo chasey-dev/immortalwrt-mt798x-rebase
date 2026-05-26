@@ -1,0 +1,67 @@
+---
+[v1] nft_flow_offload: Add L2TP flow offload support for NPU
+
+The patch adds DEV_PATH_L2TP to the device path types that can be offloaded, and
+extend net_device_path structure to record tunnel parameters.
+
+---
+v1: Add L2TP flow offload support for NPU
+---
+
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -838,6 +838,7 @@ enum net_device_path_type {
+ 	DEV_PATH_DSA,
+ 	DEV_PATH_MACVLAN,
+ 	DEV_PATH_MTK_WDMA,
++	DEV_PATH_L2TP,
+ };
+ 
+ struct net_device_path {
+@@ -847,6 +848,7 @@ struct net_device_path {
+ 		struct {
+ 			u16		id;
+ 			__be16		proto;
++			u8		h_source[ETH_ALEN];
+ 			u8		h_dest[ETH_ALEN];
+ 		} encap;
+ 		struct {
+@@ -870,9 +872,26 @@ struct net_device_path {
+ 			u8 bss;
+ 			u8 amsdu;
+ 		} mtk_wdma;
++		struct {
++			union nf_inet_addr sip;
++			union nf_inet_addr dip;
++			u16 sport;
++			u16 dport;
++			union {
++				struct {
++					u16 ul_tid;
++					u16 dl_tid;
++					u16 ul_sid;
++					u16 dl_sid;
++				} l2tp;
++				/* Extend other tunnel here */
++			};
++		} tunnel;
+ 	};
+ };
+ 
++extern int (*mtk_flow_tnl_offloadable)(const struct net_device_path *path);
++
+ #define NET_DEVICE_PATH_STACK_MAX	5
+ #define NET_DEVICE_PATH_VLAN_MAX	2
+ 
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -164,6 +164,9 @@
+ #include "devmem.h"
+ #include "net-sysfs.h"
+ 
++int (*mtk_flow_tnl_offloadable)(const struct net_device_path *path);
++EXPORT_SYMBOL(mtk_flow_tnl_offloadable);
++
+ static DEFINE_SPINLOCK(ptype_lock);
+ struct list_head ptype_base[PTYPE_HASH_SIZE] __read_mostly;
+ 

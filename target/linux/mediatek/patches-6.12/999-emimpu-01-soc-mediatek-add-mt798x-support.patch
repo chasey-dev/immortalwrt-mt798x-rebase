@@ -1,0 +1,253 @@
+---
+[v1] soc: mediatek: add mt798x EMI MPU support
+
+Add mt798x EMI MPU support. This driver is mainly used to handle the
+situation when a memory access violates the access permission control
+(APC) configured by system. The violation information is logged for
+further analysis.
+---
+v1: Initial MT798x EMI MPU driver implementation
+---
+
+diff --git a/drivers/soc/mediatek/Kconfig b/drivers/soc/mediatek/Kconfig
+index 1b7afb19ccd6..d1844c6a9652 100644
+--- a/drivers/soc/mediatek/Kconfig
++++ b/drivers/soc/mediatek/Kconfig
+@@ -78,4 +78,13 @@ config MTK_SOCINFO
+ 	  information about the SoC to the userspace including the
+ 	  manufacturer name, marketing name and soc name.
+ 
++config MTK_EMIMPU
++	tristate "Mediatek EMI MPU Support"
++	help
++	  Say yes here to enable support for Mediatek EMI MPU driver.
++	  This driver is mainly used to handle the violation which catches
++	  unexpected memory region access.
++	  The violation information is logged for further analysis or
++	  countermeasures.
++
+ endmenu
+diff --git a/drivers/soc/mediatek/Makefile b/drivers/soc/mediatek/Makefile
+index 6830512848fd..61b737685cb7 100644
+--- a/drivers/soc/mediatek/Makefile
++++ b/drivers/soc/mediatek/Makefile
+@@ -8,3 +8,4 @@ obj-$(CONFIG_MTK_MMSYS) += mtk-mmsys.o
+ obj-$(CONFIG_MTK_MMSYS) += mtk-mutex.o
+ obj-$(CONFIG_MTK_SVS) += mtk-svs.o
+ obj-$(CONFIG_MTK_SOCINFO) += mtk-socinfo.o
++obj-$(CONFIG_MTK_EMIMPU) += mtk-emimpu.o
+diff --git a/drivers/soc/mediatek/mtk-emimpu.c b/drivers/soc/mediatek/mtk-emimpu.c
+new file mode 100644
+index 000000000000..3342d6051651
+--- /dev/null
++++ b/drivers/soc/mediatek/mtk-emimpu.c
+@@ -0,0 +1,206 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ */
++
++#include <linux/interrupt.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/of.h>
++#include <linux/of_irq.h>
++#include <linux/of_address.h>
++
++#define EMI_MPU_DOMAIN_NUM	16
++
++struct mtk_emimpu_vio_dbgs {
++	union {
++		u32 emi_mpus;
++		struct {
++			u32 mstid:16;
++			u32 region:5;
++			u32 dmnid:4;
++			u32 resv:2;
++			u32 vio_oo_w:1;
++			u32 vio_oo_r:1;
++			u32 vio_w:1;
++			u32 vio_r:1;
++		} mpus_bits;
++	};
++
++	u32 emi_mput;
++
++	union {
++		u32 emi_mput2;
++		struct {
++			u32 addr:4;
++			u32 mstid:4;
++			u32 resv:8;
++			u32 dmnid:1;
++		} mput2_bits;
++	};
++};
++
++struct mtk_emi_regs_ofs {
++	/* reg offset */
++	u32 mpu_vio_sta_offset;
++	u32 mpus_offset;
++	u32 mput_offset;
++	u32 mput2_offset;
++	u32 vio_sta2_offset;
++};
++
++struct mtk_emimpu_data {
++	const struct mtk_emi_regs_ofs *emi_regs_ofs;
++};
++
++struct mtk_emimpu_context {
++	struct device *dev;
++	void __iomem *emi_base;
++	const struct mtk_emimpu_data *data;
++};
++
++static void clear_vio_status(struct mtk_emimpu_context *ctx)
++{
++	void __iomem *mpu_vio_sta_reg;
++	void __iomem *vio_sta2_reg;
++	int i;
++
++	mpu_vio_sta_reg = ctx->emi_base + ctx->data->emi_regs_ofs->mpu_vio_sta_offset;
++	vio_sta2_reg = ctx->emi_base + ctx->data->emi_regs_ofs->vio_sta2_offset;
++
++	for (i = 0; i < EMI_MPU_DOMAIN_NUM; i++) {
++		writel(GENMASK(31, 0), mpu_vio_sta_reg + 4 * i);
++		writel(GENMASK(1, 0), vio_sta2_reg + 4 * i);
++	}
++
++	writel(BIT(31), ctx->emi_base + ctx->data->emi_regs_ofs->mpus_offset);
++}
++
++static void emimpu_extract_vio_dbg(struct mtk_emimpu_context *ctx)
++{
++	struct mtk_emimpu_vio_dbgs vio_dbgs;
++	void __iomem *mput2_reg;
++	void __iomem *mput_reg;
++	void __iomem *mpus_reg;
++
++	mput2_reg = ctx->emi_base + ctx->data->emi_regs_ofs->mput2_offset;
++	mput_reg = ctx->emi_base + ctx->data->emi_regs_ofs->mput_offset;
++	mpus_reg = ctx->emi_base + ctx->data->emi_regs_ofs->mpus_offset;
++
++	vio_dbgs.emi_mput2 = readl(mput2_reg);
++	vio_dbgs.emi_mput = readl(mput_reg);
++	vio_dbgs.emi_mpus = readl(mpus_reg);
++
++	if (vio_dbgs.mpus_bits.vio_w) {
++		if (vio_dbgs.mpus_bits.vio_oo_w)
++			dev_info(ctx->dev, "Write Out of Range Violation\n");
++		else
++			dev_info(ctx->dev, "Write Violation\n");
++	}
++	else if (vio_dbgs.mpus_bits.vio_r) {
++		if (vio_dbgs.mpus_bits.vio_oo_r)
++			dev_info(ctx->dev, "Read Out of Range Violation\n");
++		else
++			dev_info(ctx->dev, "Read Violation\n");
++	}
++
++	dev_info(ctx->dev, "Mas ID:0x%x, Dom ID:0x%x, Vio Addr:0x%llx, Reg ID:0x%x\n",
++		 (vio_dbgs.mput2_bits.mstid << 16) | vio_dbgs.mpus_bits.mstid,
++		 (vio_dbgs.mput2_bits.dmnid << 4) | vio_dbgs.mpus_bits.dmnid,
++		 ((u64)vio_dbgs.mput2_bits.addr << 32) | vio_dbgs.emi_mput,
++		 vio_dbgs.mpus_bits.region);
++}
++
++static irqreturn_t emimpu_violation_irq(int irq_number, void *data)
++{
++	struct mtk_emimpu_context *ctx = data;
++
++	emimpu_extract_vio_dbg(ctx);
++	clear_vio_status(ctx);
++
++	return IRQ_HANDLED;
++}
++
++static const struct mtk_emi_regs_ofs emi_regs_ofs_mt7986 = {
++	.mpu_vio_sta_offset = 0x160,
++	.mpus_offset = 0x1F0,
++	.mput_offset = 0x1F8,
++	.mput2_offset = 0x1FC,
++	.vio_sta2_offset = 0x200,
++};
++
++static const struct mtk_emimpu_data emimpu_mt7986 = {
++	.emi_regs_ofs = &emi_regs_ofs_mt7986,
++};
++
++static const struct of_device_id mtk_emimpu_dt_match[] = {
++	{
++		.compatible = "mediatek,mt7986-emi",
++		.data = &emimpu_mt7986,
++	},
++};
++MODULE_DEVICE_TABLE(of, mtk_emimpu_dt_match);
++
++static int mtk_emimpu_probe(struct platform_device *pdev)
++{
++	struct device_node *node = pdev->dev.of_node;
++	struct mtk_emimpu_context *ctx;
++	u32 emimpu_irq;
++	int ret;
++
++	if (IS_ERR(node))
++		return -ENODEV;
++
++	ctx = devm_kzalloc(&pdev->dev, sizeof(*ctx), GFP_KERNEL);
++	if (!ctx)
++		return -ENOMEM;
++
++	ctx->data = of_device_get_match_data(&pdev->dev);
++	ctx->dev = &pdev->dev;
++
++	ctx->emi_base = of_iomap(node, 0);
++	if (!ctx->emi_base)
++		return -EINVAL;
++
++	emimpu_irq = irq_of_parse_and_map(node, 0);
++	if (!emimpu_irq) {
++		ret = -EINVAL;
++		goto err;
++	}
++
++	clear_vio_status(ctx);
++
++	ret = devm_request_irq(&pdev->dev, emimpu_irq, emimpu_violation_irq,
++			       IRQF_TRIGGER_NONE, "emimpu", ctx);
++	if (ret)
++		goto err;
++
++	platform_set_drvdata(pdev, ctx);
++
++	return 0;
++
++err:
++	iounmap(ctx->emi_base);
++	return ret;
++}
++
++static void mtk_emimpu_remove(struct platform_device *pdev)
++{
++	struct mtk_emimpu_context *ctx = platform_get_drvdata(pdev);
++
++	iounmap(ctx->emi_base);
++}
++
++static struct platform_driver mtk_emimpu_driver = {
++	.probe = mtk_emimpu_probe,
++	.remove = mtk_emimpu_remove,
++	.driver = {
++		.name = "mtk-emimpu",
++		.of_match_table = mtk_emimpu_dt_match,
++	},
++};
++
++module_platform_driver(mtk_emimpu_driver);
++
++MODULE_DESCRIPTION("Mediatek EMI MPU Driver");
++MODULE_LICENSE("GPL");
+-- 
+2.45.2
+

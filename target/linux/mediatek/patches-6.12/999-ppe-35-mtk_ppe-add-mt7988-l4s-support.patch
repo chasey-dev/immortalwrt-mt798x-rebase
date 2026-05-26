@@ -1,0 +1,176 @@
+---
+[v1] net: ethernet: mtk_ppe: add mt7988 l4s support
+
+Without this patch, the MT7988 does not support L4S
+by sending PPE forwarded packets to TOPS engine.
+
+Users can enable this feature using the following commands.
+ - echo 1 > /sys/kernel/debug/mtk_ppe/l4s_toggle
+---
+v1: Add MT7988 L4S support via TOPS engine with l4s_toggle.
+---
+
+From 00852760743df8cb71c192bc080babc31c9621de Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 3 Mar 2026 09:49:11 +0800
+Subject: [PATCH] net: ethernet: mtk_ppe: add mt7988 l4s support
+
+---
+ drivers/net/ethernet/mediatek/mtk_ppe.c       | 11 +++
+ drivers/net/ethernet/mediatek/mtk_ppe.h       |  2 +
+ .../net/ethernet/mediatek/mtk_ppe_debugfs.c   | 89 +++++++++++++++++++
+ .../net/ethernet/mediatek/mtk_ppe_offload.c   |  7 +-
+ 4 files changed, 108 insertions(+), 1 deletion(-)
+
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
+@@ -642,6 +642,17 @@ int mtk_foe_entry_set_cdrt(struct mtk_et
+ 	return 0;
+ }
+ 
++int mtk_foe_entry_set_tops_entry(struct mtk_eth *eth, struct mtk_foe_entry *entry,
++				 int tops_entry)
++{
++	struct mtk_foe_mac_info *l2 = mtk_foe_entry_l2(eth, entry);
++
++	l2->tinfo &= ~MTK_FOE_TOPS_ENTRY;
++	l2->tinfo |= FIELD_PREP(MTK_FOE_TOPS_ENTRY, tops_entry);
++
++	return 0;
++}
++
+ int mtk_foe_entry_set_wdma(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 			   int wdma_idx, int txq, int bss, int wcid,
+ 			   bool amsdu_en)
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.h
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.h
+@@ -418,6 +418,8 @@ int mtk_foe_entry_set_tport(struct mtk_e
+ 			    int tport);
+ int mtk_foe_entry_set_cdrt(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 			   int cdrt);
++int mtk_foe_entry_set_tops_entry(struct mtk_eth *eth, struct mtk_foe_entry *entry,
++				 int tops_entry);
+ int mtk_foe_entry_set_wdma(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 			   int wdma_idx, int txq, int bss, int wcid,
+ 			   bool amsdu_en);
+--- a/drivers/net/ethernet/mediatek/mtk_ppe_debugfs.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe_debugfs.c
+@@ -364,6 +364,91 @@ static const struct file_operations mtk_
+ };
+ 
+ static int
++mtk_ppe_internal_debugfs_show_l4s(struct seq_file *m, void *private)
++{
++	struct mtk_eth *eth = m->private;
++
++	if (eth->l4s_toggle == 0)
++		pr_info("L4S is disabled now!\n");
++	else if (eth->l4s_toggle == 1)
++		pr_info("L4S is enabled now!\n");
++
++	return 0;
++}
++
++static int
++mtk_ppe_internal_debugfs_open_l4s(struct inode *inode, struct file *file)
++{
++	return single_open(file, mtk_ppe_internal_debugfs_show_l4s,
++			   inode->i_private);
++}
++
++static ssize_t
++mtk_ppe_internal_debugfs_write_l4s(struct file *file, const char __user *buffer,
++				       size_t count, loff_t *data)
++{
++	struct seq_file *m = file->private_data;
++	struct mtk_eth *eth = (struct mtk_eth *)m->private;
++	struct mtk_mac *target_mac;
++	u32 gdm_config, val;
++	char buf[8];
++	int len = count;
++	int i, ppe_num;
++
++	if ((len > 8) || copy_from_user(buf, buffer, len))
++		return -EFAULT;
++
++	if (buf[0] == '0') {
++		pr_info("L4S is going to be disabled !\n");
++		eth->l4s_toggle = 0;
++	} else if (buf[0] == '1') {
++		pr_info("L4S is going to be enabled !\n");
++		eth->l4s_toggle = 1;
++	} else {
++		pr_warn("The input l4s_toggle is invalid, "
++			"it should be 0 or 1.\n");
++		return -EINVAL;
++	}
++
++	ppe_num = eth->soc->ppe_num;
++
++	for (i = 0; i < MTK_MAX_DEVS; i++) {
++		if (!eth->netdev[i])
++			continue;
++
++		target_mac = netdev_priv(eth->netdev[i]);
++		val = mtk_r32(eth, MTK_GDMA_FWD_CFG(i));
++		/* default setup the forward port to send frame to PDMA */
++		val &= ~0xffff;
++
++		if (!eth->soc->offload_version)
++			gdm_config = MTK_GDMA_TO_PDMA;
++		else if (ppe_num >= 3 && target_mac->id == 2)
++			gdm_config = eth->soc->reg_map->gdma_to_ppe[2];
++		else if (ppe_num >= 2 && target_mac->id == 1)
++			gdm_config = eth->soc->reg_map->gdma_to_ppe[1];
++		else
++			gdm_config = eth->soc->reg_map->gdma_to_ppe[0];
++
++		if (eth->l4s_toggle)
++			gdm_config = MTK_GDMA_TO_TDMA;
++
++		val |= gdm_config;
++		mtk_w32(eth, val, MTK_GDMA_FWD_CFG(i));
++	}
++
++	return count;
++}
++
++static const struct file_operations mtk_ppe_internal_debugfs_l4s_fops = {
++	.open = mtk_ppe_internal_debugfs_open_l4s,
++	.read = seq_read,
++	.write = mtk_ppe_internal_debugfs_write_l4s,
++	.llseek = seq_lseek,
++	.release = single_release,
++};
++
++static int
+ mtk_ppe_internal_debugfs_foe_all_show(struct seq_file *m, void *private)
+ {
+ 	struct mtk_eth *eth = m->private;
+@@ -426,6 +511,10 @@ int mtk_ppe_internal_debugfs_init(struct
+ 			    &mtk_ppe_internal_debugfs_qos_fops);
+ 	debugfs_create_file("debug_level", S_IRUGO, root, eth,
+ 			    &mtk_ppe_internal_debugfs_level_fops);
++	/* only mt7988 can support l4s through tops */
++	if (eth->soc->caps == MT7988_CAPS)
++		debugfs_create_file("l4s_toggle", S_IRUGO, root, eth,
++				    &mtk_ppe_internal_debugfs_l4s_fops);
+ 
+ 	for (i = 0; i < (mtk_is_netsys_v2_or_greater(eth) ? 4 : 2); i++) {
+ 		ret = snprintf(name, sizeof(name), "qdma_sch%ld", i);
+--- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
+@@ -344,7 +344,12 @@ mtk_flow_set_output_device(struct mtk_et
+ 		ct_mark = ct->mark;
+ 	}
+ 
+-	if ((eth->qos_toggle == 2 || eth->qos_toggle == 3) && mtk_ppe_check_pppq_path(mac, idev, dsa_port)) {
++	/* Prevent the L4S packet enter QDMA repeatedly */
++	if (eth->l4s_toggle && idev->ieee80211_ptr) {
++		/* Set the original destination port to tops entry */
++		mtk_foe_entry_set_tops_entry(eth, foe, pse_port);
++		pse_port = PSE_TDMA_PORT;
++	} else if ((eth->qos_toggle == 2 || eth->qos_toggle == 3) && mtk_ppe_check_pppq_path(mac, idev, dsa_port)) {
+ 		if ((dsa_port >= 0) && ct && nf_ct_protonum(ct) == IPPROTO_TCP) {
+ 			/* Dispatch the IPv4/IPv6 TCP Ack packets to the high-priority
+ 			 * queue, assuming they are less than 64 bytes.

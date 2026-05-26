@@ -1,0 +1,67 @@
+---
+[v1] nft_flow_offload: Add L2TP flow offload support for NPU
+
+Add NPU L2TP tunnel offload support to nftables flow offload. This patch
+introduces the `mt_flow_tnl_offload` callback function and extends the flow
+forwarding infrastructure to handle L2TP tunnel paths.
+
+The patch adds DEV_PATH_L2TP to the device path types that can be offloaded, and
+includes an `npu_entry` field in the forward info structure to track NPU offload
+entries. The `mtk_flow_tnl_offload` function pointer allows vendor-specific
+tunnel offload implementations to integrate with the nftables flow offload
+framework, enabling hardware-accelerated L2TP VPN tunnels through the NPU.
+
+---
+v1: Add L2TP flow offload support for NPU
+---
+
+--- a/net/netfilter/nft_flow_offload.c
++++ b/net/netfilter/nft_flow_offload.c
+@@ -23,6 +23,9 @@ struct nft_flow_offload {
+ 	struct nft_flowtable	*flowtable;
+ };
+ 
++int (*mtk_flow_tnl_offload)(const struct net_device_path *path, u32 *entry);
++EXPORT_SYMBOL(mtk_flow_tnl_offload);
++
+ static void
+ nft_flow_offload_dscp_init(struct flow_offload *flow, const struct nf_conn *ct,
+ 			   enum ip_conntrack_dir dir)
+@@ -181,6 +184,7 @@ struct nft_forward_info {
+ 	u8 h_source[ETH_ALEN];
+ 	u8 h_dest[ETH_ALEN];
+ 	u32 priority;
++	u32 npu_entry;
+ 	enum flow_offload_xmit_type xmit_type;
+ };
+ 
+@@ -227,6 +231,7 @@ static void nft_dev_path_info(const stru
+ 		case DEV_PATH_VLAN:
+ 		case DEV_PATH_PPPOE:
+ 		case DEV_PATH_MACVLAN:
++		case DEV_PATH_L2TP:
+ 			if (is_zero_ether_addr(info->h_source))
+ 				memcpy(info->h_source, path->dev->dev_addr, ETH_ALEN);
+ 
+@@ -238,6 +243,13 @@ static void nft_dev_path_info(const stru
+ 				break;
+ 			}
+ 
++			/* TODO: Add case for other tunnel */
++			if (mtk_flow_tnl_offload &&
++			    mtk_flow_tnl_offload(path, &info->npu_entry) >= 0) {
++				memcpy(info->h_dest, path->encap.h_dest, ETH_ALEN);
++				break;
++			}
++
+ 			/* DEV_PATH_VLAN and DEV_PATH_PPPOE */
+ 			if (info->num_encaps >= NF_FLOW_TABLE_ENCAP_MAX) {
+ 				info->indev = NULL;
+@@ -386,6 +398,7 @@ static int nft_dev_forward_path(const st
+ 		route->tuple[dir].out.hw_ifindex = info.hw_outdev->ifindex;
+ 		route->tuple[dir].xmit_type = info.xmit_type;
+ 	}
++	route->tuple[dir].npu_entry = info.npu_entry;
+ 
+ 	return 0;
+ }

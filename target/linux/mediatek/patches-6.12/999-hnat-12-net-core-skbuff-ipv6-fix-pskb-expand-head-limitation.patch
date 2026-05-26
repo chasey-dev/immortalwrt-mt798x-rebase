@@ -1,0 +1,35 @@
+From 5583834362f5a9050e701e324f6a9b4d7bf5fcdf Mon Sep 17 00:00:00 2001
+From: Sam Shih <sam.shih@mediatek.com>
+Date: Fri, 2 Jun 2023 13:06:29 +0800
+Subject: [PATCH]
+ [networking][999-hnat-12-net-core-skbuff-ipv6-fix-pskb-expand-head-limitation.patch]
+
+---
+ net/core/skbuff.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+index 0a86285..ab09de4 100644
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -80,6 +80,7 @@
+ #include <net/mctp.h>
+ #include <net/page_pool/helpers.h>
+ #include <net/dropreason.h>
++#include <net/ra_nat.h>
+ 
+ #include <linux/uaccess.h>
+ #include <trace/events/skb.h>
+@@ -2295,6 +2296,9 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
+ 	       skb_shinfo(skb),
+ 	       offsetof(struct skb_shared_info, frags[skb_shinfo(skb)->nr_frags]));
+ 
++	/* headroom copy */
++	memcpy(data, skb->head, FOE_INFO_LEN);
++
+ 	/*
+ 	 * if shinfo is shared we must drop the old head gracefully, but if it
+ 	 * is not we can just drop the old head and let the existing refcount
+-- 
+2.45.2
+

@@ -1,0 +1,22 @@
+{
+    "description": "mtwifi vlan schema",
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "VLAN name"
+        },
+        "vid": {
+            "type": "string",
+            "description": "VLAN ID"
+        },
+        "iface": {
+            "type": "string",
+            "description": "Interface name"
+        },
+        "bridge_isolate": {
+            "type": "boolean",
+            "description": "Enable bridge port isolation"
+        }
+    }
+}

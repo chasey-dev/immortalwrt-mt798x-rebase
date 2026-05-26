@@ -1,0 +1,30 @@
+---
+[v1] net: ethernet: mtk_eth: add 464XLAT structure to mtk_eth
+
+Add 464XLAT (IPv4/IPv6 translation) support structure to mtk_eth. This prepares
+infrastructure for IPv4-over-IPv6 translation mechanisms, enabling dual-stack
+connectivity in IPv6-only networks.
+---
+v1: Add 464XLAT structure to mtk_eth.
+---
+
+From 77349de917c35a77df782015a663ba2a853d8be2 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Fri, 13 Mar 2026 15:51:37 +0800
+Subject: [PATCH] net: ethernet: mtk_eth: add 464xlat support
+
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -1752,6 +1752,8 @@ struct mtk_eth {
+ 	struct work_struct		ppe_roam_work;
+ 	unsigned char			ppe_roam_buf[1024];
+ 
++	struct xlat464_cfg		*xlat464;
++
+ 	struct bpf_prog			__rcu *prog;
+ 
+ 	struct {

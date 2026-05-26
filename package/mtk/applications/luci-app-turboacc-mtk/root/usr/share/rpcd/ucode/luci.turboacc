@@ -1,0 +1,138 @@
+/** 
+ * turboacc backend ucode script
+ * by chasey-dev <ellenyoung0912@gmail.com>
+ **/
+
+'use strict';
+
+import { access, open, stat, glob, readfile } from 'fs';
+import { connect } from 'ubus';
+
+// Persistent ubus connection
+const ubus = connect();
+
+// Helper: Read and trim file content
+const read_trimmed = (path) => {
+	let content = readfile(path);
+	return content ? trim(content) : null;
+};
+
+// Helper: Check module activity via refcnt
+const module_active = (mod) => {
+	let ref = read_trimmed(`/sys/module/${mod}/refcnt`);
+	return (ref && ref !== "0");
+};
+
+const methods = {
+	getSystemFeatures: {
+		call: function(req) {
+			const boardinfo = ubus.call('system', 'board') || {};
+			const kernel_ver = boardinfo.kernel || 'unknown';
+			const mod_path = `/lib/modules/${kernel_ver}/`;
+
+			const features = {
+				hasIPV6:           access('/proc/net/ipv6_route'),
+				hasFLOWOFFLOADING: false, // Explicitly disabled for mt798x
+				hasFASTCLASSIFIER: access(`${mod_path}fast-classifier.ko`),
+				hasSHORTCUTFECM:   access(`${mod_path}shortcut-fe-cm.ko`),
+				hasMEDIATEKHNAT:   access(`${mod_path}mtkhnat.ko`),
+				hasGMAC2:          access('/sys/class/net/eth1'),
+				hasXTFULLCONENAT:  access(`${mod_path}xt_FULLCONENAT.ko`),
+				hasNFTFULLCONE:    access(`${mod_path}nft_fullcone.ko`),
+				hasTCPCCA:         read_trimmed('/proc/sys/net/ipv4/tcp_available_congestion_control')
+			};
+
+			return features;
+		}
+	},
+
+	getFastPathStat: {
+		call: function(req) {
+			let fptype = null;
+
+			if (module_active('xt_FLOWOFFLOAD') || module_active('nft_flow_offload')) {
+				fptype = 'Flow offloading';
+			} else if (stat('/sys/module/fast_classifier')?.type === 'directory') {
+				fptype = 'Fast classifier';
+			} else if (stat('/sys/module/shortcut_fe_cm')?.type === 'directory') {
+				fptype = 'Shortcut-FE CM';
+			} else if (stat('/sys/kernel/debug/hnat')?.type === 'directory') {
+				let hnat_toggle = read_trimmed('/sys/kernel/debug/hnat/hook_toggle');
+				if (hnat_toggle === 'enabled') {
+					fptype = 'MediaTek HNAT';
+					
+					let whnat_enabled = false;
+                    // fs.glob is useful for regex matching here
+					for (let f in glob('/etc/wireless/mediatek/*_card*.dat')) {
+						if (match(readfile(f) || '', /WHNAT=1/)) {
+							whnat_enabled = true;
+							break;
+						}
+					}
+					if (!whnat_enabled) fptype += ' / Wireless HNAT Disabled';
+				}
+			}
+
+			return { type: fptype };
+		}
+	},
+
+	getFullConeStat: {
+		call: function(req) {
+			let fctype = null;
+			if (module_active('nft_fullcone')) {
+				fctype = 'nft_fullcone';
+			} else if (module_active('xt_FULLCONENAT')) {
+				fctype = 'xt_FULLCONENAT';
+			} else {
+				// Only use popen as a fallback for Broadcom check
+				let ipt = popen('iptables -t nat -L zone_wan_postrouting 2>/dev/null');
+				if (ipt) {
+					let output = ipt.read('all');
+					if (match(output, /fullcone/)) fctype = 'Boardcom Fullcone';
+					ipt.close();
+				}
+			}
+			return { type: fctype };
+		}
+	},
+
+	getTCPCCAStat: {
+		call: function(req) {
+			let cca = read_trimmed('/proc/sys/net/ipv4/tcp_congestion_control');
+			return { type: cca ? uc(cca) : null };
+		}
+	},
+
+	getMTKPPEStat: {
+		call: function(req) {
+			let ppe_stat = {};
+			let fd = open('/sys/kernel/debug/hnat/hnat_stats', 'r');
+			if (!fd) return {};
+
+			for (let line = fd.read('line'); length(line); line = fd.read('line')) {
+				line = trim(line);
+				// Match "PPE0: k=v, k=v"
+				let m_sub = match(line, /^(.+):\s*(.+)$/);
+				if (m_sub) {
+					let prefix = m_sub[1];
+					ppe_stat[prefix] = {};
+					let pairs = split(m_sub[2], ',');
+					for (let p in pairs) {
+						let kv = split(trim(p), '=');
+						if (length(kv) == 2) ppe_stat[prefix][kv[0]] = kv[1];
+					}
+				} else {
+					// Match "Key=Value"
+					let kv = split(line, '=');
+					if (length(kv) == 2) ppe_stat[trim(kv[0])] = trim(kv[1]);
+				}
+			}
+			fd.close();
+			return ppe_stat;
+		}
+	}
+};
+
+// Return the module export
+return { 'luci.turboacc': methods };

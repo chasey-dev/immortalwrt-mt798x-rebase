@@ -1,0 +1,43 @@
+---
+[v1] net: ethernet: mtk_ppe: add binding bypass by ct mark 0x99
+
+Without this patch, there is no way to prevent specific connections from
+being hardware-offloaded by the PPE.
+
+Users can mark 0x99 to conntrack entry to bypass PPE binding using.
+---
+v1: Add PPE binding bypass for flows with conntrack mark 0x99.
+---
+
+From 462920b3c6dae2fa472020c1d822704888eb7c67 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Wed, 11 Mar 2026 16:55:40 +0800
+Subject: [PATCH] net: ethernet: mtk_ppe: add binding bypass by ct mark 0x99
+
+---
+ drivers/net/ethernet/mediatek/mtk_ppe.h         | 1 +
+ drivers/net/ethernet/mediatek/mtk_ppe_offload.c | 3 +++
+ 2 files changed, 4 insertions(+)
+
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.h
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.h
+@@ -10,6 +10,7 @@
+ 
+ #include "mtk_eth_soc.h"
+ 
++#define MTK_PPE_EXCEPTION_TAG		0x99
+ #define MTK_PPE_ENTRIES_SHIFT		4
+ #define MTK_PPE_ENTRIES			(1024 << MTK_PPE_ENTRIES_SHIFT)
+ #define MTK_PPE_HASH_MASK		(MTK_PPE_ENTRIES - 1)
+--- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
+@@ -403,6 +403,9 @@ mtk_flow_offload_replace(struct mtk_eth
+ 	if (rhashtable_lookup(&eth->flow_table, &f->cookie, mtk_flow_ht_params))
+ 		return -EEXIST;
+ 
++	if (f->flow && f->flow->ct && f->flow->ct->mark == MTK_PPE_EXCEPTION_TAG)
++		return -EOPNOTSUPP;
++
+ 	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_META)) {
+ 		struct flow_match_meta match;
+ 

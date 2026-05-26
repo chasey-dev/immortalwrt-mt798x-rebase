@@ -1,0 +1,80 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
+@@ -4208,11 +4208,31 @@ int mtk_hqos_ptype_cb(struct sk_buff *sk
+ 
+ int mtk_hnat_skb_headroom_copy(struct sk_buff *new, struct sk_buff *old)
+ {
+-	if (skb_headroom(new) < skb_headroom(old))
+-		return -EPERM;
++	struct sk_buff *temp = new;
++	int need_copy = 0;
++	int is_esp = 0;
+ 
+-	if (skb_hnat_reason(old) == HIT_UNBIND_RATE_REACH && skb_hnat_tops(old))
+-		memcpy(new->head, old->head, skb_headroom(old));
++	if (skb_hnat_tops(old))
++		need_copy = 1;
++
++	if (old->inner_protocol == IPPROTO_ESP &&
++	    skb_hnat_cdrt(old) && is_magic_tag_valid(old)) {
++		need_copy = 1;
++		is_esp = 1;
++	}
++
++	while (temp) {
++		if (skb_cow_head(temp, skb_headroom(old)))
++			return -ENOMEM;
++
++		if (need_copy) {
++			memcpy(temp->head, old->head, skb_headroom(old));
++			if (is_esp)
++				temp->inner_protocol = IPPROTO_ESP;
++		}
++
++		temp = temp->next;
++	}
+ 
+ 	return 0;
+ }
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c
+@@ -1416,9 +1416,6 @@ int hnat_enable_hook(void)
+ 	ppe_del_entry_by_bssid_wcid = entry_delete_by_bssid_wcid;
+ 	hook_toggle = 1;
+ 
+-	/* register hook function used at linux gso segmentation */
+-	mtk_skb_headroom_copy = mtk_hnat_skb_headroom_copy;
+-
+ 	return 0;
+ }
+ 
+@@ -1457,9 +1454,6 @@ int hnat_disable_hook(void)
+ 	ppe_del_entry_by_bssid_wcid = NULL;
+ 	hook_toggle = 0;
+ 
+-	/* unregister hook function used at linux gso segmentation */
+-	mtk_skb_headroom_copy = NULL;
+-
+ 	return 0;
+ }
+ 
+@@ -1695,6 +1689,9 @@ static int hnat_probe(struct platform_de
+ 	if (err)
+ 		goto err_out;
+ 
++	/* register hook function used at linux gso segmentation */
++	mtk_skb_headroom_copy = mtk_hnat_skb_headroom_copy;
++
+ 	register_netdevice_notifier(&nf_hnat_netdevice_nb);
+ 	register_netevent_notifier(&nf_hnat_netevent_nb);
+ 	hnat_neigh_update_init();
+@@ -1751,6 +1748,9 @@ static void hnat_remove(struct platform_
+ 	hnat_neigh_update_cleanup();
+ 	hnat_disable_hook();
+ 
++	/* unregister hook function used at linux gso segmentation */
++	mtk_skb_headroom_copy = NULL;
++
+ 	if (hnat_priv->data->mcast)
+ 		hnat_mcast_disable();
+ 

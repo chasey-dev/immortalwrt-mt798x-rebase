@@ -1,0 +1,5 @@
+#!/bin/sh
+[ "$ACTION" = "ifup" ] || [ "$ACTION" = "update" ] || exit 0
+[ "$INTERFACE" = "loopback" ] && exit 0
+
+/usr/bin/ucode /usr/share/ucode/hnat/detect.uc

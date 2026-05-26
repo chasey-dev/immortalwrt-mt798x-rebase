@@ -1,0 +1,73 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
+@@ -2487,7 +2487,7 @@ static ssize_t hnat_ppd_if_write(struct
+ 				 size_t count, loff_t *data)
+ {
+ 	char buf[IFNAMSIZ];
+-	struct net_device *dev;
++	struct net_device *dev, *old_dev;
+ 	char *p, *tmp;
+ 
+ 	if (count >= IFNAMSIZ)
+@@ -2499,32 +2499,44 @@ static ssize_t hnat_ppd_if_write(struct
+ 
+ 	tmp = buf;
+ 	p = strsep(&tmp, "\n\r ");
++	if (!p || !*p)
++		return -EINVAL;
++
+ 	dev = dev_get_by_name(&init_net, p);
++	if (!dev) {
++		pr_err("%s : no such device: %s !\n", __func__, p);
++		return -ENODEV;
++	}
++
++	rtnl_lock();
++	/* only update when the dev actually changed */
++	if (hnat_priv->g_ppdev == dev &&
++		!strncmp(hnat_priv->ppd, p, IFNAMSIZ)) {
++		rtnl_unlock();
++		dev_put(dev);
+ 
+-	if (dev) {
+-		if (hnat_priv->g_ppdev)
+-			dev_put(hnat_priv->g_ppdev);
+-		hnat_priv->g_ppdev = dev;
+-
+-		strncpy(hnat_priv->ppd, p, IFNAMSIZ - 1);
+-		pr_info("hnat_priv ppd = %s\n", hnat_priv->ppd);
+-	} else {
+-		pr_info("no such device!\n");
++		goto end;
+ 	}
+ 
++	old_dev = hnat_priv->g_ppdev;
++	hnat_priv->g_ppdev = dev;
++
++	strscpy(hnat_priv->ppd, p, IFNAMSIZ);
++	rtnl_unlock();
++
++	if (old_dev)
++		dev_put(old_dev);
++end:
++	pr_info("hnat_priv ppd = %s\n", hnat_priv->ppd);
++
+ 	return count;
+ }
+ 
+ static int hnat_ppd_if_read(struct seq_file *m, void *private)
+ {
+-	pr_info("hnat_priv ppd = %s\n", hnat_priv->ppd);
+-
+-	if (hnat_priv->g_ppdev) {
+-		pr_info("hnat_priv g_ppdev name = %s\n",
+-			hnat_priv->g_ppdev->name);
+-	} else {
+-		pr_info("hnat_priv g_ppdev is null!\n");
+-	}
++	seq_printf(m, "%s\n", hnat_priv->ppd);
++	seq_printf(m, "g_ppdev=%s\n",
++		   hnat_priv->g_ppdev ? hnat_priv->g_ppdev->name : "NULL");
+ 
+ 	return 0;
+ }

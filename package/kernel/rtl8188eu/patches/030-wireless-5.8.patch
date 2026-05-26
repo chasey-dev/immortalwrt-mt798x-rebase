@@ -1,0 +1,117 @@
+--- a/Makefile
++++ b/Makefile
+@@ -9,6 +9,8 @@ EXTRA_CFLAGS += -Wno-unused-function
+ EXTRA_CFLAGS += -Wno-unused
+ EXTRA_CFLAGS += -Wno-address
+ EXTRA_CFLAGS += -Wno-cast-function-type
++EXTRA_CFLAGS += -Wno-missing-declarations
++EXTRA_CFLAGS += -Wno-missing-prototypes
+ #EXTRA_CFLAGS += -Wno-discarded-qualifiers
+ EXTRA_CFLAGS += -Wno-uninitialized
+ EXTRA_CFLAGS += -Wno-sometimes-uninitialized
+--- a/hal/phydm/phydm_phystatus.c
++++ b/hal/phydm/phydm_phystatus.c
+@@ -1710,7 +1710,7 @@ phydm_process_rssi_for_dm(
+ 				}
+ 			}
+ 			if (sta->rssi_stat.ofdm_pkt_cnt != 64) {
+-				i = 63;
++				i = 7;
+ 				sta->rssi_stat.ofdm_pkt_cnt -= (u8)(((sta->rssi_stat.packet_map >> i) & BIT(0)) - 1);
+ 			}
+ 			sta->rssi_stat.packet_map = (sta->rssi_stat.packet_map << 1) | BIT(0);
+@@ -1747,7 +1747,7 @@ phydm_process_rssi_for_dm(
+ 					PHYDM_DBG(dm, DBG_RSSI_MNTR, "CCK_2: (( %d ))\n", undecorated_smoothed_cck);
+ 				}
+ 			}
+-			i = 63;
++			i = 7;
+ 			sta->rssi_stat.ofdm_pkt_cnt -= (u8)((sta->rssi_stat.packet_map >> i) & BIT(0));
+ 			sta->rssi_stat.packet_map = sta->rssi_stat.packet_map << 1;
+ 		}
+--- a/include/wlan_bssdef.h
++++ b/include/wlan_bssdef.h
+@@ -95,7 +95,7 @@ typedef struct _NDIS_802_11_FIXED_IEs {
+ typedef struct _NDIS_802_11_VARIABLE_IEs {
+ 	UCHAR  ElementID;
+ 	UCHAR  Length;
+-	UCHAR  data[1];
++	UCHAR  data[];
+ } NDIS_802_11_VARIABLE_IEs, *PNDIS_802_11_VARIABLE_IEs;
+ 
+ 
+@@ -343,7 +343,7 @@ typedef struct _NDIS_802_11_FIXED_IEs {
+ typedef struct _NDIS_802_11_VARIABLE_IEs {
+ 	UCHAR  ElementID;
+ 	UCHAR  Length;
+-	UCHAR  data[1];
++	UCHAR  data[];
+ } NDIS_802_11_VARIABLE_IEs, *PNDIS_802_11_VARIABLE_IEs;
+ 
+ 
+--- a/os_dep/linux/ioctl_cfg80211.c
++++ b/os_dep/linux/ioctl_cfg80211.c
+@@ -417,7 +417,7 @@ u8 rtw_cfg80211_ch_switch_notify(_adapte
+ 	if (ret != _SUCCESS)
+ 		goto exit;
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)) || defined(BUILD_OPENWRT)
+         cfg80211_ch_switch_notify(adapter->pnetdev, &chdef, 0);
+ #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0))
+         cfg80211_ch_switch_notify(adapter->pnetdev, &chdef, 0, 0);
+@@ -3113,7 +3113,11 @@ exit:
+ 
+ }
+ 
+-static int cfg80211_rtw_set_wiphy_params(struct wiphy *wiphy, u32 changed)
++static int cfg80211_rtw_set_wiphy_params(struct wiphy *wiphy,
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)) || defined(BUILD_OPENWRT)
++                                         int radio_idx,
++#endif
++                                         u32 changed)
+ {
+ #if 0
+ 	struct iwm_priv *iwm = wiphy_to_iwm(wiphy);
+@@ -3958,6 +3962,9 @@ static int cfg80211_rtw_set_txpower(stru
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
+ 	struct wireless_dev *wdev,
+ #endif
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)) || defined(BUILD_OPENWRT)
++        int radio_idx,
++#endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) || defined(COMPAT_KERNEL_RELEASE)
+ 	enum nl80211_tx_power_setting type, int mbm)
+ #else
+@@ -4018,6 +4025,12 @@ static int cfg80211_rtw_get_txpower(stru
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
+ 	struct wireless_dev *wdev,
+ #endif
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)) || defined(BUILD_OPENWRT)
++	int radio_idx,
++#endif
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)) || defined(BUILD_OPENWRT)
++	unsigned int link_id,
++#endif
+ 	int *dbm)
+ {
+ 	_adapter *padapter = wiphy_to_adapter(wiphy);
+@@ -4897,7 +4910,7 @@ exit:
+ 	return ret;
+ }
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)) || defined(BUILD_OPENWRT)
+ static int cfg80211_rtw_change_beacon(struct wiphy *wiphy, struct net_device *ndev,
+ 		struct cfg80211_ap_update *ap_update)
+ {
+@@ -5659,6 +5672,9 @@ static int	cfg80211_rtw_set_channel(stru
+ }
+ 
+ static int cfg80211_rtw_set_monitor_channel(struct wiphy *wiphy
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)) || defined(BUILD_OPENWRT)
++	, struct net_device *dev
++#endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
+ 	, struct cfg80211_chan_def *chandef
+ #else

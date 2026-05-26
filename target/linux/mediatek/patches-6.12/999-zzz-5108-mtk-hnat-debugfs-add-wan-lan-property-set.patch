@@ -1,0 +1,187 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
+@@ -2483,6 +2483,171 @@ static const struct file_operations hnat
+ 	.release = single_release,
+ };
+ 
++static ssize_t hnat_wan_if_write(struct file *file, const char __user *buffer,
++				  size_t count, loff_t *data)
++{
++	char buf[IFNAMSIZ];
++	struct net_device *dev, *old_dev;
++	char *p, *tmp;
++
++	if (count >= IFNAMSIZ)
++		return -EFAULT;
++
++	memset(buf, 0, IFNAMSIZ);
++	if (copy_from_user(buf, buffer, count))
++		return -EFAULT;
++
++	tmp = buf;
++	p = strsep(&tmp, "\n\r ");
++	if (!p || !*p)
++		return -EINVAL;
++
++	dev = dev_get_by_name(&init_net, p);
++	if (!dev) {
++		pr_err("%s : no such device: %s !\n", __func__, p);
++		return -ENODEV;
++	}
++
++	rtnl_lock();
++	/* only update when the dev actually changed */
++	if (hnat_priv->g_wandev == dev &&
++		!strncmp(hnat_priv->wan, p, IFNAMSIZ)) {
++		rtnl_unlock();
++		dev_put(dev);
++
++		goto end;
++	}
++
++	old_dev = hnat_priv->g_wandev;
++	hnat_priv->g_wandev = dev;
++
++	strscpy(hnat_priv->wan, p, IFNAMSIZ);
++	rtnl_unlock();
++
++	if (old_dev)
++		dev_put(old_dev);
++end:
++	pr_info("hnat_priv wan = %s\n", hnat_priv->wan);
++
++	return count;
++}
++
++static int hnat_wan_if_read(struct seq_file *m, void *private)
++{
++	seq_printf(m, "%s\n", hnat_priv->wan);
++	seq_printf(m, "g_wandev=%s\n",
++		   hnat_priv->g_wandev ? hnat_priv->g_wandev->name : "NULL");
++
++	return 0;
++}
++
++static int hnat_wan_if_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, hnat_wan_if_read, file->private_data);
++}
++
++static const struct file_operations hnat_wan_if_fops = {
++	.open = hnat_wan_if_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.write = hnat_wan_if_write,
++	.release = single_release,
++};
++
++static ssize_t hnat_lan_if_write(struct file *file, const char __user *buffer,
++				  size_t count, loff_t *data)
++{
++	char buf[IFNAMSIZ];
++	char *p, *tmp;
++
++	if (count >= IFNAMSIZ)
++		return -EFAULT;
++
++	memset(buf, 0, IFNAMSIZ);
++	if (copy_from_user(buf, buffer, count))
++		return -EFAULT;
++
++	tmp = buf;
++	p = strsep(&tmp, "\n\r ");
++	if (!p || !*p)
++		return -EINVAL;
++
++	/* only update when the name actually changed */
++	if (strncmp(hnat_priv->lan, p, IFNAMSIZ)) {
++		strscpy(hnat_priv->lan, p, IFNAMSIZ);
++	}
++	pr_info("hnat_priv lan = %s\n", hnat_priv->lan);
++
++	return count;
++}
++
++static int hnat_lan_if_read(struct seq_file *m, void *private)
++{
++	seq_printf(m, "%s\n", hnat_priv->lan);
++
++	return 0;
++}
++
++static int hnat_lan_if_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, hnat_lan_if_read, file->private_data);
++}
++
++static const struct file_operations hnat_lan_if_fops = {
++	.open = hnat_lan_if_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.write = hnat_lan_if_write,
++	.release = single_release,
++};
++
++static ssize_t hnat_lan2_if_write(struct file *file, const char __user *buffer,
++				  size_t count, loff_t *data)
++{
++	char buf[IFNAMSIZ];
++	char *p, *tmp;
++
++	if (count >= IFNAMSIZ)
++		return -EFAULT;
++
++	memset(buf, 0, IFNAMSIZ);
++	if (copy_from_user(buf, buffer, count))
++		return -EFAULT;
++
++	tmp = buf;
++	p = strsep(&tmp, "\n\r ");
++	if (!p || !*p)
++		return -EINVAL;
++
++	/* only update when the name actually changed */
++	if (strncmp(hnat_priv->lan2, p, IFNAMSIZ)) {
++		strscpy(hnat_priv->lan2, p, IFNAMSIZ);
++	}
++	pr_info("hnat_priv lan2 = %s\n", hnat_priv->lan2);
++
++	return count;
++}
++
++static int hnat_lan2_if_read(struct seq_file *m, void *private)
++{
++	seq_printf(m, "%s\n", hnat_priv->lan2);
++
++	return 0;
++}
++
++static int hnat_lan2_if_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, hnat_lan2_if_read, file->private_data);
++}
++
++static const struct file_operations hnat_lan2_if_fops = {
++	.open = hnat_lan2_if_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.write = hnat_lan2_if_write,
++	.release = single_release,
++};
++
+ static ssize_t hnat_ppd_if_write(struct file *file, const char __user *buffer,
+ 				 size_t count, loff_t *data)
+ {
+@@ -3623,6 +3788,12 @@ int hnat_init_debugfs(struct mtk_hnat *h
+ 			    &hnat_qos_toggle_fops);
+ 	debugfs_create_file("hnat_version", 0444, root, h,
+ 			    &hnat_version_fops);
++	debugfs_create_file("hnat_wan_if", 0444, root, h,
++			    &hnat_wan_if_fops);
++	debugfs_create_file("hnat_lan_if", 0444, root, h,
++			    &hnat_lan_if_fops);
++	debugfs_create_file("hnat_lan2_if", 0444, root, h,
++			    &hnat_lan2_if_fops);
+ 	debugfs_create_file("hnat_ppd_if", 0444, root, h,
+ 			    &hnat_ppd_if_fops);
+ 	debugfs_create_file("static_entry", 0444, root, h,

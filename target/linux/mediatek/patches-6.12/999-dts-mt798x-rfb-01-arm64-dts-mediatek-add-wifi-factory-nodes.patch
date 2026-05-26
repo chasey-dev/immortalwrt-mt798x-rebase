@@ -1,0 +1,143 @@
+---
+[v1] arm64: dts: mediatek: add Wi-Fi factory nodes for each generation
+
+Consolidate Wi-Fi DTS nodes from various platform DTSOs into unified ones
+to improve cross-platform compatibility. Additionally, configure distinct
+EEPROM factory offsets and sizes according to different Wi-Fi generations,
+and introduce a unified binfile mode DTS node for all Wi-Fi generations.
+
+---
+v1: Add Wi-Fi factory nodes for each generation.
+---
+
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/filogic-binfile.dtso
+@@ -0,0 +1,32 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ * Author: StanleyYP.Wang <StanleyYP.Wang@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target = <&pcie0>;
++		__overlay__ {
++			#address-cells = <3>;
++			#size-cells = <2>;
++
++			pcie@0,0 {
++				reg = <0x0000 0 0 0 0>;
++				#address-cells = <3>;
++				#size-cells = <2>;
++
++				wifi@0,0 {
++					compatible = "mediatek,mt76";
++					reg = <0x0000 0 0 0 0>;
++					device_type = "pci";
++					bin_file_name = "mediatek/mt76_binfile.bin";
++				};
++			};
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/filogic-wifi7.dtso
+@@ -0,0 +1,45 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ * Author: StanleyYP.Wang <StanleyYP.Wang@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target = <&factory>;
++		__overlay__ {
++			nvmem-layout {
++				eeprom_wmac: eeprom@0 {
++					reg = <0x0 0x1e00>;
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&pcie0>;
++		__overlay__ {
++			#address-cells = <3>;
++			#size-cells = <2>;
++
++			pcie@0,0 {
++				reg = <0x0000 0 0 0 0>;
++				#address-cells = <3>;
++				#size-cells = <2>;
++
++				wifi@0,0 {
++					compatible = "mediatek,mt76";
++					reg = <0x0000 0 0 0 0>;
++					device_type = "pci";
++					nvmem-cell-names = "eeprom";
++					nvmem-cells = <&eeprom_wmac>;
++					mediatek,mtd-eeprom = <&factory 0x0>;
++				};
++			};
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/filogic-wifi8.dtso
+@@ -0,0 +1,45 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ * Author: StanleyYP.Wang <StanleyYP.Wang@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target = <&factory>;
++		__overlay__ {
++			nvmem-layout {
++				eeprom_wmac: eeprom@0 {
++					reg = <0x0 0x6400>;
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&pcie0>;
++		__overlay__ {
++			#address-cells = <3>;
++			#size-cells = <2>;
++
++			pcie@0,0 {
++				reg = <0x0000 0 0 0 0>;
++				#address-cells = <3>;
++				#size-cells = <2>;
++
++				wifi@0,0 {
++					compatible = "mediatek,mt76";
++					reg = <0x0000 0 0 0 0>;
++					device_type = "pci";
++					nvmem-cell-names = "eeprom";
++					nvmem-cells = <&eeprom_wmac>;
++					mediatek,mtd-eeprom = <&factory 0x0>;
++				};
++			};
++		};
++	};
++};
++

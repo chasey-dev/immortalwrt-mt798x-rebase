@@ -1,0 +1,78 @@
+---
+[v1] mtk_eth_soc: Add tunnel decapsulation offload support
+
+Add tunnel offload infrastructure to MediaTek Ethernet driver. This patch introduces
+the `mtk_get_tnl_dev` function pointer which set net_device in skb for L2TP, GRE,
+PPTP, VXLAN, and other tunnel protocols.
+Without this patch, packets decapsulate by NPU can't forward to the correct tunnel
+interface.
+
+---
+v1: Add tunnel decapsulation offload support
+---
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -323,6 +323,9 @@ static const char * const mtk_clks_sourc
+ 	"top_netsys_warp_sel",
+ };
+ 
++struct net_device *(*mtk_get_tnl_dev)(u8 tops_crsn) = NULL;
++EXPORT_SYMBOL(mtk_get_tnl_dev);
++
+ void mtk_w32(struct mtk_eth *eth, u32 val, unsigned reg)
+ {
+ 	__raw_writel(val, eth->base + reg);
+@@ -2633,13 +2636,14 @@ static int mtk_poll_rx(struct napi_struc
+ 	int done = 0, bytes = 0;
+ 	dma_addr_t dma_addr = DMA_MAPPING_ERROR;
+ 	int ppe_idx = 0;
++	u8 tops_crsn = 0;
+ 
+ 	if (unlikely(!ring))
+ 		goto rx_done;
+ 
+ 	while (done < budget) {
+ 		unsigned int pktlen, *rxdcsum;
+-		struct net_device *netdev;
++		struct net_device *netdev = NULL;
+ 		u32 hash, reason;
+ 		int mac = 0;
+ 
+@@ -2674,7 +2678,15 @@ static int mtk_poll_rx(struct napi_struc
+ 			     !eth->netdev[mac]))
+ 			goto release_desc;
+ 
+-		netdev = eth->netdev[mac];
++		tops_crsn = RX_DMA_GET_TOPS_CRSN(trxd.rxd6);
++		if (mtk_get_tnl_dev && tops_crsn) {
++			netdev = mtk_get_tnl_dev(tops_crsn);
++			if (IS_ERR(netdev))
++				netdev = NULL;
++		}
++
++		if (!netdev)
++			netdev = eth->netdev[mac];
+ 		ppe_idx = eth->mac[mac]->ppe_idx;
+ 
+ 		if (unlikely(test_bit(MTK_RESETTING, &eth->state)))
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -459,6 +459,7 @@
+ #define TPORT_QDMA			1
+ #define TPORT_EIP197			2
+ #define TPORT_EIP197_QDMA		3
++#define TPORT_NPU_QDMA			5
+ #define TX_DMA_TPORT_MASK       GENMASK(3, 0)
+ #define TX_DMA_FPORT_SHIFT_V2	8
+ #define TX_DMA_FPORT_MASK_V2	0xf
+@@ -1964,6 +1965,9 @@ static inline bool mtk_interface_mode_is
+ 	}
+ }
+ 
++/* tunnel offload related */
++extern struct net_device *(*mtk_get_tnl_dev)(u8 tops_crsn);
++
+ /* read the hardware status register */
+ void mtk_stats_update_mac(struct mtk_mac *mac);
+ 

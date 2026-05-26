@@ -1,0 +1,38 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
+@@ -11,6 +11,8 @@
+ #include <dt-bindings/phy/phy.h>
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/input/input.h>
++#include <dt-bindings/reset/ti-syscon.h>
++
+ / {
+ 	compatible = "mediatek,mt7986a";
+ 	interrupt-parent = <&gic>;
+@@ -506,12 +507,20 @@ u2port1: usb-phy@1000 {
+ 		};
+ 
+ 		ethsys: syscon@15000000 {
+-			 compatible = "mediatek,mt7986-ethsys",
+-				      "syscon";
+-			 reg = <0 0x15000000 0 0x1000>;
+-			 #clock-cells = <1>;
+-			 #reset-cells = <1>;
+-		};
++			#address-cells = <1>;
++			#size-cells = <1>;
++			compatible = "mediatek,mt7986-ethsys",
++							"syscon";
++			reg = <0 0x15000000 0 0x1000>;
++			#clock-cells = <1>;
++			#reset-cells = <1>;
++
++			ethsysrst: reset-controller {
++				compatible = "ti,syscon-reset";
++				#reset-cells = <1>;
++				ti,reset-bits = <0x34 4 0x34 4 0x34 4 (ASSERT_SET | DEASSERT_CLEAR | STATUS_SET)>;
++			};
++        };
+ 
+ 		wed0: wed@15010000 {
+ 			compatible = "mediatek,mt7986-wed",

@@ -1,0 +1,26 @@
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -1831,7 +1831,9 @@ static void mtk_tx_set_dma_desc_v2(struc
+ 	data |= TX_DMA_SWC_V2 | QID_BITS_V2(info->qid);
+ 
+ 	/* Set tport */
+-	data |= FIELD_PREP(TX_DMA_TPORT_MASK, info->tport);
++	if (mtk_is_netsys_v3_or_greater(eth)) {
++		data |= FIELD_PREP(TX_DMA_TPORT_MASK, info->tport);
++	}
+ 	WRITE_ONCE(desc->txd4, data);
+ 
+ 	data = 0;
+@@ -1854,8 +1856,10 @@ static void mtk_tx_set_dma_desc_v2(struc
+ 	WRITE_ONCE(desc->txd7, 0);
+ 
+ 	data = 0;
+-	data |= FIELD_PREP(TX_DMA_TOPS_ENTRY_MASK, info->tops_entry);
+-	data |= FIELD_PREP(TX_DMA_CDRT_MASK, info->cdrt);
++	if (mtk_is_netsys_v3_or_greater(eth)) {
++		data |= FIELD_PREP(TX_DMA_TOPS_ENTRY_MASK, info->tops_entry);
++		data |= FIELD_PREP(TX_DMA_CDRT_MASK, info->cdrt);
++	}
+ 	WRITE_ONCE(desc->txd8, data);
+ }
+ 

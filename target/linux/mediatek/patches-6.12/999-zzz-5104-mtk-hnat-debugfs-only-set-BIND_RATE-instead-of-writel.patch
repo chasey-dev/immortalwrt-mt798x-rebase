@@ -1,0 +1,22 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
+@@ -888,10 +888,18 @@ int binding_threshold(int threshold)
+ {
+ 	int i;
+ 
++	/* check illegal input */
++	if (threshold < 0 || threshold > 65535) {
++		pr_err("current binding threshold =%d is forbidden! should be 0~65535\n", threshold);
++		return 0;
++	}
++
+ 	pr_info("Binding Threshold =%d\n", threshold);
+ 
++	/* only set lower bit here, since writel may cause unexpected behavior */
+ 	for (i = 0; i < CFG_PPE_NUM; i++)
+-		writel(threshold, hnat_priv->ppe_base[i] + PPE_BNDR);
++		cr_set_field(hnat_priv->ppe_base[i] + PPE_BNDR,
++			     BIND_RATE, threshold);
+ 
+ 	return 0;
+ }

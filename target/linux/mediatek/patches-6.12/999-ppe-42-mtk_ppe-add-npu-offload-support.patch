@@ -1,0 +1,48 @@
+---
+[v1] mtk_ppe: Add NPU offload support
+
+Add NPU offload capability to the MediaTek PPE offload driver. This patch handles
+the FLOW_ACTION_NPU_ENCAP flow action by configuring the PPE entry to forward packets
+to NPU.
+
+When an NPU entry is present in the flow data, the driver configures the FOE entry
+with the TOPS entry ID and sets the tport to TPORT_NPU_QDMA. This directs matching
+packets to be processed by the NPU hardware instead of the CPU, enabling
+hardware-accelerated packet forwarding for flows that support NPU offload.
+
+---
+v1: Add NPU offload support in binding PPE entry
+---
+
+--- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
+@@ -50,6 +50,7 @@ struct mtk_flow_data {
+ 	struct {
+ 		u16 cdrt_id;
+ 	} ipsec;
++	u32 npu_entry;
+ };
+ 
+ static const struct rhashtable_params mtk_flow_ht_params = {
+@@ -641,6 +642,9 @@ mtk_flow_offload_replace(struct mtk_eth
+ 			if (data.ipsec.cdrt_id == 0)
+ 				return -EOPNOTSUPP;
+ 			break;
++		case FLOW_ACTION_NPU_ENCAP:
++			data.npu_entry = act->npu_entry;
++			break;
+ 		default:
+ 			return -EOPNOTSUPP;
+ 		}
+@@ -797,6 +801,11 @@ mtk_flow_offload_replace(struct mtk_eth
+ 		mtk_foe_entry_set_tport(eth, &foe, TPORT_EIP197_QDMA);
+ 	}
+ 
++	if (data.npu_entry) {
++		mtk_foe_entry_set_tops_entry(eth, &foe, data.npu_entry);
++		mtk_foe_entry_set_tport(eth, &foe, TPORT_NPU_QDMA);
++	}
++
+ 	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+ 	if (!entry)
+ 		return -ENOMEM;

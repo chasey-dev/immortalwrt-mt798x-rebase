@@ -1,0 +1,22 @@
+{
+    "description": "mtwifi station schema",
+    "type": "object",
+    "properties": {
+        "mac": {
+            "type": "string",
+            "description": "MAC address"
+        },
+        "key": {
+            "type": "string",
+            "description": "Key/Password"
+        },
+        "vid": {
+            "type": "string",
+            "description": "VLAN ID"
+        },
+        "iface": {
+            "type": "string",
+            "description": "Interface name"
+        }
+    }
+}

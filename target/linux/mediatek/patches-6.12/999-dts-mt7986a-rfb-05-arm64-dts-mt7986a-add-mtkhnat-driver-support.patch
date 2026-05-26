@@ -1,0 +1,50 @@
+From 58167322fa620944fb63fec9f876018f95dbaf0f Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Fri, 16 Jan 2026 17:47:53 +0800
+Subject: [PATCH] arm64: dts: mt7986a: add mtkhnat driver support
+
+---
+ arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts | 7 +++++++
+ arch/arm64/boot/dts/mediatek/mt7986a.dtsi    | 8 ++++++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+index 34777ca..20d408e 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+@@ -109,6 +109,13 @@ mdio: mdio-bus {
+ 	};
+ };
+ 
++&hnat {
++	mtketh-wan = "eth1";
++	mtketh-lan = "lan";
++	mtketh-max-gmac = <2>;
++	status = "okay";
++};
++
+ &i2c0 {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&i2c_pins>;
+diff --git a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
+index 6b220b0..3da618a 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
+@@ -574,6 +574,14 @@ eth: ethernet@15100000 {
+ 			status = "disabled";
+ 		};
+ 
++		hnat: hnat@15000000 {
++			compatible = "mediatek,mtk-hnat_v4";
++			reg = <0 0x15100000 0 0x80000>;
++			resets = <&ethsys 0>;
++			reset-names = "mtketh";
++			status = "disabled";
++		};
++
+ 		wo_ccif0: syscon@151a5000 {
+ 			compatible = "mediatek,mt7986-wo-ccif", "syscon";
+ 			reg = <0 0x151a5000 0 0x1000>;
+-- 
+2.45.2
+

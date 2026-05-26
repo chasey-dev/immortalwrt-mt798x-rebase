@@ -1,0 +1,79 @@
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -347,6 +347,9 @@ EXPORT_SYMBOL(mtk_get_tnl_dev);
+ void (*mtk_set_tops_crsn)(struct sk_buff *skb, u8 tops_crsn) = NULL;
+ EXPORT_SYMBOL(mtk_set_tops_crsn);
+ 
++struct net_device *g_rx_ppdev;
++EXPORT_SYMBOL(g_rx_ppdev);
++
+ void mtk_w32(struct mtk_eth *eth, u32 val, unsigned reg)
+ {
+ 	__raw_writel(val, eth->base + reg);
+@@ -2693,15 +2696,19 @@ static int mtk_poll_rx(struct napi_struc
+ 	dma_addr_t dma_addr = DMA_MAPPING_ERROR;
+ 	int ppe_idx = 0;
+ 	u8 tops_crsn = 0;
++	struct net_device *rx_ppdev;
+ 
+ 	if (unlikely(!ring))
+ 		goto rx_done;
+ 
++	rx_ppdev = READ_ONCE(g_rx_ppdev);
++
+ 	while (done < budget) {
+ 		unsigned int pktlen, *rxdcsum;
+ 		struct net_device *netdev = NULL;
+ 		u32 hash, reason;
+ 		int mac = 0;
++		bool to_ppd = false;
+ 
+ 		idx = NEXT_DESP_IDX(ring->calc_idx, ring->dma_size);
+ 		rxd = ring->dma + RX_DESC_OFS(eth, idx);
+@@ -2727,7 +2734,19 @@ static int mtk_poll_rx(struct napi_struc
+ 			}
+ 		} else if (!MTK_HAS_CAPS(eth->soc->caps, MTK_SOC_MT7628) &&
+ 			   !(trxd.rxd4 & RX_DMA_SPECIAL_TAG)) {
+-			mac = RX_DMA_GET_SPORT(trxd.rxd4) - 1;
++			u32 sport = RX_DMA_GET_SPORT(trxd.rxd4);
++
++			/* if it is a from-QDMA packet, set from GMAC1 */
++			if (unlikely(sport == PSE_QDMA_TX_PORT)) {
++				/* sanity check */
++				if (unlikely(!rx_ppdev))
++					goto release_desc;
++
++				sport = PSE_GDM1_PORT;
++				to_ppd = true;
++			}
++
++			mac = sport - 1;
+ 		}
+ 
+ 		if (unlikely(mac < 0 || mac >= MTK_MAX_DEVS ||
+@@ -2846,6 +2865,12 @@ static int mtk_poll_rx(struct napi_struc
+ 				trace_printk("[%s] reason=0x%x(force to CPU) from WAN to Ext\n",
+ 					     __func__, skb_hnat_reason(skb));
+ 				skb->pkt_type = PACKET_HOST;
++				/* sanity check, just handle WDMA ports */
++				if (likely(rx_ppdev) &&
++					(skb_hnat_sport(skb) == PSE_WDMA0_PORT ||
++					 skb_hnat_sport(skb) == PSE_WDMA1_PORT ||
++					 skb_hnat_sport(skb) == PSE_WDMA2_PORT))
++					to_ppd = true;
+ 			}
+ 
+ 			trace_printk("[%s] rxd:(entry=%x,sport=%x,reason=%x,alg=%x\n",
+@@ -2907,6 +2932,12 @@ static int mtk_poll_rx(struct napi_struc
+ 			mtk_eth_debugfs_hwlro_flush_stats_update(eth, ring->ring_no, &trxd);
+ 		}
+ 
++		/* set to Rx PPD */
++		if (unlikely(to_ppd)) {
++			skb->dev = rx_ppdev;
++			skb->protocol = eth_hdr(skb)->h_proto;
++		}
++
+ 		skb_record_rx_queue(skb, 0);
+ 		napi_gro_receive(napi, skb);
+ 

@@ -1,0 +1,73 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
+@@ -2168,6 +2168,61 @@ static const struct file_operations hnat
+ 	.release = single_release,
+ };
+ 
++static int __hnat_stats_read(struct seq_file *m, void *private, u32 ppe_id)
++{
++	struct mtk_hnat *h = hnat_priv;
++	struct foe_entry *entry, *end;
++	int cnt;
++
++	if (ppe_id >= CFG_PPE_NUM)
++		return -EINVAL;
++
++	cnt = 0;
++	entry = h->foe_table_cpu[ppe_id];
++	end = h->foe_table_cpu[ppe_id] + hnat_priv->foe_etry_num;
++
++	while (entry < end) {
++		if (entry->bfib1.state == dbg_entry_state)
++			cnt++;
++		entry++;
++	}
++
++	seq_printf(m, "PPE%d: entry num=%d, %s state num=%d\n",
++		ppe_id, hnat_priv->foe_etry_num,
++		dbg_entry_state == 0 ?
++		"Invalid" : dbg_entry_state == 1 ?
++		"Unbind" : dbg_entry_state == 2 ?
++		"BIND" : dbg_entry_state == 3 ?
++		"FIN" : "Unknown", cnt);
++
++	return 0;
++}
++
++static int hnat_stats_read(struct seq_file *m, void *private)
++{
++	int i;
++
++	seq_printf(m, "PPE num=%d\n", CFG_PPE_NUM);
++
++	for (i = 0; i < CFG_PPE_NUM; i++) {
++		__hnat_stats_read(m, private, i);
++	}
++
++	return 0;
++}
++
++static int hnat_stats_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, hnat_stats_read, file->private_data);
++}
++
++static const struct file_operations hnat_stats_fops = {
++	.open = hnat_stats_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = single_release,
++};
++
+ static int __hnat_setting_read(struct seq_file *m, void *private, u32 ppe_id)
+ {
+ 	struct mtk_hnat *h = hnat_priv;
+@@ -3542,6 +3597,8 @@ int hnat_init_debugfs(struct mtk_hnat *h
+ 			    &cpu_reason_fops);
+ 	debugfs_create_file("hnat_entry", 0444, root, h,
+ 			    &hnat_entry_fops);
++	debugfs_create_file("hnat_stats", 0444, root, h,
++			    &hnat_stats_fops);
+ 	debugfs_create_file("hnat_setting", 0444, root, h,
+ 			    &hnat_setting_fops);
+ 	debugfs_create_file("mcast_table", 0444, root, h,

@@ -1,0 +1,52 @@
+--- a/mt_wifi/embedded/include/qos.h
++++ b/mt_wifi/embedded/include/qos.h
+@@ -193,7 +193,7 @@ struct GNU_PACKED wapp_qos_action_frame
+ 	u32 frmid;
+ 	u32 chan;
+ 	u32 frm_len;
+-	u8 frm[0];
++	u8 frm[]; /* C99: use flexible array member */
+ };
+ 
+ struct GNU_PACKED classifier_header {
+--- a/mt_wifi/embedded/common/qos.c
++++ b/mt_wifi/embedded/common/qos.c
+@@ -520,7 +520,11 @@ static INT wext_send_qos_action_frame(st
+ 	event = (struct wapp_event *)buf;
+ 	event->ifindex = RtmpOsGetNetIfIndex(wdev->if_dev);
+ 	event->event_id = WAPP_QOS_ACTION_FRAME_EVENT;
+-	req_data = (struct wapp_qos_action_frame *)&(event->data.qos_frm);
++	/**
++	 * event->data is union wapp_event_data here,
++	 * event->data.qos_frm shares same base address with whole union
++	*/
++	req_data = (struct wapp_qos_action_frame *)&(event->data);
+ 
+ 	NdisCopyMemory(req_data->src, peer_mac_addr, 6);
+ 	req_data->frm_len = frm_len;
+@@ -560,7 +564,11 @@ static void wext_send_mscs_classifier_pa
+ 	event = (struct wapp_event *)buf;
+ 	event->ifindex = RtmpOsGetNetIfIndex(wdev->if_dev);
+ 	event->event_id = WAPP_MSCS_CLASSIFIER_PARAM_EVENT;
+-	req_data = (struct classifier_parameter *)&(event->data.qos_frm);
++	/**
++	 * event->data is union wapp_event_data here,
++	 * event->data.qos_frm shares same base address with whole union
++	*/
++	req_data = (struct classifier_parameter *)&(event->data);
+ 
+ 	NdisCopyMemory(req_data, classifier_parameter_report, sizeof(*req_data));
+ 	RtmpOSWrielessEventSend(wdev->if_dev, RT_WLAN_EVENT_CUSTOM,
+@@ -987,7 +995,11 @@ void wext_send_vendor_spec_tclas_elment(
+ 	event = (struct wapp_event *)buf;
+ 	event->ifindex = RtmpOsGetNetIfIndex(wdev->if_dev);
+ 	event->event_id = WAPP_VEND_SPEC_UP_TUPLE_EVENT;
+-	req_data = (struct wapp_vend_spec_classifier_para_report *)&(event->data.qos_frm);
++	/**
++	 * event->data is union wapp_event_data here,
++	 * event->data.qos_frm shares same base address with whole union
++	*/
++	req_data = (struct wapp_vend_spec_classifier_para_report *)&(event->data);
+ 	NdisCopyMemory(req_data, vend_spec_classifier_para_report, sizeof(*req_data));
+ 	RtmpOSWrielessEventSend(wdev->if_dev, RT_WLAN_EVENT_CUSTOM,
+ 		OID_WAPP_EVENT, NULL, (PUCHAR)buf, buflen);

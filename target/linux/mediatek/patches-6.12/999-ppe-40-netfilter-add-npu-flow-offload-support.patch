@@ -1,0 +1,87 @@
+---
+[v1] netfilter: Add NPU flow offload support
+
+Add NPU offload capability to the netfilter flow table offload infrastructure.
+This patch introduces the FLOW_ACTION_NPU_ENCAP flow actiontype, which allows
+network flows to be offloaded to NPU hardware for acceleration.
+
+When a flow tuple contains an NPU entry, the flow rule is augmented with an NPU
+encapsulation action that directs the hardware to use NPU-based packet processing.
+This enables hardware-accelerated packet forwarding for flows that support NPU
+offload, significantly improving throughput and reducing CPU overhead.
+
+---
+v1: Add NPU flow offload support
+---
+
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -656,6 +656,13 @@ nf_flow_rule_route_common(struct net *ne
+ 		return -1;
+ 
+ 	tuple = &flow->tuplehash[dir].tuple;
++	if (tuple->npu_entry) {
++		struct flow_action_entry *entry;
++
++		entry = flow_action_entry_next(flow_rule);
++		entry->id = FLOW_ACTION_NPU_ENCAP;
++		entry->npu_entry = tuple->npu_entry;
++	}
+ 
+ 	for (i = 0; i < tuple->encap_num; i++) {
+ 		struct flow_action_entry *entry;
+--- a/include/net/flow_offload.h
++++ b/include/net/flow_offload.h
+@@ -186,6 +186,7 @@ enum flow_action_id {
+ 	FLOW_ACTION_VLAN_POP_ETH,
+ 	FLOW_ACTION_CONTINUE,
+ 	FLOW_ACTION_IPSEC_PUSH,
++	FLOW_ACTION_NPU_ENCAP,
+ 	NUM_FLOW_ACTIONS,
+ };
+ 
+@@ -332,6 +333,7 @@ struct flow_action_entry {
+ 		struct {
+ 			struct xfrm_state xs;
+ 		} ipsec;
++		u32			npu_entry;	/* FLOW_ACTION_NPU_ENCAP */
+ 	};
+ 	struct flow_action_cookie *user_cookie; /* user defined action cookie */
+ };
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -13,6 +13,8 @@
+ #include <linux/if_pppox.h>
+ #include <linux/ppp_defs.h>
+ 
++extern int (*mtk_flow_tnl_offload)(const struct net_device_path *path, u32 *entry);
++
+ struct nf_flowtable;
+ struct nf_flow_rule;
+ struct flow_offload;
+@@ -156,6 +158,7 @@ struct flow_offload_tuple {
+ 			u32		iifidx;
+ 		} tc;
+ 	};
++	u32				npu_entry;
+ };
+ 
+ struct flow_offload_tuple_rhash {
+@@ -218,6 +221,7 @@ struct nf_flow_route {
+ 			u8			h_dest[ETH_ALEN];
+ 		} out;
+ 		enum flow_offload_xmit_type	xmit_type;
++		u32				npu_entry;
+ 	} tuple[FLOW_OFFLOAD_DIR_MAX];
+ };
+ 
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -140,6 +140,7 @@ static int flow_offload_fill_route(struc
+ 		break;
+ 	}
+ 	flow_tuple->xmit_type = route->tuple[dir].xmit_type;
++	flow_tuple->npu_entry = route->tuple[dir].npu_entry;
+ 
+ 	return 0;
+ }

@@ -88,6 +88,35 @@ define Device/sl_3000-emmc
 endef
 TARGET_DEVICES += sl_3000-emmc
 
+define Device/wirelesstag_zx7981pd-ubootmod
+  DEVICE_VENDOR := Wireless-Tag
+  DEVICE_MODEL := ZX7981PD
+  DEVICE_VARIANT := (OpenWrt U-Boot layout)
+  DEVICE_DTS := mt7981b-wirelesstag-zx7981pd-ubootmod
+  DEVICE_DTS_DIR := ../dts-ext
+  DEVICE_PACKAGES := kmod-usb3
+  KERNEL_INITRAMFS_SUFFIX := -recovery.itb
+  IMAGES := sysupgrade.itb
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  KERNEL_IN_UBI := 1
+  UBOOTENV_IN_UBI := 1
+  KERNEL := kernel-bin | lzma
+  KERNEL_INITRAMFS := kernel-bin | lzma | \
+        fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
+  IMAGE/sysupgrade.itb := append-kernel | \
+        fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-static-with-rootfs | append-metadata
+  ARTIFACTS := preloader.bin bl31-uboot.fip
+  ARTIFACT/preloader.bin := mt7981-bl2 spim-nand-ddr3
+  ARTIFACT/bl31-uboot.fip := mt7981-bl31-uboot wirelesstag_zx7981pd
+ifneq ($(CONFIG_TARGET_ROOTFS_INITRAMFS),)
+  ARTIFACTS += initramfs-factory.ubi
+  ARTIFACT/initramfs-factory.ubi := append-image-stage initramfs-recovery.itb | ubinize-kernel
+endif
+endef
+TARGET_DEVICES += wirelesstag_zx7981pd-ubootmod
+
 define Device/xiaomi_mi-router-ax3000t-mtkuboot
   DEVICE_VENDOR := Xiaomi
   DEVICE_MODEL := Mi Router AX3000T
@@ -122,31 +151,19 @@ define Device/xiaomi_mi-router-wr30u-mtkuboot
 endef
 TARGET_DEVICES += xiaomi_mi-router-wr30u-mtkuboot
 
-define Device/wirelesstag_zx7981pd-ubootmod
-  DEVICE_VENDOR := Wireless-Tag
-  DEVICE_MODEL := ZX7981PD
-  DEVICE_VARIANT := (OpenWrt U-Boot layout)
-  DEVICE_DTS := mt7981b-wirelesstag-zx7981pd-ubootmod
+define Device/xiaomi_redmi-router-ax6000-mtkuboot
+  DEVICE_VENDOR := Xiaomi
+  DEVICE_MODEL := Redmi Router AX6000
+  DEVICE_VARIANT := (MTK U-Boot layout)
+  DEVICE_DTS := mt7986a-xiaomi-redmi-router-ax6000-mtkuboot
   DEVICE_DTS_DIR := ../dts-ext
-  DEVICE_PACKAGES := kmod-usb3
-  KERNEL_INITRAMFS_SUFFIX := -recovery.itb
-  IMAGES := sysupgrade.itb
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k
   PAGESIZE := 2048
+  IMAGE_SIZE := 112640k
   KERNEL_IN_UBI := 1
-  UBOOTENV_IN_UBI := 1
-  KERNEL := kernel-bin | lzma
-  KERNEL_INITRAMFS := kernel-bin | lzma | \
-        fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
-  IMAGE/sysupgrade.itb := append-kernel | \
-        fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-static-with-rootfs | append-metadata
-  ARTIFACTS := preloader.bin bl31-uboot.fip
-  ARTIFACT/preloader.bin := mt7981-bl2 spim-nand-ddr3
-  ARTIFACT/bl31-uboot.fip := mt7981-bl31-uboot wirelesstag_zx7981pd
-ifneq ($(CONFIG_TARGET_ROOTFS_INITRAMFS),)
-  ARTIFACTS += initramfs-factory.ubi
-  ARTIFACT/initramfs-factory.ubi := append-image-stage initramfs-recovery.itb | ubinize-kernel
-endif
+  IMAGES += factory.bin
+  IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 endef
-TARGET_DEVICES += wirelesstag_zx7981pd-ubootmod
+TARGET_DEVICES += xiaomi_redmi-router-ax6000-mtkuboot

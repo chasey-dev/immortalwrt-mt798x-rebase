@@ -122,7 +122,6 @@ mercusys,mr85x|\
 mercusys,mr90x-v1|\
 routerich,ax3000|\
 routerich,ax3000-v1|\
-ruijie,rg-x60-new|\
 tenbay,wr3000k|\
 tplink,re6000xd)
 	ubootenv_add_mtd "u-boot-env" "0x0" "0x20000" "0x20000" "1"
@@ -139,7 +138,8 @@ dlink,aquila-pro-ai-m60-a1)
 gatonetworks,gdsp)
 	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x10000" "0x10000"
 	;;
-glinet,gl-mt3000)
+glinet,gl-mt3000|\
+ruijie,rg-x60-new)
 	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x80000" "0x20000"
 	;;
 openembed,som7981)

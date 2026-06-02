@@ -1,0 +1,214 @@
+
+<%#
+    File name : mtk_wifi_map_bss_cfg_renew.htm
+    This file is used in WebUI based on LuCI
+    to configure BSS in EasyMesh Network.
+%>
+<%+header%>
+
+<style>
+#bsta_list{
+    width: 100%;
+}
+#bsta_list tr td{
+    border: 1px dotted #bfbfbf;
+    padding: 5px 10px;
+}
+.ssidV{
+    white-space: pre;
+}
+</style>
+
+<script src="/luci-static/resources/monCon.js"></script>
+
+<%
+    local mtkwifi = require("mtkwifi")
+    local cfgs = mtkwifi.load_easymesh_bss_cfgs()
+    local cfg_1905d = mtkwifi.load_profile("/etc/map/1905d.cfg")
+
+    local include_6G
+    local fp = io.popen("cat /etc/map/wts_bss_info_config | grep 13x")
+    local result = fp:read("*all")
+    if string.len(result) ~= 0 then include_6G = true else include_6G = false end
+    fp:close()
+
+%>
+
+<fieldset class="cbi-section">
+    <legend><a>EasyMesh BSta Configuration</a>
+    </legend>
+</fieldset>
+
+<table id="bsta_list" style="margin-top:30px;"></table>
+
+
+<script>
+    function init_bsta_list(bsta_list){
+        let str = ""
+        for(let i=0;i<bsta_list.length;i++){
+            var bsta_info = bsta_list[i]["BH STA INFO"][0]
+            str += "<tr style='text-align: center; font-weight: bold; font-size: 16px;' >"+
+                "<td colspan='3'>AL-MAC: "+ bsta_info["almac"] +"</td>"+
+                "</tr>"+
+                "<tr>"+
+                    "<td>bSTA mld mac</td>"+
+                    "<td>"+ bsta_info["bSTA mld mac"] +"</td>"+
+                    "<td></td>"+
+                "</tr>"+
+                "<tr>"+
+                    "<td>Ap mld mac</td>"+
+                    "<td>"+ bsta_info["ap mld mac"] +"</td>"+
+                    "<td></td>"+
+                "</tr>"+
+                "<tr>"+
+                    "<td>No of affiliated sta</td>"+
+                    "<td>"+ bsta_info["No of affiliated sta"] +"</td>"+
+                    "<td></td>"+
+                "</tr>"+
+                "<tr>"+
+                    "<td>No of non-affiliated sta</td>"+
+                    "<td>"+ bsta_info["No of non-affiliated sta"] +"</td>"+
+                    "<td></td>"+
+                "</tr>"
+                
+                if(bsta_info["affiliated sta 0 band "]){
+                    str += "<tr>"+
+                        "<td>affiliated sta 0 band</td>"+
+                        "<td>"+ bsta_info["affiliated sta 0 band "] +"</td>"+
+                        "<td style='text-align: right;'>"+
+                            "<input class='cbi-button cbi-button-remove' style='width:100px' title='Remove bSta' value='Remove' type='button' onclick='removeStaMlo( " + JSON.stringify(bsta_info).replace(/'/g, '"') + ", \""+ bsta_info["affiliated sta 0 band "] + "\" )'>"+
+                        "</td>"+
+                    "</tr>"
+                }
+                if(bsta_info["affiliated sta 1 band "]){
+                    str += "<tr>"+
+                        "<td>affiliated sta 1 band</td>"+
+                        "<td>"+ bsta_info["affiliated sta 1 band "] +"</td>"+
+                        "<td style='text-align: right;'>"+
+                            "<input class='cbi-button cbi-button-remove' style='width:100px' title='Remove bSta' value='Remove' type='button' onclick='removeStaMlo( " + JSON.stringify(bsta_info).replace(/'/g, '"') + ", \""+ bsta_info["affiliated sta 1 band "] + "\" )'>"+
+                        "</td>"+
+                    "</tr>"
+                }
+                if(bsta_info["affiliated sta 2 band "]){
+                    str += "<tr>"+
+                        "<td>affiliated sta 2 band</td>"+
+                        "<td>"+ bsta_info["affiliated sta 2 band "] +"</td>"+
+                        "<td style='text-align: right;'>"+
+                            "<input class='cbi-button cbi-button-remove' style='width:100px' title='Remove bSta' value='Remove' type='button' onclick='removeStaMlo( " + JSON.stringify(bsta_info).replace(/'/g, '"') + ", \""+ bsta_info["affiliated sta 2 band "] + "\" )'>"+
+                        "</td>"+
+                    "</tr>"
+                }
+                str += "<tr style='text-align: right; font-weight: bold; font-size: 16px;' >"+
+                            "<td colspan='3'>"+
+                                "<input id='add_ruid' placeholder='enter band' style='margin-right: 10px;' onfocus='clearTimeout(get_topo)' onblur='get_topo = window.setTimeout(get_run_time_topology, 5000)' >"+
+                                "<input class='cbi-button cbi-button-add' style='width:100px' title='Add bSta' value='Add' type='button' onclick='addStaMlo(this, " + JSON.stringify(bsta_info).replace(/'/g, '"') + ")'>"+
+                            "</td>"+
+                        "</tr>"
+        }
+        document.getElementById("bsta_list").innerHTML = str
+    }
+
+    function updataStamlo(bsta_info, bandList){
+        bandListStr = bandList.join(" ")
+        XHR.get('<%=luci.dispatcher.build_url("admin", "mtk", "multi_ap", "updata_easymesh_sta_mlo_cfg_req")%>/' + bsta_info["almac"] + '/' + bandListStr + '/' + bandList.length, null,
+            function(x)
+            {
+				var res = JSON.parse(x.response);
+				console.log(res)
+				if(res.status=="Success"){
+					alert("Successfully updated wts_bsta_mlo_config file")
+					get_run_time_topology();
+				}
+                
+            }
+        )
+        
+    }
+
+    function addStaMlo(e, bsta_info) {
+        let previousSibling = e.previousElementSibling;
+        addRuid = previousSibling.value
+        if(addRuid.length==0){
+            alert("Band can not be empty.")
+            return false
+        }
+
+        var macList = []
+        for(let k in bsta_info){
+            if(k.indexOf("band") != -1){
+                macList.push(bsta_info[k])
+            }
+        }
+
+        if(macList.length>=3){
+            alert("The maximum value of bsta mlo is 3, can't add any more.")
+            return false
+        }
+		
+		var band_list = ["8x", "11x", "13x"]
+        if(!band_list.includes(addRuid)){
+            alert("Band must be in the following list.\n"+band_list)
+            return false
+        }
+
+        if(macList.includes(addRuid.replace)){
+            alert("Band cannot be repeated.\n"+band_list)
+            return false
+        }
+
+        macList.push(previousSibling.value)
+        updataStamlo(bsta_info, macList)
+    }
+
+    function removeStaMlo(bsta_info, mac){
+        var macList = []
+        for(let k in bsta_info){
+            if(bsta_info[k]!=mac && k.indexOf("band") != -1){
+                macList.push(bsta_info[k])
+            }
+        }
+
+        updataStamlo(bsta_info, macList)
+    }
+
+
+
+    function get_run_time_topology_cb(rsp)
+    {
+        res = rsp.replace(/\\\\/g,'\\\\\\\\')
+        try{
+            var r = JSON.parse(res);
+            if(r.status == "SUCCESS"){
+                var jsTopoInfo = JSON.parse(r.luaTopologyInfo);
+                topo_info_array = jsTopoInfo["topology information"]
+                bh_info = topo_info_array.filter(obj => obj["BH STA INFO"].length != 0)
+                apcli_mac_list = topo_info_array.filter(obj => obj["Radio Info"].length != 0)
+                init_bsta_list(bh_info)
+            }
+            else{
+                console.log("Failed to get Topology Info!\nStatus: ",r.status);
+            }
+            get_topo = window.setTimeout(get_run_time_topology, 5000);
+        }
+        catch(e){
+            console.log("Incorrect response! Failed to get Topology Info!",e.name,e.message);
+            get_topo = window.setTimeout(get_run_time_topology, 5000);
+        }
+    }
+
+    function get_run_time_topology()
+    {
+        XHR.get('<%=luci.dispatcher.build_url("admin", "mtk", "multi_ap", "get_runtime_topology")%>', null, 
+            function(x)
+            {
+                get_run_time_topology_cb(x.response);
+            }
+        );
+    }
+    window.onload = function(){
+        get_run_time_topology();
+    }
+</script>
+
+
+<%+footer%>

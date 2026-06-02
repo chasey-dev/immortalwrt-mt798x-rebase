@@ -1,0 +1,235 @@
+
+<%+header%>
+<!--
+    This module manipulates "MediaTek Adaptive Network" technology.
+    Hua Shao <nossiac@163.com>
+-->
+<%
+local mtkwifi = require("mtkwifi")
+local devs = mtkwifi.get_all_devs()
+
+-- Go blame the M.A.N. designer if you think the code looks odd.
+--   1. there may be more than one interface that supports M.A.N.
+--   2. all interfaces that supports M.A.N will share the same params in their profiles.
+-- so we choose only one dev to manipulate those M.A.N params, then copy them to other devs.
+
+local dev = nil -- this is the dev we choose
+local cfgs = nil -- profile of chosen dev
+%>
+
+<script src="/luci-static/resources/monCon.js"></script>
+<script type="text/javascript" src="<%=resource%>/cbi.js"></script>
+
+<h2><a name="content">M.A.N. (MediaTek Adaptive Netowrk)</a></h2>
+<form method="post" name="cbi" action="<%=luci.dispatcher.build_url("admin", "mtk", "man", "cfg")%>" enctype="multipart/form-data" onreset="return cbi_validate_reset(this)" onsubmit="return cbi_validate_form(this, 'Some fields are invalid, cannot save values!')" autocomplete="false">
+
+    <fieldset class="cbi-section">
+        <legend> <a name="apcli_scan_section">Disable/Enable Easy Setup</a></legend>
+        <pre>
+<b style="color: red; font-size: 1.25em;">Important Notes:</b>
+1. Please use the following recommanded configurations, or the function may not work!
+    7615 DBDC, enable both.
+    7615 DBDC + 7615N, enable 7615N.
+    7615N + 7615N, enable both.
+    7603 + 7615N, enable 7615N.
+2. Once M.A.N. is enabled, it will overwrite some configurations of both AP and APCli interface. Do <b style="color: red;">NOT</b> configure them manually afterwards, or you will mess it up.
+    ApCliEnable       ----->  "1"
+    ApCliAuthMode     ----->  "WPA2PSK"
+    ApCliEncrypType   ----->  "AES"
+    ApCliWPAPSK       ----->  "12345678"
+    AuthMode          ----->  "WPA2PSK"
+    EncrypType        ----->  "AES"
+    RekeyMethod       ----->  "TIME"
+    WPAPSK1           ----->  ""
+    RegroupSupport    ----->  "1:1"
+</pre>
+        <table class="cbi-section-table">
+            <tbody>
+        <% 
+            for _,tmp_dev in ipairs(devs) do
+        %>
+            <tr>
+        <%
+                local tmp_cfgs = mtkwifi.load_profile(tmp_dev.profile)
+                if tmp_cfgs.ApCliEzEnable then
+        %>
+                <td><%=tmp_dev.devname%></td>
+                <td>
+                    <input type="radio" name="__<%=tmp_dev.devname%>_ezsetup" value="1" <% if tmp_cfgs.ApCliEzEnable == "1" then %> checked="checked"<% end %> autocomplete="off"/> Enable
+                    <input type="radio" name="__<%=tmp_dev.devname%>_ezsetup" value="0" <% if tmp_cfgs.ApCliEzEnable ~= "1" then %> checked="checked"<% end %> autocomplete="off"/> Disable
+                </td>
+        <%
+                    dev = tmp_dev
+                    cfgs = tmp_cfgs
+                else -- not support easy-setup yet.
+        %>
+                <td>
+                    <h4>Unable to find "ApCliEzEnable" in its profile.</h4>
+                    <h4>Current driver does not support MAN feature. </h4>
+                </td>
+        <%
+                end
+        %>
+                <td>EzEnable &amp; ApCliEzEnable</td>
+            </tr>
+        <%
+            end
+        %>
+            </tbody>
+        </table>
+    </fieldset>
+    <% if dev and cfgs then %>
+    <fieldset class="cbi-section">
+        <legend> <a name="apcli_scan_section">Easy Setup Configurations</a></legend>
+        <p><b>M.A.N. provides a simple and efficient way of building extensible wireless network.</b></p>
+        <table class="cbi-section-table">
+            <tbody>
+            <tr><th class="th1"></th><th></th><th></th></tr>
+            </tbody>
+            <tbody id="ezsetup">
+            <tr>
+                <td>Group ID Method</td>
+                <td>
+                    <select name="__group_id_mode" onchange="GroupIDMode_onchange(this.options[this.options.selectedIndex].value)" autocomplete="off">
+                        <option value="0" <% if cfgs.ApCliEzGenGroupID=="" then %>selected="selected" <% end %>>
+                            Fixed Group ID
+                        </option>
+                        <option value="1" <% if cfgs.ApCliEzGenGroupID~="" then %>selected="selected" <% end %>>
+                            Generate Group ID by Seed
+                        </option>
+                    </select>
+                </td>
+                <td></td>
+            </tr>
+            <tr id="ApCliEzGroupID" style="display:none;">
+                <td>Group ID</td>
+                <td>
+                    <input type="text" name="ApCliEzGroupID" id="ApCliEzGroupID_input" value="<%=cfgs.ApCliEzGroupID%>" autocomplete="off"/>
+                </td>
+                <td>EzGroupID &amp; ApCliEzGroupID</td>
+            </tr>
+            <tr id="ApCliEzGenGroupID" style="display:none;">
+                <td>Group ID Seed</td>
+                <td>
+                    <input type="text" name="ApCliEzGenGroupID" id="ApCliEzGenGroupID_input" value="<%=cfgs.ApCliEzGenGroupID%>" autocomplete="off"/>
+                </td>
+                <td>EzGenGroupID &amp; ApCliEzGenGroupID</td>
+            </tr>
+            <tr>
+                <td>Network ID</td>
+                <td>
+                    <input type="text" name="ApCliEzOpenGroupID" value="<%=cfgs.ApCliEzOpenGroupID%>" autocomplete="off" required />
+                </td>
+                <td>EzOpenGroupID &amp; ApCliEzOpenGroupID</td>
+            </tr>
+            <tr>
+                <td>Mixed WDS</td>
+                <td>
+                    <input type="radio" name="ApCliMWDS" value="1" <% if cfgs.ApCliMWDS == "1" then %> checked="checked"<% end %>  autocomplete="off"/> Enable
+                    <input type="radio" name="ApCliMWDS" value="0" <% if cfgs.ApCliMWDS ~= "1" then %> checked="checked"<% end %>  autocomplete="off"/> Disable
+                </td>
+                <td>ApMWDS &amp; ApCliMWDS</td>
+            </tr>
+            </tbody>
+        </table>
+    </fieldset>
+    <!--
+	<% if dev.apcli then %>
+    <fieldset class="cbi-section">
+        <legend> <a name="apcli_scan_section">M.A.N Push</a></legend>
+        <p><b>This is an add-on to M.A.N. which can share upstream profile between M.A.N. partners.</b></p>
+
+        <table class="cbi-section-table">
+            <tbody>
+            <tr><th class="th1"></th><th></th><th></th></tr>
+            <tr>
+                <td>M.A.N. Root AP SSID</td>
+                <td>
+                    <input type="text" name="__man_ssid_<%=vifname%>" id="__man_ssid_<%=vifname%>" value="<%=dev.apcli.man_ssid%>"/>
+                </td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>M.A.N. Root AP Password</td>
+                <td>
+                    <input type="password" name="__man_pass_<%=vifname%>" id="__man_pass_<%=vifname%>" value="<%=dev.apcli.man_pass%>"/>
+                </td>
+                <td> <span style="color:red;"></span></td>
+            </tr>
+            <tr>
+                <td>M.A.N. Root AP Auth Mode</td>
+                <td>
+                    <input type="text" name="__man_auth_<%=vifname%>" id="__man_auth_<%=vifname%>" value="<%=dev.apcli.man_auth%>"/>
+                </td>
+                <td> <span style="color:red;"></span></td>
+            </tr>
+            </tbody>
+        </table>
+    </fieldset>
+	<% end %>
+    -->
+    <% end %>
+    <div class="cbi-page-actions">
+        <input class="cbi-button cbi-button-apply" name="__apply" value="Save and Apply" type="submit">
+        <input class="cbi-button cbi-button-apply" value="Save" type="submit">
+        <input class="cbi-button cbi-button-reset" value="Reset" type="reset">
+    </div>
+</form>
+
+<script type="text/javascript">
+
+    <% if dev and cfgs then %>
+        function GroupIDMode_onchange (seed) {
+            if (seed == "1") {
+                document.getElementById('ApCliEzGenGroupID').style.display="";
+                document.getElementById('ApCliEzGroupID').style.display="none";
+                document.getElementById('ApCliEzGenGroupID_input').required=true;
+            } else {
+                document.getElementById('ApCliEzGenGroupID').style.display="none";
+                document.getElementById('ApCliEzGroupID').style.display="";
+                document.getElementById('ApCliEzGroupID_input').required=true;
+            }
+        }
+    <% end %>
+
+    function get_apply_status_cb(rsp)
+    {
+        try{
+            var r = JSON.parse(rsp);
+        }
+        catch(e){
+            return;
+        }
+        if(r.status == "ON_PROGRESS"){
+            var u = confirm("Device is applying the saved settings now!\n" +
+                "It is recommended to wait until all the saved settings are applied.\n" +
+                "Please click on 'OK' button to wait for the device.\n" +
+                "or click on 'Cancel' button to configure the settings available in current web-page.");
+            if (u == true) {
+                location = '<%=luci.dispatcher.build_url("admin", "mtk", "wifi", "loading")%>' + window.location.pathname;
+            }
+        }
+    }
+
+    function get_apply_status()
+    {
+        XHR.get('<%=luci.dispatcher.build_url("admin", "mtk", "wifi", "get_apply_status")%>', null,
+            function(x)
+            {
+                console.log(x);
+                get_apply_status_cb(x.response);
+            }
+        );
+    }
+
+    window.onload = function() {
+        MonCon.ping();
+        get_apply_status();
+        <% if dev and cfgs then %>
+            GroupIDMode_onchange(<% if cfgs.ApCliEzGenGroupID == "" then %>"0"<% else %>"1"<%end%>);
+        <% end %>
+    }
+
+</script>
+<%+footer%>
+

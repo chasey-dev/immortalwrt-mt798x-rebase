@@ -1,12 +1,17 @@
 --- a/datconf/CMakeLists.txt
 +++ b/datconf/CMakeLists.txt
-@@ -3,9 +3,12 @@ cmake_minimum_required(VERSION 2.6)
+@@ -3,14 +3,17 @@ cmake_minimum_required(VERSION 2.6)
  project(datconf)
  
  OPTION(BUILD_LUA "build Lua binding" ON)
 +OPTION(BUILD_UCODE "build ucode binding" ON)
 +
  SET(L1_PROFILE_PATH "/etc/wireless/l1profile.dat" CACHE STRING "l1profile path")
+ SET(MAX_VALUE_INDEX 64 CACHE STRING "Maximum allowed value index (0 means unlimited)")
+ 
+ IF(NOT MAX_VALUE_INDEX MATCHES "^[0-9]+$")
+ 	message(FATAL_ERROR "MAX_VALUE_INDEX must be a numerical value")
+ ENDIF()
  
  add_subdirectory(lua)
 +add_subdirectory(ucode)

@@ -1,0 +1,152 @@
+
+<%
+        local disp = require "luci.dispatcher"
+%>
+<%
+        local section_name
+        local cur = require "luci.model.uci".cursor()
+        cur:foreach("ipsec", "remote", function(s) section_name = s['.name'] end)
+%>
+
+<script src="/luci-static/resources/monCon.js"></script>
+<script type="text/javascript" src="<%=resource%>/cbi.js?v=git-17.250.41546-90ac861"></script>
+
+<script type="text/javascript">//<![CDATA[
+function connect() {
+  var btnConnect = document.getElementById('btnConnect');
+  if (btnConnect.value == "Connect") {
+    (new XHR()).post('<%=url('admin/network/ipsec/vpn_connect')%>', {token: '<%=token%>'},
+        function(x) {
+          var data = JSON.parse(x.response);
+          updateStatus(data.status, data.msg)
+        }
+    );
+  } else {
+    (new XHR()).post('<%=url('admin/network/ipsec/vpn_disconnect')%>', {token: '<%=token%>'},
+        function(x) {
+          var data = JSON.parse(x.response);
+          updateStatus(data.status, data.msg)
+        }
+    );
+  }
+
+}
+
+XHR.poll(5, '<%=luci.dispatcher.build_url("admin", "network", "ipsec", "vpn_status")%>', null,
+    function(x) {
+        var data = {};
+        if(x.responseJSON){
+            data = x.responseJSON;
+        }
+        else{
+            data = JSON.parse(x.response);
+        }
+        updateStatus(data.status, data.msg);
+    }
+);
+document.body.onload = function() {pageLoad();}
+function pageLoad() {
+    (new XHR()).post('<%=url('admin/network/ipsec/vpn_status')%>', {token: '<%=token%>'},
+        function(x) {
+            var data = {};
+            if(x.responseJSON){
+                data = x.responseJSON;
+            }
+            else{
+                data = JSON.parse(x.response);
+            }
+            init_encrytion();
+            init_mode();
+            updateStatus(data.status, data.msg);
+        }
+);
+}
+
+function init_mode(){
+    mode = document.getElementById('widget.cbid.<%=self.config%>.<%=section_name%>.mode')
+    group_subnet = document.getElementById('cbi-<%=self.config%>-TUNNEL-local_subnet')
+    remote_subnet = document.getElementById('cbi-<%=self.config%>-TUNNEL-remote_subnet')
+    mode_onchange(mode.value)
+    mode.onchange = function(){
+        mode_onchange(mode.value)
+    }
+}
+
+function mode_onchange(mode){
+    if(mode=="tunnel"){
+        group_subnet.style.display = ""
+        remote_subnet.style.display = ""
+        document.getElementById('cbi-<%=self.config%>-TUNNEL-startaction').style.display = ""
+        document.getElementById('cbi-<%=self.config%>-TRANSPORT-startaction').style.display = "none"
+        document.getElementById('cbi-<%=self.config%>-TUNNEL-keyexchange').style.display = ""
+        document.getElementById('cbi-<%=self.config%>-TRANSPORT-keyexchange').style.display = "none"
+        document.getElementById('cbi-<%=self.config%>-TUNNEL-ikelifetime').style.display = ""
+        document.getElementById('cbi-<%=self.config%>-TRANSPORT-ikelifetime').style.display = "none"
+        document.getElementById('cbi-<%=self.config%>-TUNNEL-hw_offload').style.display = ""
+        document.getElementById('cbi-<%=self.config%>-TRANSPORT-hw_offload').style.display = "none"
+        document.getElementById('cbi-<%=self.config%>-TUNNEL-lifetime').style.display = ""
+        document.getElementById('cbi-<%=self.config%>-TRANSPORT-lifetime').style.display = "none"
+    }else{
+        group_subnet.style.display = "none"
+        remote_subnet.style.display = "none"
+        document.getElementById('cbi-<%=self.config%>-TUNNEL-startaction').style.display = "none"
+        document.getElementById('cbi-<%=self.config%>-TRANSPORT-startaction').style.display = ""
+        document.getElementById('cbi-<%=self.config%>-TUNNEL-keyexchange').style.display = "none"
+        document.getElementById('cbi-<%=self.config%>-TRANSPORT-keyexchange').style.display = ""
+        document.getElementById('cbi-<%=self.config%>-TUNNEL-ikelifetime').style.display = "none"
+        document.getElementById('cbi-<%=self.config%>-TRANSPORT-ikelifetime').style.display = ""
+        document.getElementById('cbi-<%=self.config%>-TUNNEL-hw_offload').style.display = "none"
+        document.getElementById('cbi-<%=self.config%>-TRANSPORT-hw_offload').style.display = ""
+        document.getElementById('cbi-<%=self.config%>-TUNNEL-lifetime').style.display = "none"
+        document.getElementById('cbi-<%=self.config%>-TRANSPORT-lifetime').style.display = ""
+    }
+}
+
+function init_encrytion(){
+    encry = document.getElementById('widget.cbid.<%=self.config%>.phase_2_settings.encryption_algorithm')
+    auth = document.getElementById('widget.cbid.<%=self.config%>.phase_2_settings.hash_algorithm')
+    encry_onchange(encry.value)
+    encry.onchange = function(){
+        encry_onchange(encry.value)
+    }
+}
+
+function encry_onchange(v){
+    auth = document.getElementById('widget.cbid.<%=self.config%>.phase_2_settings.hash_algorithm')
+    if (v=="3des"){
+        auth.options[0].disabled=true
+        auth.options[1].disabled=true
+        auth.options[2].disabled=false
+        if(auth.options[0].selected || auth.options[1].selected){
+            auth.options[2].selected=true
+        }
+    }else{
+        auth.options[0].disabled=false
+        auth.options[1].disabled=false
+        auth.options[2].disabled=true
+        if(auth.options[2].selected){
+            auth.options[0].selected=true
+        }
+    }
+}
+
+function updateStatus(status, msg) {
+    dvStatus = document.getElementById('widget.cbid.<%=self.config%>.<%=section_name%>.vpn_status');
+    var btn = document.getElementById('btnConnect');
+    if (status == "Connected")
+        btn.value = "Disconnect";
+    else
+        btn.value = "Connect";
+
+    dvStatus.value = msg;
+    return;
+}
+//]]></script>
+
+<fieldset class="cbi-section">
+<div>
+                <input type="button" id="btnConnect" value="<%:btn.value%>" style="float: right;" class="cbi-button cbi-button-apply"
+                        onclick="connect()" />
+        </div>
+</fieldset>
+

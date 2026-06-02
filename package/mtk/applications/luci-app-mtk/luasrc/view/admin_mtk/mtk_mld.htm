@@ -1,0 +1,1156 @@
+<%+header%>
+
+<style>
+#config_mld_info{
+    width: 100%;
+}
+#config_mld_info tr td{
+    border: 1px dotted #bfbfbf;
+    padding: 5px 10px;
+}
+.notice{
+    color: #8a8a8a;
+    margin-top: 20px;
+}
+.marked{
+    color: red;
+    font-weight: bold;
+    font-size: 18px;
+}
+table tr td:first-child{
+    width:200px;
+}
+table tr td{
+    padding: 2px 0;
+}
+.iface_list{
+    display: inline-block;
+    margin-right: 30px;
+}
+</style>
+
+<script src="/luci-static/resources/monCon.js"></script>
+
+<%
+local mtkwifi = require("mtkwifi")
+local EncryptionTypeList = {
+    "WEP",
+    "TKIP",
+    "TKIPAES",
+    "AES",
+    "GCMP256"
+}
+
+local EncryptionTypeLists = EncryptionTypeList
+local cfgs = mtkwifi.load_cfg("", "" ,true)
+%>
+
+<script>
+
+</script>
+
+<fieldset class="cbi-section">
+    <legend><a>MLD Configuration</a>
+        <%if mtkwifi.diff_mld() then%>
+            <span style="color:red;">( <a href="javascript:location.href='<%=luci.dispatcher.build_url("admin", "mtk", "mld", "reload_mld")%>'">Click here</a> to apply changes)</span>
+        <%end%>
+    </legend>
+</fieldset>
+
+<div class="alert-message" id="bss_cfgs_loading_div" style="display:none">
+    <img src="<%=resource%>/icons/loading.gif" alt="" style="vertical-align:middle" />
+    <big><strong>Please wait while the request is being processed!</strong></big>
+</div>
+<div id="bss_cfgs_error" style="display:none">
+    <legend class="alert-message error">There is an error in <strong>etc/map/wts_bss_info_config</strong> file. Only one Bss configuration can be set as Primary Vlan.</legend>
+</div>
+<div id="bss_cfgs_info" style="display:none">
+    <legend class="alert-message info">There is no Primary Vlan set in <strong>etc/map/wts_bss_info_config</strong> file. Please set one Primary Vlan in any of the BSS.</legend>
+</div>
+
+<div id="bss_cfgs_display">
+    <p class="left">
+        <input id="add_new_dev_bss_cfgs_inp_btn" type="button" class="cbi-button cbi-button-add" onclick="addNewBssCfgs()" value="Add  MLD Configurations"/>
+    </p>
+    <form method="post" name="cbi" id="add_mld_form" style="display: none;" action="<%=luci.dispatcher.build_url("admin", "mtk", "mld", "mld_cfg")%>" enctype="multipart/form-data" onsubmit="return validate_all()" autocomplete="off">
+        <input type="text" name="apmld" id="apmld" value="" style="display:none;" />
+        <table class="cbi-section-table" style="width: 80%;">
+            <tbody id="add_mld_fields_tbody">
+                <tr>
+                    <td>MLD Enable <span class="marked">*</span></td>
+                    <td>
+                        <input name="disabled" id="mldEnable" type="radio" value="0" checked /> Enable
+                        <input name="disabled" id="mldDisable" type="radio" value="1" /> Disable
+                    </td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>SSID <span class="marked" id="ssid_mark">*</span></td>
+                    <td>
+                        <input type="text" name="ssid" id="mld_ssid" />
+                    </td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>Mode <span class="marked">*</span></td>
+                    <td>
+                        <input name="mode" id="mld_ap_mode" value="ap" type="radio" checked onchange="change_mode('ap')" /> Ap
+                        <input name="mode" id="mld_sta_mode" value="sta"  type="radio" onchange="change_mode('sta')" /> Sta <span style="display: none; color: #8a8a8a;" id="notice">(stamld maxnum 1)</span>
+                    </td>
+                    <td></td>
+                </tr>
+                <input type="text" name="mld_iface" id="mld_iface" style="display:none;" />
+                <tr>
+                    <td>Iface list <span class="marked">*</span></td>
+                    <td id="iface_list">
+                    </td>
+                    <td style="color: #8a8a8a; width: 300px;">An iface can only join one mldgroup <br/>Cannot select disabled intf</td>
+                </tr>
+                <tr id="main_iface" style="display:none;">
+                    <td>Main Iface <span class="marked">*</span></td>
+                    <td id="main_iface_list">
+                    </td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>Address</td>
+                    <td>
+                        <input type="text" name="mld_addr" id="mld_addr" />
+                    </td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <table id="mld_cfg_ap_config" class="cbi-section-table" style="width: 80%;">
+            <tbody>
+                <tr>
+                    <td>Auth Mode</td>
+                    <td>
+                        <select name="authmode" id="AuthMode" onchange="AuthMode_onchange(this.options[this.options.selectedIndex].value)">
+
+                        </select>
+                    </td>
+                    <td style="color: #8a8a8a; width: 300px;">if not choose <br/>The default authmode is WPA3PSK, and the default key is "11111111"</td>
+                    <td></td>
+                </tr>
+            </tbody>
+            <tbody id="ENCRYPTION" style="display:none;">
+                <tr>
+                    <td>Encryption</td>
+                    <td>
+                        <select name="encrypttype" id="encrypttype" onchange="update_sha256()">
+                        <% for _,v in ipairs(EncryptionTypeLists) do %>
+                            <option value="<%=v%>" ><%=v%>
+                            </option>
+                        <% end %>
+                        </select>
+                    </td>
+                    <td></td>
+                </tr>
+            </tbody>
+            <tbody id="WPAXPSK" style="display:none;">
+                <tr>
+                    <td>Key</td>
+                    <td>
+                        <input type="text" name="key" id="wpaxpsk"></input>
+                    </td>
+                    <td></td>
+                </tr>
+            </tbody>
+            <tbody id="PMF" style="display:none;">
+                <tr>
+                    <td>MFPC </td>
+                    <td> <input name="__pmfmfpc" id="__pmfmfpc" value="1" onchange="update_sha256()" type="checkbox"> </td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>MFPR </td>
+                    <td> <input name="__pmfmfpr" id="__pmfmfpr" value="1" onchange="update_sha256()" type="checkbox"></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>MFPSHA256 </td>
+                    <td> <input name="pmf_sha256" id="__pmfsha256" value="1" type="checkbox"> </td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <table id="mld-cfg-apcli-config" class="cbi-section-table" style="display: none; width: 60%;">
+            <tbody id="apcli_cfg">
+                <tr>
+                    <td>Apcli Auth Mode</td>
+                    <td>
+                        <select id="ApCliAuthMode" name="sta_authmode" onchange="ApCliAuthMode_onchange(this.options[this.options.selectedIndex].value, false, true)">
+
+                        </select>
+                    </td>
+                    <td style="color: #8a8a8a; width: 300px;">if not choose <br/>The default authmode is WPA3PSK, and the default key is "11111111"</td>
+                    <td></td>
+                </tr>
+            </tbody>
+            <tbody id="apcli_wpa" style="display: none">
+                <tr>
+                    <td>Apcli Encryption</td>
+                    <td>
+                        <select id="__wpaApCliEncrypType" name="sta_encry">
+                            <% for _,v in ipairs(EncryptionTypeLists) do %>
+                                <option value="<%=v%>" ><%=v%>
+                                </option>
+                            <% end %>
+                        </select>
+                    </td>
+                    <td></td>
+                </tr>
+                <tr >
+                    <td>Apcli WPA Key</td>
+                    <td>
+                        <input type="text" name="ApCliWPAPSK" id="ApCliWPAPSK" />
+                    </td>
+                    <td></td>
+                </tr>
+            </tbody>
+            <tbody id="apcli_pmf"  style="display: none">
+                <tr>
+                    <td>ApCli MFPC</td>
+                    <td>
+                        <input name="sta_pmfmpc" value="1" id="__apcli_pmfmfpc" type="checkbox">
+                    </td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>ApCli MFPR</td>
+                    <td>
+                        <input name="sta_pmfmfpr" value="1" id="__apcli_pmfmfpr" type="checkbox">
+                    </td>
+                    <td></td>
+                </tr>
+                <tr id="apcli_pmf_sha256_row">
+                    <td>ApCli MFPSHA256 </td>
+                    <td>
+                        <input name="sta_sha256" value="1" id="__apcli_pmfsha256" type="checkbox">
+                    </td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p class="notice" >Items marked with * are required</p>
+        <div class="cbi-page-actions" id="add_bss_cfgs_form_submit_div">
+            <input class="cbi-button cbi-button-apply" name="__apply" value="Save and Apply" type="submit" />
+            <input class="cbi-button cbi-button-apply" value="Save" type="submit" />
+            <input class="cbi-button cbi-button-reset" value="Reset" type="reset" />
+        </div>
+    </form>
+
+    <div class="alert-message" id='no_bss_cfg_msg_div' style="display:none">
+        <strong>No MLD Configuration has been added yet!</strong>
+    </div>
+    <p class="notice" style="float: right;">* For more information, please click the edit button</p>
+    <table id="config_mld_info" style="width:100%;">
+        <% if cfgs.mld then %>
+            <% for _,mld in ipairs(cfgs.mld) do %>
+                <tr>
+                    <td <% if mld.encryption ~= nil and mld.main_iface ~= nil then %>rowspan="7"<% elseif mld.encryption ~= nil then %>rowspan="6"
+                    <% elseif mld.main_iface ~= nil then %>rowspan="5"<% else %>rowspan="4"<% end %>><%=mld.name%></td>
+                    <td style="font-weight:bold;">State</td>
+                    <td><%if mld.disabled == "0"then%>Enable<%else%>Disable<%end%></td>
+                    <td <% if mld.encryption ~= nil and mld.main_iface ~= nil then %>rowspan="7"<% elseif mld.encryption ~= nil then %>rowspan="6"
+                    <% elseif mld.main_iface ~= nil then %>rowspan="5"<% else %>rowspan="4"<% end %> style="width: 240px;">
+                        <input class="cbi-button cbi-button-apply" style="width:100px" title="Edit" value="Edit" type="button" onclick="edit_mld('<%=mld.name%>', '<%=mld.mode%>')" >
+                        <input class="cbi-button cbi-button-remove" style="width:100px" title="Remove" value="Remove" type="button" onclick="visit_url('<%=luci.dispatcher.build_url("admin", "mtk", "mld", "mld_del", mld.name)%>')" >
+                    </td>
+                </tr>
+                <tr><td style="font-weight:bold;">SSID</td><td><%=mld.ssid%></td></tr>
+                <tr><td style="font-weight:bold;">Mode</td><td><%=mld.mode%></td></tr>
+                <tr><td style="font-weight:bold;">Iface</td><td><%=mld.iface%></td></tr>
+                <% if mld.main_iface ~= nil then %>
+                    <tr><td style="font-weight:bold;">Main Iface</td><td><%=mld.main_iface%></td></tr>
+                <% end %>
+                <% if mld.encryption ~= nil then %>
+                    <tr><td style="font-weight:bold;">Auth Mode</td><td><%=mld.auth%></td></tr>
+                    <tr><td style="font-weight:bold;">Encryption</td><td><%=mld.encr%></td></tr>
+                <% end %>
+            <% end %>
+        <% end %>
+    </table>
+
+</div>
+
+<script type="text/javascript">
+    let iface_list
+    let way = "edit"
+    function visit_url(to)
+    {
+        location.href = to;
+    }
+
+    function addNewBssCfgs(){
+        way = "add"
+        <% if cfgs.mld then %>
+            <% if mtkwifi.is_kite() then%>
+                <% if mtkwifi.includes_stamld() and #cfgs.mld == 15 then %>
+                    alert("Failed to add a new MLD!\nError: For Kite board, MLO: 16ap + 0apcli  ; 14ap + 1apcli")
+                    return
+                <% elseif #cfgs.mld == 16 then %>
+                    alert("Failed to add a new MLD!\nError: Incorrect maximum supported MLD setting!\nstamld maxnum=1!\nmld maxnum = 16")
+                    return
+                <% end %>
+            <% else %>
+                <% if #cfgs.mld == 16 then %>
+                    alert("Failed to add a new MLD!\nError: Incorrect maximum supported MLD setting!\nstamld maxnum=1!\nmld maxnum = 16")
+                    return
+                <% end %>
+            <% end %>
+        <% end %>
+        document.getElementById("add_mld_form").style.display = ""
+        document.getElementById("apmld").value = ""
+        reset_info()
+        change_mode("ap")
+        <% if cfgs.mld then %>
+            <% for _,mld in ipairs(cfgs.mld) do %>
+                <% if string.find(mld.name, "stamld") then %>
+                    document.getElementById("notice").style.display = ""
+                    document.getElementById("mld_sta_mode").disabled = true
+                <% end %>
+            <% end %>
+        <% end %>
+    }
+
+    function change_mode(mode){
+        if ( mode == "ap" ){
+            document.getElementById("mld-cfg-apcli-config").style.display = "none"
+            document.getElementById("mld_cfg_ap_config").style.display = ""
+            document.getElementById("main_iface").style.display = "none"
+            document.getElementById("ssid_mark").style.display = ""
+        }else{
+            <% if mtkwifi.is_kite() and #cfgs.mld > 14 then %>
+                alert("Failed to add a new MLD!\nError: For Kite board, MLO: 16ap + 0apcli  ; 14ap + 1apcli")
+                document.getElementById("mld_ap_mode").checked = true
+                return
+            <% else %>
+                document.getElementById("mld-cfg-apcli-config").style.display = ""
+                document.getElementById("mld_cfg_ap_config").style.display = "none"
+                document.getElementById("main_iface").style.display = ""
+                document.getElementById("ssid_mark").style.display = "none"
+            <% end %>
+        }
+        get_iface_list({mode:mode}, false)
+    }
+
+    function reset_info(){
+        document.getElementById("mld_ap_mode").disabled = false
+        document.getElementById("mld_sta_mode").disabled = false
+        document.documentElement.scrollTop = 0
+        document.getElementById("add_mld_form").style.display = ""
+        document.getElementById("apmld").value = ""
+        document.getElementById("mldEnable").checked = true
+        document.getElementById("mld_ap_mode").checked = true
+        document.getElementById("mld_ssid").value = ""
+        document.getElementById("mld_iface").value = ""
+        document.getElementById("AuthMode").value = ""
+        document.getElementById("encrypttype").value = ""
+        AuthMode_onchange("")
+        document.getElementById("wpaxpsk").value = ""
+    }
+
+    function init_iface(){
+        var iface_list = document.getElementById("mld_iface").value
+        let iface_arr = iface_list.split(" ")
+        if(iface_arr.length!=0 && iface_list != ""){
+            iface_arr.forEach(function(iface){
+                if(iface!=""&&iface!=null&&iface!="undefined"){
+                    document.getElementById(iface+"_iface").checked = true
+                }
+            })
+        }
+        init_auth()
+    }
+
+    function encryption2auth(encryption){
+        let auth, encr
+        switch(encryption){
+            case "owe":
+                auth="Enhanced Open"
+                break;
+            case "none":
+                auth="Disable"
+                break;
+            case "wpa3-192":
+                auth="WPA3-192-bit"
+                break;
+        }
+        return auth
+    }
+
+    function init_mldInfo(mld_info){
+        document.documentElement.scrollTop = 0
+        document.getElementById("add_mld_form").style.display = ""
+        document.getElementById("apmld").value = mld_info.name
+        if(mld_info.disabled == "0" ){
+            document.getElementById("mldEnable").checked = true
+        }else{
+            document.getElementById("mldDisable").checked = true
+        }
+
+        if(mld_info.mode == "ap" ){
+            document.getElementById("mld_ap_mode").checked = true
+            document.getElementById("main_iface").style.display = "none"
+            document.getElementById("ssid_mark").style.display = ""
+            document.getElementById("AuthMode").value = mld_info.auth
+            document.getElementById("encrypttype").value = mld_info.encr
+            if( mld_info.ieee80211w == "2" ){
+                document.getElementById("__pmfmfpc").checked = true
+                document.getElementById("__pmfmfpr").checked = true
+            }else if( mld_info.ieee80211w == "2" ){
+                document.getElementById("__pmfmfpc").checked = true
+                document.getElementById("__pmfmfpr").checked = false
+            }else{
+                document.getElementById("__pmfmfpc").checked = false
+                document.getElementById("__pmfmfpr").checked = false
+            }
+            var pmf_sha256 = document.getElementById("__pmfsha256")
+            mld_info.pmf_sha256 == "1"? pmf_sha256.checked = true:pmf_sha256.checked = false
+            document.getElementById("wpaxpsk").value = mld_info.key || ""
+        }else{
+            document.getElementById("mld_sta_mode").checked = true
+            document.getElementById("main_iface").style.display = ""
+            document.getElementById("ssid_mark").style.display = "none"
+            document.getElementById("__wpaApCliEncrypType").value = mld_info.encr
+            if( mld_info.ieee80211w == "2" ){
+                document.getElementById("__apcli_pmfmfpc").checked = true
+                document.getElementById("__apcli_pmfmfpr").checked = true
+            }else if( mld_info.ieee80211w == "2" ){
+                document.getElementById("__apcli_pmfmfpc").checked = true
+                document.getElementById("__apcli_pmfmfpr").checked = false
+            }else{
+                document.getElementById("__apcli_pmfmfpc").checked = false
+                document.getElementById("__apcli_pmfmfpr").checked = false
+            }
+            var pmf_sha256 = document.getElementById("__apcli_pmfsha256")
+            mld_info.pmf_sha256 == "1"? pmf_sha256.checked = true:pmf_sha256.checked = false
+            document.getElementById("ApCliWPAPSK").value = mld_info.key || ""
+            init_main_sta(mld_info.main_iface)
+            document.getElementById("ApCliAuthMode").value = mld_info.auth
+        }
+        document.getElementById("mld_ssid").value = mld_info.ssid || ""
+
+        if (mld_info.encryption == "owe" || mld_info.encryption == "none" || mld_info.encryption == "wpa3-192"){
+            document.getElementById("AuthMode").value = encryption2auth(mld_info.encryption)
+            document.getElementById("ApCliAuthMode").value = encryption2auth(mld_info.encryption)
+        }
+
+        if(mld_info.mode == "ap" ){
+            AuthMode_onchange(document.getElementById("AuthMode").value)
+        }else{
+            ApCliAuthMode_onchange(document.getElementById("ApCliAuthMode").value)
+        }
+    }
+
+    function edit_mld(mldName, mode){
+        way="edit"
+        document.getElementById("mld_ap_mode").disabled = true
+        document.getElementById("mld_sta_mode").disabled = true
+        change_mode(mode)
+        XHR.get('<%=luci.dispatcher.build_url("admin",  "mtk",  "mld",  "mld_edit")%>/' + mldName, null,
+            function(x)
+            {
+                let res = JSON.parse(x.response)
+                document.getElementById("mld_iface").value = res.iface
+                get_iface_list(res, true)
+            }
+        );
+    }
+
+    function init_main_sta(main_iface){
+        var checked_iface = []
+        var iface_2Gs = document.getElementsByName("1_list")
+        for(let i=0; i<iface_2Gs.length; i++){
+            if(iface_2Gs[i].checked == true){
+                checked_iface.push(iface_2Gs[i].value)
+            }
+        }
+        var iface_5Gs = document.getElementsByName("2_list")
+        for(let i=0; i<iface_5Gs.length; i++){
+            if(iface_5Gs[i].checked == true){
+                checked_iface.push(iface_5Gs[i].value)
+            }
+        }
+        var iface_6Gs = document.getElementsByName("3_list")
+        for(let i=0; i<iface_6Gs.length; i++){
+            if(iface_6Gs[i].checked == true){
+                checked_iface.push(iface_6Gs[i].value)
+            }
+        }
+
+        var str = ""
+        for(let i=0; i<checked_iface.length; i++){
+            str += "<input ' id='" + checked_iface[i] + "_main_iface' name='main_iface' value='" + checked_iface[i] + "' type='radio'   /> "+ checked_iface[i]
+        }
+        document.getElementById("main_iface_list").innerHTML = str
+        if(main_iface){
+            document.getElementById(main_iface+"_main_iface").checked = true
+        }
+        init_apcli_auth(checked_iface)
+    }
+
+    function change_state(obj){
+        var state=obj.attributes.tag.value;
+        var htmode=obj.attributes.htmode.value;
+        var res = obj.value;
+        if (state==0){
+        if (htmode.startsWith('EHT')){
+        obj.checked=true;
+        obj.setAttribute("tag",1);
+        }
+        else{
+            alert("Only be mode support mlo");
+            obj.checked=false;
+           }
+        }else{
+            obj.setAttribute("tag",0);
+            obj.checked=false;
+        }
+
+        //Load the authmode list according to whether it contains 6G iface
+        init_auth(true)
+
+        //加载main iface
+        if(res.indexOf("apcli")!=-1){
+            init_main_sta()
+        }
+    }
+
+    function get_iface_list(info, is_init){
+        var checked_iface_list = document.getElementById("mld_iface").value
+        XHR.get('<%=luci.dispatcher.build_url("admin",  "mtk",  "mld",  "get_iface_list")%>/' + info.mode , null,
+            function(x)
+            {
+                var list = JSON.parse(x.response)
+                iface_list = list
+                let str = ""
+                let index=0
+                for (let dev in list) {
+                    if(dev == "2G"){
+                        id=1
+                    }else if(dev == "5G" || dev == "5G-Low"){
+                        id=2
+                    }else if (dev== "htmode"){
+                        continue
+                    }
+                    else {
+                        id=3
+                         }
+                    str += "<div>"+ "<span>" + dev + "：</span>"
+                    index=id-1
+                    console.log(list['htmode'][index])
+                            if (info.mode == 'sta'){
+                                var apcli = list[dev]
+                                str += "<input htmode='" + list['htmode'][index] + "' tag='0' onclick='change_state(this)'  id='" + apcli.vifname + "_iface' name='" + id + "_list' value='" + apcli.vifname + "' type='radio' "
+                                if(apcli.state=="down"){
+                                    str += "disabled"
+                                }
+                                str += "/> " + apcli.vifname + "&nbsp;&nbsp;"
+                            }else{
+                                for(let vifs in list[dev]){
+                                    var vif = list[dev][vifs]
+                                    if (vif instanceof Object){
+                                        str += "<input htmode='"+list['htmode'][index]+"' tag='0' onclick='change_state(this)'  id='" + vif.vifname + "_iface'  name='" + id + "_list' value='" + vif.vifname + "' type='radio' "
+                                        if(vif.disable_iface && !is_init || is_init&&vif.disable_iface&&(checked_iface_list.indexOf(vif.vifname) == -1) || vif.state=="down"){
+                                            str += "disabled"
+                                        }
+                                        str +="/> "+ vif.vifname + "&nbsp;&nbsp;"
+                                    }
+                                }
+                            }
+                           str += "</div>"
+                }
+                document.getElementById("iface_list").innerHTML = str
+                init_iface()
+                if(is_init){
+                    init_mldInfo(info)
+                }
+            }
+        )
+    }
+
+    function update_encryption_type(authMode)
+    {
+        var auth_enc_map = {
+            "Enhanced Open" : ["AES"],
+            "WPA2PSK" : ["AES","TKIP","TKIPAES"],
+            "WPA3PSK" : ["NONE","AES"],
+            "WPAPSKWPA2PSK" : ["AES","TKIP","TKIPAES"],
+            "WPA2PSKWPA3PSK" : ["NONE"],
+            "WPA1WPA2" : ["AES","TKIP","TKIPAES"],
+            "WPA2" : ["AES","TKIP","TKIPAES"],
+            "WPA3" : ["AES"],
+            "WPA3-192-bit" : ["GCMP256"],
+        };
+        if (!((typeof authMode == "string") && auth_enc_map.hasOwnProperty(authMode))){
+            return;
+        }
+        var enc_type_sel = document.getElementById("encrypttype");
+        var enc_cur_sel_idx = enc_type_sel.selectedIndex;
+        var enc_provisional_sel_idx = -1;
+        if (authMode=='WPA2PSKWPA3PSK' || authMode=='WPA3PSK' ){
+            if (enc_type_sel.options[0].text!=""){
+            var encryo = document.createElement('option');
+                encryo.value = "NONE";
+                encryo.text = "";
+                enc_type_sel.add(encryo, enc_type_sel.options[0]);
+        }
+        }
+        else  {
+            if (enc_type_sel.options[0].text=="")
+            enc_type_sel.remove(0);
+            }
+
+        for (var e_idx=0; e_idx < enc_type_sel.length; e_idx++){
+            if(auth_enc_map[authMode].indexOf(enc_type_sel.options[e_idx].value) != -1){
+                enc_type_sel.options[e_idx].disabled = false;
+                if(enc_provisional_sel_idx == -1){
+                    enc_provisional_sel_idx = e_idx;
+                }
+            }
+            else{
+                enc_type_sel.options[e_idx].disabled = true;
+            }
+        }
+        if(enc_cur_sel_idx == -1 || enc_type_sel.options[enc_cur_sel_idx].disabled == true){
+            enc_type_sel.selectedIndex = enc_provisional_sel_idx;
+        }
+    }
+
+    function update_sha256(){
+        var auth_mode = document.getElementById("AuthMode").value;
+        var pr = document.getElementById("__pmfmfpr").checked;
+        var pc = document.getElementById("__pmfmfpc").checked;
+        var enc = document.getElementById("encrypttype").value;
+        var sha = document.getElementById("__pmfsha256");
+        if ( ( auth_mode == "WPA2PSK" && pr == true && pc == true ) || ( auth_mode == "WPA2" && enc == "AES" && pr == true && pc == true)){
+            sha.checked = true;
+            sha.disabled = true;
+        }else{
+            sha.disabled = false;
+        }
+    }
+
+    function update_pmf_settings(authMode)
+    {
+        var pr = document.getElementById("__pmfmfpr");
+        var pc = document.getElementById("__pmfmfpc");
+        var sha = document.getElementById("__pmfsha256");
+        switch(authMode){
+            case "Enhanced Open":
+            case "WPA3PSK":
+            case "WPA3":
+            case "WPA3-192-bit":
+                pr.checked = true;
+                pc.checked = true;
+                sha.checked = false;
+                /* Make all PMF settings as readonly by disabling them.
+                 * Server hardcodes all PMF values for these authModes.
+                 */
+                pr.disabled = true;
+                pc.disabled = true;
+                sha.disabled = true;
+                /* Hide MFPSHA256 setting row as it is not valid for these securities. */
+                sha.parentNode.parentNode.style.display = "none";
+                break;
+            case "WPA2PSKWPA3PSK":
+                pr.checked = false;
+                pc.checked = true;
+                sha.checked = false;
+                /* Make all PMF settings as readonly by disabling them.
+                 * Server hardcodes all PMF values for these authModes.
+                 */
+                pr.disabled = true;
+                pc.disabled = true;
+                sha.disabled = true;
+                /* Hide MFPSHA256 setting row as it is not valid for these securities. */
+                sha.parentNode.parentNode.style.display = "none";
+                break;
+            case "IEEE8021X":
+                pr.checked = false;
+                pc.checked = false;
+                pr.disabled = false;
+                pc.disabled = false;
+                break;
+            default:
+                pr.disabled = false;
+                pc.disabled = false;
+                sha.disabled = false;
+                /* Unhide MFPSHA256 setting row for other securities. */
+                sha.parentNode.parentNode.style.display = "";
+                break;
+        }
+        update_sha256()
+    }
+
+    function AuthMode_onchange (authMode)
+    {
+        var tbody_to_display = [];
+        var security_table_id_list = ["WEP","ENCRYPTION","REKEY_INTERVAL","WPAXPSK","PMF","WPAX","IEEE8021X","RADIUS"];
+
+        switch(authMode){
+            case "Enhanced Open":
+                tbody_to_display.push("ENCRYPTION");
+                tbody_to_display.push("PMF");
+                break;
+            case "WPA2PSK":
+            case "WPA3PSK":
+            case "WPA2PSKWPA3PSK":
+                tbody_to_display.push("WPAXPSK");
+                tbody_to_display.push("ENCRYPTION");
+                tbody_to_display.push("REKEY_INTERVAL");
+                tbody_to_display.push("PMF");
+                break;
+            case "WPAPSKWPA2PSK":
+                tbody_to_display.push("WPAXPSK");
+                tbody_to_display.push("ENCRYPTION");
+                tbody_to_display.push("REKEY_INTERVAL");
+                break;
+            case "WPA2":
+            case "WPA3":
+            case "WPA3-192-bit":
+                tbody_to_display.push("WPAX");
+                tbody_to_display.push("ENCRYPTION");
+                tbody_to_display.push("REKEY_INTERVAL");
+                tbody_to_display.push("RADIUS");
+                tbody_to_display.push("PMF");
+                break;
+            case "WPA1WPA2":
+                tbody_to_display.push("ENCRYPTION");
+                tbody_to_display.push("REKEY_INTERVAL");
+                tbody_to_display.push("RADIUS");
+                tbody_to_display.push("PMF");
+                break;
+            case "IEEE8021X":
+                tbody_to_display.push("IEEE8021X");
+                tbody_to_display.push("RADIUS");
+                tbody_to_display.push("PMF");
+                break;
+            default:
+                break;
+        }
+
+        for (tid in security_table_id_list) {
+            var tmp_tbody = document.getElementById(security_table_id_list[tid])
+            if (tbody_to_display.indexOf(security_table_id_list[tid]) != -1) {
+                if (tmp_tbody) tmp_tbody.style.display="";
+            } else {
+                if (tmp_tbody) tmp_tbody.style.display="none";
+            }
+        }
+        update_encryption_type(authMode);
+        update_pmf_settings(authMode);
+    }
+
+    function ApCliAuthMode_onchange (to, isOnLoad, isOnChange) {
+        var wpa_enc_type_sel = document.getElementById("__wpaApCliEncrypType");
+        var apcli_wpa_tbody = document.getElementById("apcli_wpa");
+        var apcli_wpa_key_row = document.getElementById("ApCliWPAPSK").parentNode.parentNode;
+        var apcli_pmf_tbody = document.getElementById("apcli_pmf");
+        var apcli_pmf_256sha_row = document.getElementById("apcli_pmf_sha256_row");
+        var apcli_pmf_pc_cbox = document.getElementById("__apcli_pmfmfpc");
+        var apcli_pmf_pr_cbox = document.getElementById("__apcli_pmfmfpr");
+        var apcli_pmf_256sha_cbox = document.getElementById("__apcli_pmfsha256");
+
+        switch(to){
+            case "Disable":
+                apcli_wpa_tbody.style.display="none";
+                apcli_wpa_key_row.style.display="none";
+                apcli_pmf_tbody.style.display="none";
+                apcli_pmf_pc_cbox.disabled = true;
+                apcli_pmf_pc_cbox.checked = false;
+                apcli_pmf_pr_cbox.disabled = true;
+                apcli_pmf_pr_cbox.checked = false;
+                apcli_pmf_256sha_cbox.disabled = true;
+                apcli_pmf_256sha_cbox.checked = false;
+                break;
+            case "WPAPSK":
+                apcli_wpa_tbody.style.display="";
+                apcli_wpa_key_row.style.display="";
+                apcli_pmf_tbody.style.display="none";
+                apcli_pmf_pc_cbox.disabled = true;
+                apcli_pmf_pc_cbox.checked = false;
+                apcli_pmf_pr_cbox.disabled = true;
+                apcli_pmf_pr_cbox.checked = false;
+                apcli_pmf_256sha_cbox.disabled = true;
+                apcli_pmf_256sha_cbox.checked = false;
+                for (var idx=0; idx < wpa_enc_type_sel.length; idx++) {
+                    if( wpa_enc_type_sel.options[idx].value == "AES" ||
+                        wpa_enc_type_sel.options[idx].value == "TKIP" ||
+                        wpa_enc_type_sel.options[idx].value == "TKIPAES"){
+                        wpa_enc_type_sel.options[idx].disabled = false;
+                    }else{
+                        wpa_enc_type_sel.options[idx].disabled = true;
+                        wpa_enc_type_sel.options[idx].selected = false;
+                    }
+                }
+                break;
+            case "WPA2PSK":
+                apcli_wpa_tbody.style.display="";
+                apcli_wpa_key_row.style.display="";
+                apcli_pmf_tbody.style.display="";
+                apcli_pmf_256sha_row.style.display="";
+                apcli_pmf_pc_cbox.disabled = false;
+                apcli_pmf_pr_cbox.disabled = false;
+                apcli_pmf_256sha_cbox.disabled = false;
+                for (var idx=0; idx < wpa_enc_type_sel.length; idx++) {
+                    if( wpa_enc_type_sel.options[idx].value == "AES" ||
+                        wpa_enc_type_sel.options[idx].value == "TKIP" ||
+                        wpa_enc_type_sel.options[idx].value == "TKIPAES"){
+                        wpa_enc_type_sel.options[idx].disabled = false;
+                    }
+                    else{
+                        wpa_enc_type_sel.options[idx].disabled = true;
+                        wpa_enc_type_sel.options[idx].selected = false;
+                    }
+                }
+                break;
+            case "WPA3PSK":
+                apcli_wpa_tbody.style.display="";
+                apcli_wpa_key_row.style.display="";
+                apcli_pmf_tbody.style.display="";
+                apcli_pmf_256sha_row.style.display="none";
+                apcli_pmf_pc_cbox.disabled = true;
+                apcli_pmf_pc_cbox.checked = true;
+                apcli_pmf_pr_cbox.disabled = true;
+                apcli_pmf_pr_cbox.checked = true;
+                apcli_pmf_256sha_cbox.disabled = true;
+                apcli_pmf_256sha_cbox.checked = true;
+                for (var idx=0; idx < wpa_enc_type_sel.length; idx++) {
+                    if(wpa_enc_type_sel.options[idx].value == "AES"){
+                        wpa_enc_type_sel.options[idx].disabled = false;
+                        wpa_enc_type_sel.options[idx].selected = true;
+                    }
+                    else{
+                        wpa_enc_type_sel.options[idx].disabled = true;
+                        wpa_enc_type_sel.options[idx].selected = false;
+                    }
+                }
+                break;
+            case "Enhanced Open":
+                apcli_wpa_tbody.style.display="";
+                apcli_wpa_key_row.style.display="none";
+                apcli_pmf_tbody.style.display="";
+                apcli_pmf_256sha_row.style.display="none";
+                apcli_pmf_pc_cbox.disabled = true;
+                apcli_pmf_pc_cbox.checked = true;
+                apcli_pmf_pr_cbox.disabled = true;
+                apcli_pmf_pr_cbox.checked = true;
+                apcli_pmf_256sha_cbox.disabled = true;
+                apcli_pmf_256sha_cbox.checked = true;
+                for (var idx=0; idx < wpa_enc_type_sel.length; idx++) {
+                    if(wpa_enc_type_sel.options[idx].value == "AES"){
+                        wpa_enc_type_sel.options[idx].disabled = false;
+                        wpa_enc_type_sel.options[idx].selected = true;
+                    }
+                    else{
+                        wpa_enc_type_sel.options[idx].disabled = true;
+                        wpa_enc_type_sel.options[idx].selected = false;
+                    }
+                }
+                break;
+            default:
+                console.log("ApCliAuthMode_onchange: Unknown ApCli AuthMode!",to);
+                break;
+        }
+    }
+
+    function validate_ssid()
+    {
+        var ssid = document.getElementById("mld_ssid").value;
+        var encodedSSID = encodeURIComponent(ssid);
+        if(document.getElementById("mld_sta_mode").checked&&encodedSSID.length == 0){
+            return true;
+        }
+        if(encodedSSID.length == 0 || encodedSSID.replace(/%[0-9A-F]{2}/g, 'U').length > 32){
+            alert("Invalid SSID!\nPlease enter SSID with characters ranging from 1 character to 32 characters.");
+            return false;
+        }
+        return true;
+    }
+
+    function includes_6G(){
+        let iface_6G = document.getElementsByName("3_list")
+        for(let i=0; i<iface_6G.length; i++){
+            if(iface_6G[i].checked){
+                return true
+            }
+        }
+        return false
+    }
+
+    function init_auth(){
+        let AuthModeLists = ["", "Disable","Enhanced Open","WPA2","WPA3","WPA3-192-bit","WPA2PSK","WPA3PSK",
+        "WPA2PSKWPA3PSK","WPA1WPA2","IEEE8021X"]
+        let AuthModeList_6G = ["","Enhanced Open","WPA3","WPA3PSK"]
+        let str = ""
+        let include_6G = Boolean(<%=mtkwifi.detect_6G()%>) && includes_6G()
+        include_6G?AuthModeList=AuthModeList_6G:AuthModeList=AuthModeLists
+        for(let i=0; i<AuthModeList.length; i++){
+            str += "<option value='"+ AuthModeList[i] +"'>"+AuthModeList[i]+"</option>"
+        }
+        document.getElementById("AuthMode").innerHTML = str
+    }
+
+    function init_apcli_auth(checked_iface){
+        let AuthModeLists = ["", "Disable","Enhanced Open","WPA2PSK","WPA3PSK"]
+        let AuthModeList_6G = ["","Enhanced Open","WPA3PSK"]
+        let str = ""
+        let include_6G = checked_iface.includes("apclix0") && Boolean(<%=mtkwifi.detect_6G()%>);
+        include_6G?AuthModeList=AuthModeList_6G:AuthModeList=AuthModeLists
+        for(let i=0; i<AuthModeList.length; i++){
+            str += "<option value='"+ AuthModeList[i] +"'>"+AuthModeList[i]+"</option>"
+        }
+        document.getElementById("ApCliAuthMode").innerHTML = str
+    }
+
+    function find_checkedIface_auth(info, iface_2g, iface_5g, iface_6g){
+        list = iface_list
+        let checked_iface = []
+        for (let dev in list) {
+            if (info.mode == 'sta'){
+                var apcli = list[dev]
+
+                if (apcli.vifname == iface_2g || apcli.vifname == iface_5g || apcli.vifname == iface_6g){
+                    checked_iface.push(apcli)
+                }
+            }else{
+                for(let vifs in list[dev]){
+                    var vif = list[dev][vifs]
+                    if (vif instanceof Object){
+                        if (vif.vifname == iface_2g || vif.vifname == iface_5g || vif.vifname == iface_6g){
+                            checked_iface.push(vif)
+                        }
+                    }
+                }
+            }
+        }
+        return checked_iface
+    }
+
+    function auth_mapping(auth_list){
+        var flag = false
+        if( JSON.stringify(auth_list.sort())==JSON.stringify(["WPA2","WPA1WPA2"].sort()) ||
+            JSON.stringify(auth_list.sort())==JSON.stringify(["WPA2PSK","WPAPSKWPA2PSK"].sort()) ||
+            JSON.stringify(auth_list.sort())==JSON.stringify(["WPA2PSK","WPA2PSKWPA3PSK"].sort()) ||
+            JSON.stringify(auth_list.sort())==JSON.stringify(["WPA3PSK","WPA2PSKWPA3PSK"].sort())
+        ){
+            flag = true
+        }
+
+        return flag
+    }
+
+    function check_allAuth(auth_list){
+        let flag
+        let auth1 = auth_list[0]["__authmode"]
+        let auth2 = auth_list[1]["__authmode"]
+        let auth3 = auth_list[2]["__authmode"]
+        auth_li = []
+        auth_li.push(auth1)
+        auth_li.push(auth2)
+        auth_li.push(auth3)
+        let new_auth_list = Array.from(new Set(auth_li))
+
+        let check_mfp = true
+        let check_pwd = true
+
+        if ( new_auth_list==["Disable"] || new_auth_list==["Enhanced Open"] || 
+                new_auth_list==["Enhanced Open"] || 
+                new_auth_list==["WPA3"] || 
+                JSON.stringify(new_auth_list.sort())==JSON.stringify(["WPA2PSK","WPAPSKWPA2PSK"].sort()) ||
+                JSON.stringify(new_auth_list.sort())==JSON.stringify(["WPA3PSK","WPA2PSKWPA3PSK"].sort())
+            ){
+            check_mfp = false
+        }
+
+        if ( new_auth_list==["Disable"] || new_auth_list==["Enhanced Open"] ) {
+            check_pwd = false
+        }
+
+        if(auth_list.length==1){
+            return true
+        }else if(auth_list.length==2){
+            if( auth1 == auth2 ){
+                flag=true
+            }else if(auth_mapping(new_auth_list)){
+                flag=true
+            }else{
+                alert("The selected iface's Authmode do not meet the requirements!")
+                return false
+            }
+
+            if(auth_list[0]["__encrypttype"]!=auth_list[1]["__encrypttype"]){
+                alert("The selected iface's Encrypt type do not meet the requirements!")
+                return false
+            }
+
+            if(check_pwd){
+                if(auth_list[0]["__wpapsk"]!=auth_list[1]["__wpapsk"]){
+                    alert("The selected iface's pwd do not meet the requirements!")
+                    flag=false
+                }
+            }
+
+            if(check_mfp){
+                if(auth_list[0]["__pmfmfpc"]!=auth_list[1]["__pmfmfpc"]){
+                    alert("The selected iface's MFPC do not meet the requirements!")
+                    flag=false
+                }
+                if(auth_list[0]["__pmfmfpr"]!=auth_list[1]["__pmfmfpr"]){
+                    alert("The selected iface's MFPR do not meet the requirements!")
+                    flag=false
+                }
+                if(auth_list[0]["__pmfsha256"]!=auth_list[1]["__pmfsha256"]){
+                    alert("The selected iface's pmfsha256 do not meet the requirements!")
+                    flag=false
+                }
+            }
+            return flag
+        }else{
+            if(auth1==auth2&&auth1==auth3){
+                flag = true
+            }else if(auth_mapping(new_auth_list)){
+                flag=true
+            }else{
+                alert("The selected iface's Authmode do not meet the requirements!")
+                return false
+            }
+
+            if(check_pwd){
+                if(auth_list[0]["__wpapsk"]!=auth_list[1]["__wpapsk"] || auth_list[0]["__wpapsk"]!=auth_list[2]["__wpapsk"]){
+                    alert("The selected iface's pwd do not meet the requirements!")
+                    flag=false
+                }
+            }
+
+            if(check_mfp){
+                if(auth_list[0]["__pmfmfpc"]!=auth_list[1]["__pmfmfpc"] || auth_list[0]["__pmfmfpc"]!=auth_list[2]["__pmfmfpc"]){
+                    alert("The selected iface's MFPC do not meet the requirements!")
+                    flag=false
+                }
+                if(auth_list[0]["__pmfmfpr"]!=auth_list[1]["__pmfmfpr"] || auth_list[0]["__pmfmfpr"]!=auth_list[2]["__pmfmfpr"]){
+                    alert("The selected iface's MFPR do not meet the requirements!")
+                    flag=false
+                }
+                if(auth_list[0]["__pmfsha256"]!=auth_list[1]["__pmfsha256"] || auth_list[0]["__pmfsha256"]!=auth_list[2]["__pmfsha256"]){
+                    alert("The selected iface's pmfsha256 do not meet the requirements!")
+                    flag=false
+                }
+            }
+            return flag
+        }
+    }
+
+    function validate_authmode(){
+        let auth = document.getElementById('AuthMode').value
+        let mode = document.getElementsByName("mode")
+        let modeV = ""
+        for(let i=0; i<mode.length; i++){
+            if(mode[i].checked == true){
+                modeV = mode[i].value
+            }
+        }
+        let iface_2g="", iface_5g="", iface_6g=""
+        if(auth==""){
+            var iface_2Gs = document.getElementsByName("1_list")
+            for(let i=0; i<iface_2Gs.length; i++){
+                if(iface_2Gs[i].checked == true){
+                    iface_2g = iface_2Gs[i].value
+                }
+            }
+            var iface_5Gs = document.getElementsByName("2_list")
+            for(let i=0; i<iface_5Gs.length; i++){
+                if(iface_5Gs[i].checked == true){
+                    iface_5g = iface_5Gs[i].value
+                }
+            }
+            var iface_6Gs = document.getElementsByName("3_list")
+            for(let i=0; i<iface_6Gs.length; i++){
+                if(iface_6Gs[i].checked == true){
+                    iface_6g = iface_6Gs[i].value
+                }
+            }
+            //获取勾选的iface的Authmode等info
+            let checked_iface = find_checkedIface_auth({mode:modeV}, iface_2g, iface_5g, iface_6g)
+            if(checked_iface.length==0){
+                alert("Iface has not been checked!")
+                return false
+            }
+
+            if(modeV == "sta"){
+                var main_iface = document.getElementsByName("main_iface")
+                var flag = false
+                for(let i=0; i<main_iface.length; i++){
+                    if(main_iface[i].checked == true){
+                        flag = true
+                    }
+                }
+                if(!flag){
+                    alert("Please select the main iface!")
+                    return false
+                }
+            }
+
+            let checkedIface_auth = []
+            for(let i=0; i<checked_iface.length; i++){
+                checkedIface_auth.push(checked_iface[i]["__authmode"])
+            }
+            //let res = check_allAuth(checked_iface)
+            return true
+        }else{
+            return true
+        }
+
+    }
+
+    function validate_addr()
+    {
+        var addr = document.getElementById("mld_addr")
+        if (addr.value!=""&&addr.value!=null&&addr.value!=undefined){
+            var macRegExp = /[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}/;
+            if (!macRegExp.test(addr.value)) {
+                alert("Please fill AL-MAC in correct format! (XX:XX:XX:XX:XX:XX)");
+                addr.focus();
+                addr.select();
+                return false;
+            }
+            return true;
+        }else{
+            return true
+        }
+    }
+
+    function validate_all(){
+        if (!validate_ssid()){
+            return false;
+        }
+
+        if (!validate_addr()){
+            return false;
+        }
+
+        let mldEnable = document.getElementById("mldEnable").checked
+        if(mldEnable){
+            if(!validate_authmode()){
+                return false;
+            }
+        }
+
+
+        return true
+        document.getElementById("add_mld_form").style.display = "none"
+    }
+
+    window.onload = function(){
+    }
+
+</script>
+
+<%+footer%>

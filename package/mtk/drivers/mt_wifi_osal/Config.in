@@ -1,0 +1,35 @@
+config MTK_WIFI_OSAL_DEBUG
+	bool "verbose debugging"
+	depends on PACKAGE_kmod-mt_wifi_osal
+	default n
+	help
+	  Say Y, if you need mt_wifi_osal to display debug messages.
+
+config MTK_WIFI_OSAL_CFG80211_SUPPORT
+	bool "support cfg80211"
+	depends on PACKAGE_kmod-mt_wifi_osal
+	default y
+	help
+	  support cfg80211
+
+config MTK_WIFI_OSAL_CUSTOM_VPRINTK
+	bool "custom facility"
+	depends on PACKAGE_kmod-mt_wifi_osal
+	default n
+	help
+	  use custom vprintk for logging
+
+config MTK_WIFI_OSAL_CUSTOM_VPRINTK_FACILITY
+	int "custom facility"
+	depends on MTK_WIFI_OSAL_CUSTOM_VPRINTK
+	default 18
+	help
+	  use custom facility for logging
+
+config MTK_WIFI_OSAL_NETIF_RX_DISPATCH
+	bool "rx skb dispatch"
+	depends on PACKAGE_kmod-mt_wifi_osal
+	default n
+	help
+	  Say Y, if you need mt_wifi_osal to dispatch rx skb.
+

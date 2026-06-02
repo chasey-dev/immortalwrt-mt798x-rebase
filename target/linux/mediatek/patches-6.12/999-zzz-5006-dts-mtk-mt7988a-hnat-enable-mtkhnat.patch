@@ -1,0 +1,24 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] arm64: dts: mediatek: Enable HNAT on MT7988A
+
+Enable the HNAT node and supply its WAN/LAN names, GMAC and PPE counts,
+and external-device prefixes for MT7988A.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -1280,7 +1280,13 @@
+ 			resets = <&ethsys 0>;
+ 			reset-names = "mtketh";
+ 			mtketh-soc = <&eth>;
+-			status = "disabled";
++			status = "okay";
++			mtketh-wan = "eth1";
++			mtketh-lan = "lan";
++			mtketh-lan2 = "eth2";
++			mtketh-max-gmac = <3>;
++			mtketh-ppe-num = <3>;
++			ext-devices-prefix = "wwan", "usb", "eth";
+ 		};
+ 
+ 		mtk_npu: npu@09100000 {

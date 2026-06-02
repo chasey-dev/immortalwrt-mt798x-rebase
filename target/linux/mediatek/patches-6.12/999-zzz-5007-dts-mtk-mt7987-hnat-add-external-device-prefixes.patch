@@ -1,0 +1,16 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] arm64: dts: mediatek: Add MT7987 HNAT external device prefixes
+
+HNAT uses interface-name prefixes to register external devices. Add
+wwan, usb and eth prefixes to the existing MT7987 HNAT node.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys.dtsi
+@@ -127,5 +127,6 @@
+ 	mtketh-lan = "lan";
+ 	mtketh-max-gmac = <3>;
+ 	mtketh-ppe-num = <2>;
++	ext-devices-prefix = "wwan", "usb", "eth";
+ 	status = "okay";
+ };

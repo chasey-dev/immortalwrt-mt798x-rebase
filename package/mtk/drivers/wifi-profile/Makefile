@@ -22,7 +22,7 @@ define Package/wifi-profile
   SUBMENU:=Drivers
   DEPENDS:=+WIFI_SCRIPT_SUPPORT:datconf-lua +WIFI_SCRIPT_SUPPORT:lua +WIFI_SCRIPT_SUPPORT:libuci-lua
   TITLE:=Build WiFi l1profile.data on demand & install wifi l2 profile.
-  VERSION:=$(PKG_RELEASE)-$(REVISION)
+  VERSION:=$(PKG_RELEASE)
   MENU:=1
 endef
 

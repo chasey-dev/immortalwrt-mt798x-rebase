@@ -16,7 +16,7 @@ get_mtwifi_temp() {
 		if [ -f "/sys/class/net/${ifname}/flags" ]; then
 			flag="$(cat /sys/class/net/${ifname}/flags)"
 			if [ "$((flag & 0x1))" -eq "1" ]; then
-				temp="$(iwpriv ${ifname} stat | awk '/CurrentTemperature/ {printf("%d°C", $3)}')"
+				temp="$(mwctl ${ifname} stat | awk '/CurrentTemperature/ {printf("%d°C", $3)}')"
 				[ -z "$result" ] && result="${temp}" || result="${result}/${temp}"
 			fi
 		fi

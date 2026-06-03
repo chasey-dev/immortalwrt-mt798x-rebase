@@ -1,0 +1,11 @@
+--- a/iwinfo_nl80211.c
++++ b/iwinfo_nl80211.c
+@@ -414,6 +414,8 @@ static int nl80211_phy_idx_from_uci(cons
+ 
+ 	s = iwinfo_uci_get_radio(name, "mac80211");
+ 	if (!s)
++		s = iwinfo_uci_get_radio(name, "mtwifi");
++	if (!s)
+ 		goto out;
+ 
+ 	opt = uci_lookup_option_string(uci_ctx, s, "path");

@@ -352,7 +352,7 @@
 +ubi_remove_rootfs=ubi check rootfs_data && ubi remove rootfs_data
 +ubi_write_production=ubi check fit && ubi remove fit ; run ubi_remove_rootfs ; ubi create fit $filesize dynamic && ubi write $loadaddr fit $filesize
 +_init_env=setenv _init_env ; run ubi_create_env ; saveenv
-+_boot_first=setenv _boot_first; if button reset ; then run boot_tftp_recovery || run led_error ; else run boot_production || run led_error ; fi
++_boot_first=setenv _boot_first ; if button reset ; then run boot_tftp_recovery || run led_error ; else run boot_production || run led_error ; fi
 +_firstboot=setenv _firstboot ; run _switch_to_menu ; run _init_env ; run _boot_first
 +_switch_to_menu=setenv _switch_to_menu ; setenv bootmenu_0 $bootmenu_0d ; setenv bootmenu_0d ; run _bootmenu_update_title
 +_bootmenu_update_title=setenv _bootmenu_update_title ; setenv bootmenu_title "$bootmenu_title $ver"

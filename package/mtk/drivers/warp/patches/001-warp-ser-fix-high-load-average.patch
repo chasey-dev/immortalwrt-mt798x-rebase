@@ -1,0 +1,21 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] warp: Use interruptible sleep in the SER thread
+
+The SER thread sleeps periodically while checking recovery status.
+Uninterruptible sleep makes the idle thread contribute to load average.
+
+Use msleep_interruptible() between checks. This fix is ported from
+AX WARP.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/warp_ser.c
++++ b/warp_ser.c
+@@ -282,7 +282,7 @@ wed_ser_task(void *data)
+ 
+ 	while (!kthread_should_stop()) {
+ 		wed_ser_detect(wed);
+-		msleep(ser_ctrl->period_time);
++		msleep_interruptible(ser_ctrl->period_time);
+ 	}
+ 	warp_dbg(WARP_DBG_ERR, "%s(): wed_ser exist, wed->irq=%d!\n", __func__,
+ 		 wed->irq);

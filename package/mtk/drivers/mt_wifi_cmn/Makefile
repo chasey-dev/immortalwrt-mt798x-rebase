@@ -8,7 +8,8 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=mt_wifi_cmn
 PKG_BUILD_DIR:=$(KERNEL_BUILD_DIR)/$(PKG_NAME)
-PKG_VERSION:=TEST
+PKG_SOURCE_DATE:=2025-06-13
+PKG_SOURCE_VERSION:=415824
 PKG_SOURCE:=mt7993_20250613-415824.tar.xz
 PKG_SOURCE_URL:=https://github.com/chasey-dev/objs/releases/download/v1
 PKG_HASH:=e2900a672a5151aed85f6711240db1ddcf5eed317fd620485a0ee6aee060cfb4

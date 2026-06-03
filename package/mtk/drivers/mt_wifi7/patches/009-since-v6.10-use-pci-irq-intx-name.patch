@@ -1,0 +1,224 @@
+--- a/wlan_hwifi/bus/mtk_pci_dma.c
++++ b/wlan_hwifi/bus/mtk_pci_dma.c
+@@ -2106,7 +2106,7 @@ pci_dma_sw_init_irq(struct pci_trans *tr
+ 			goto err;
+ 	}
+ 
+-	if (dev->irq_type == PCI_IRQ_LEGACY && !test_bit(PCI_FLAG_WHNAT_TX, &trans->flags))
++	if (dev->irq_type == PCI_IRQ_INTX && !test_bit(PCI_FLAG_WHNAT_TX, &trans->flags))
+ 		set_bit(PCI_FLAG_INT_RDBK, &trans->flags);
+ 	else
+ 		clear_bit(PCI_FLAG_INT_RDBK, &trans->flags);
+--- a/wlan_hwifi/chips.h
++++ b/wlan_hwifi/chips.h
+@@ -276,7 +276,7 @@ struct mtk_intr_option_set {
+ };
+ 
+ /** struct mtk_intr_option_desc - Interrupt option description
+- * @param irq_type PCI_IRQ_MSIX/PCI_IRQ_LEGACY
++ * @param irq_type PCI_IRQ_MSIX/PCI_IRQ_INTX
+  * @param is_rss RSS Ring supported in the descriptor
+  * @param vec_num corresponding vector number
+  * @param alloc_vec_num Allocate the number of irq_vector from kernel,
+--- a/wlan_hwifi/chips/mt7990/mt7990_option_table.h
++++ b/wlan_hwifi/chips/mt7990/mt7990_option_table.h
+@@ -48,7 +48,7 @@ struct mtk_intr_option_set mt7990_intr_o
+ 
+ struct mtk_intr_option_desc mt7990_intr_opt_tbl[] = {
+ 	[0] = { /* INTx */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+@@ -72,7 +72,7 @@ struct mtk_intr_option_desc mt7990_intr_
+ 
+ struct mtk_intr_option_desc mt7991_intr_opt_tbl[] = {
+ 	[0] = { /* INTx */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+--- a/wlan_hwifi/chips/mt7992/mt7992.c
++++ b/wlan_hwifi/chips/mt7992/mt7992.c
+@@ -87,7 +87,7 @@ _mt7992_pdma_msi_int_config(struct pci_t
+ 	u8 ring_id;
+ 	bool repeat;
+ 
+-	if (dev->irq_type == PCI_IRQ_LEGACY)
++	if (dev->irq_type == PCI_IRQ_INTX)
+ 		return;
+ 
+ 	for (; nv < dev->vec_num; nv++) {
+--- a/wlan_hwifi/chips/mt7992/mt7992_option_table.h
++++ b/wlan_hwifi/chips/mt7992/mt7992_option_table.h
+@@ -86,7 +86,7 @@ struct mtk_intr_option_set mt7992_intr_o
+ 
+ struct mtk_intr_option_desc mt7992_intr_opt_tbl[] = {
+ 	[0] = { /* 1-PCIe INTx */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+@@ -235,7 +235,7 @@ struct mtk_intr_option_desc mt7992_intr_
+ 		},
+ 	},
+ 	[4] = { /* 2-PCIe PCIe0 INTx */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+@@ -361,7 +361,7 @@ struct mtk_intr_option_desc mt7992_intr_
+ 		},
+ 	},
+ 	[8] = { /* 2-PCIe PCIe0 INTx for MT7622 */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+@@ -385,7 +385,7 @@ struct mtk_intr_option_desc mt7992_intr_
+ 
+ struct mtk_intr_option_desc mt799a_intr_opt_tbl[] = {
+ 	[0] = { /* 2-PCIe PCIe1 INTx */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+@@ -442,7 +442,7 @@ struct mtk_intr_option_desc mt799a_intr_
+ 		},
+ 	},
+ 	[3] = { /* 2-PCIe PCIe1 INTx */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+--- a/wlan_hwifi/chips/mt7992/mt799a.c
++++ b/wlan_hwifi/chips/mt7992/mt799a.c
+@@ -64,7 +64,7 @@ _mt799a_pdma_msi_int_config(struct pci_t
+ 	int nv = 0;
+ 	u8 ring_id;
+ 
+-	if (dev->irq_type == PCI_IRQ_LEGACY)
++	if (dev->irq_type == PCI_IRQ_INTX)
+ 		return;
+ 
+ 	msi_cfg[0] = bus_read(trans, WF_WFDMA_EXT_WRAP_CSR_MSI_INT_CFG0_ADDR);
+--- a/wlan_hwifi/chips/mt7993/mt7993.c
++++ b/wlan_hwifi/chips/mt7993/mt7993.c
+@@ -84,7 +84,7 @@ _mt7993_pdma_msi_int_config(struct pci_t
+ 	u8 ring_id;
+ 	bool repeat;
+ 
+-	if (dev->irq_type == PCI_IRQ_LEGACY)
++	if (dev->irq_type == PCI_IRQ_INTX)
+ 		return;
+ 
+ 	for (; nv < dev->vec_num; nv++) {
+--- a/wlan_hwifi/chips/mt7993/mt7993_option_table.h
++++ b/wlan_hwifi/chips/mt7993/mt7993_option_table.h
+@@ -83,7 +83,7 @@ struct mtk_intr_option_set mt7993_intr_o
+ 
+ struct mtk_intr_option_desc mt7993_intr_opt_tbl[] = {
+ 	[0] = { /* 1-PCIe INTx */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+@@ -233,7 +233,7 @@ struct mtk_intr_option_desc mt7993_intr_
+ 		},
+ 	},
+ 	[4] = { /* 2-PCIe PCIe0 INTx */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+@@ -360,7 +360,7 @@ struct mtk_intr_option_desc mt7993_intr_
+ 		},
+ 	},
+ 	[8] = { /* 2-PCIe PCIe0 INTx for MT7622 */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+@@ -384,7 +384,7 @@ struct mtk_intr_option_desc mt7993_intr_
+ 
+ struct mtk_intr_option_desc mt799b_intr_opt_tbl[] = {
+ 	[0] = { /* 2-PCIe PCIe1 INTx */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+@@ -441,7 +441,7 @@ struct mtk_intr_option_desc mt799b_intr_
+ 		},
+ 	},
+ 	[3] = { /* 2-PCIe PCIe1 INTx */
+-		.irq_type = PCI_IRQ_LEGACY,
++		.irq_type = PCI_IRQ_INTX,
+ 		.vec_num = 1,
+ 		.vec_data = {
+ 			[0] = {
+--- a/wlan_hwifi/chips/mt7993/mt799b.c
++++ b/wlan_hwifi/chips/mt7993/mt799b.c
+@@ -65,7 +65,7 @@ _mt799b_pdma_msi_int_config(struct pci_t
+ 	int nv = 0;
+ 	u8 ring_id;
+ 
+-	if (dev->irq_type == PCI_IRQ_LEGACY)
++	if (dev->irq_type == PCI_IRQ_INTX)
+ 		return;
+ 
+ 	msi_cfg[0] = bus_read(trans, WF_WFDMA_EXT_WRAP_CSR_MSI_INT_CFG0_ADDR);
+--- a/wlan_hwifi/tools/blackhawk_a0_dbg.c
++++ b/wlan_hwifi/tools/blackhawk_a0_dbg.c
+@@ -2952,7 +2952,7 @@ mt7993_show_isr_info(struct mtk_bus_tran
+ 	pr_info("\n=============bus %u (pcie %u)=============\n", bus_id, bus_id);
+ 
+ 	switch (dev->irq_type) {
+-	case PCI_IRQ_LEGACY:
++	case PCI_IRQ_INTX:
+ 		pr_info("IRQ type: INTx\n");
+ 		break;
+ 	case PCI_IRQ_MSI:
+--- a/wlan_hwifi/tools/mt7990_dbg.c
++++ b/wlan_hwifi/tools/mt7990_dbg.c
+@@ -2934,7 +2934,7 @@ mt7990_show_isr_info(struct mtk_bus_tran
+ 	pr_info("\n=============bus %u (pcie %u)=============\n", bus_id, bus_id);
+ 
+ 	switch (dev->irq_type) {
+-	case PCI_IRQ_LEGACY:
++	case PCI_IRQ_INTX:
+ 		pr_info("IRQ type: INTx\n");
+ 		break;
+ 	case PCI_IRQ_MSI:
+--- a/wlan_hwifi/tools/mt7992_dbg.c
++++ b/wlan_hwifi/tools/mt7992_dbg.c
+@@ -2951,7 +2951,7 @@ mt7992_show_isr_info(struct mtk_bus_tran
+ 	pr_info("\n=============bus %u (pcie %u)=============\n", bus_id, bus_id);
+ 
+ 	switch (dev->irq_type) {
+-	case PCI_IRQ_LEGACY:
++	case PCI_IRQ_INTX:
+ 		pr_info("IRQ type: INTx\n");
+ 		break;
+ 	case PCI_IRQ_MSI:
+--- a/wlan_hwifi/tools/mt7993_dbg.c
++++ b/wlan_hwifi/tools/mt7993_dbg.c
+@@ -2952,7 +2952,7 @@ mt7993_show_isr_info(struct mtk_bus_tran
+ 	pr_info("\n=============bus %u (pcie %u)=============\n", bus_id, bus_id);
+ 
+ 	switch (dev->irq_type) {
+-	case PCI_IRQ_LEGACY:
++	case PCI_IRQ_INTX:
+ 		pr_info("IRQ type: INTx\n");
+ 		break;
+ 	case PCI_IRQ_MSI:

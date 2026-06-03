@@ -1,0 +1,28 @@
+--- a/warp_main.c
++++ b/warp_main.c
+@@ -487,7 +487,7 @@ warp_probe(struct platform_device *pdev)
+ /*
+ *
+ */
+-static int
++static void
+ warp_remove(struct platform_device *pdev)
+ {
+ 	struct warp_entry *warp;
+@@ -503,7 +503,7 @@ warp_remove(struct platform_device *pdev
+ 	if (warp == NULL) {
+ 		warp_dbg(WARP_DBG_ERR, "%s(): remove faild since can't find warp entry!\n",
+ 			 __func__);
+-		return -1;
++		return;
+ 	}
+ 
+ 	wed = &warp->wed;
+@@ -549,7 +549,6 @@ warp_remove(struct platform_device *pdev
+ 	/* unregister warp msg */
+ 	warp_msg_deinit(warp->idx);
+ #endif
+-	return 0;
+ }
+ 
+ /*

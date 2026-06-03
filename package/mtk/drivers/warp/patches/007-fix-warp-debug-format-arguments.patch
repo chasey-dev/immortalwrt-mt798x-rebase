@@ -1,0 +1,39 @@
+--- a/regs/reg_v2/warp_hw_v2.c
++++ b/regs/reg_v2/warp_hw_v2.c
+@@ -2881,14 +2881,14 @@ warp_reset_hw(struct wed_entry *wed, u32
+ 
+ 		if (ret < 0) {
+ 			warp_dbg(WARP_DBG_ERR, "%s(): wed_tx reset check fail,ret=%d\n", __func__, ret);
+-			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__, ret);
++			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__);
+ 		}
+ 		/* TX free done reset - rx path */
+ 		ret = reset_rx_traffic(wed, reset_type);
+ 
+ 		if (ret < 0) {
+ 			warp_dbg(WARP_DBG_ERR, "%s(): wed_rx reset check fail,ret=%d\n", __func__, ret);
+-			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__, ret);
++			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__);
+ 		}
+ 
+ #ifdef WED_RX_D_SUPPORT
+@@ -2897,7 +2897,7 @@ warp_reset_hw(struct wed_entry *wed, u32
+ 
+ 		if (ret < 0) {
+ 			warp_dbg(WARP_DBG_ERR, "%s(): wed_rx_data check fail,ret=%d\n", __func__, ret);
+-			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__, ret);
++			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__);
+ 		}
+ #endif
+ 
+--- a/warp_proc.c
++++ b/warp_proc.c
+@@ -454,7 +454,7 @@ warp_proc_ctrl_write(struct file *file,
+ 	struct warp_entry *warp = (struct warp_entry *)pde_data(file_inode(file));
+ 
+ 	if (len1 > 64 || len1 == 0) {
+-		warp_dbg(WARP_DBG_OFF, "%s(): invalid length len1 %d!\n", __func__, len1);
++		warp_dbg(WARP_DBG_OFF, "%s(): invalid length len1 %zu!\n", __func__, len1);
+ 		goto end;
+ 	}
+ 

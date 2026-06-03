@@ -1,0 +1,33 @@
+--- a/mt_osal_task.c
++++ b/mt_osal_task.c
+@@ -163,9 +163,10 @@ bool mt_os_task_kill(MT_OS_TASK *pTask)
+ 			MT_DEBUG_TRACE("kthread_task %s stop failed\n",
+ 				pTask->taskName);
+ 		}
+-	} else
++	} else {
+ 		MT_DEBUG_TRACE("null kthread_task %s\n",
+ 				pTask->taskName);
++	}
+ 
+ 	return ret;
+ }
+--- a/inc/mt_osal_debug.h
++++ b/inc/mt_osal_debug.h
+@@ -63,11 +63,11 @@ int mt_debug_dbg(const char *fmt, ...);
+ 							__builtin_return_address(0))
+ 
+ #else
+-#define MT_DEBUG_NOTICE(fmt, args...)
+-#define MT_DEBUG_INFO(fmt, args...)
+-#define MT_DEBUG_TRACE(fmt, args...)
+-#define MT_DEBUG_TRACE_IN(fmt, args...)
+-#define MT_DEBUG_TRACE_OUT(fmt, args...)
++#define MT_DEBUG_NOTICE(fmt, args...) do { } while (0)
++#define MT_DEBUG_INFO(fmt, args...) do { } while (0)
++#define MT_DEBUG_TRACE(fmt, args...) do { } while (0)
++#define MT_DEBUG_TRACE_IN(fmt, args...) do { } while (0)
++#define MT_DEBUG_TRACE_OUT(fmt, args...) do { } while (0)
+ #endif /* MT_DEBUG */
+ 
+ #endif /* __MT_OSAL_DEBUG_H_ */

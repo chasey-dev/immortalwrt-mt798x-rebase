@@ -1,0 +1,50 @@
+--- a/mt_osal_cfg80211.c
++++ b/mt_osal_cfg80211.c
+@@ -2474,6 +2474,10 @@ static int mt_cfg80211_ops_sta_dump(
+ 
+ static int mt_cfg80211_ops_wiphy_params_set(
+ 	struct wiphy *pWiphy,
++#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE) || \
++	(defined(CFG_CFG80211_VERSION) && (KERNEL_VERSION(6, 17, 0) <= CFG_CFG80211_VERSION))
++	int radio_idx,
++#endif
+ 	u32 Changed)
+ {
+ 	struct mt_cfg80211_vndr_ctrl ctrl_data, *ctrl_data_ptr = &ctrl_data;
+@@ -3216,6 +3220,10 @@ static int mt_cfg80211_ops_set_qos_map(
+ 
+ static int mt_cfg80211_ops_set_antenna(
+ 	struct wiphy *wiphy,
++#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE) || \
++	(defined(CFG_CFG80211_VERSION) && (KERNEL_VERSION(6, 17, 0) <= CFG_CFG80211_VERSION))
++	int radio_idx,
++#endif
+ 	u32 tx_ant,
+ 	u32 rx_ant)
+ {
+@@ -3260,6 +3268,10 @@ static int mt_cfg80211_ops_set_antenna(
+ 
+ static int mt_cfg80211_ops_get_antenna(
+ 	struct wiphy *wiphy,
++#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE) || \
++	(defined(CFG_CFG80211_VERSION) && (KERNEL_VERSION(6, 17, 0) <= CFG_CFG80211_VERSION))
++	int radio_idx,
++#endif
+ 	u32 *tx_ant,
+ 	u32 *rx_ant)
+ {
+@@ -3482,6 +3494,14 @@ static int mt_cfg80211_ops_test_mode_cmd
+ static int mt_cfg80211_ops_get_tx_power(
+ 		struct wiphy *wiphy,
+ 		struct wireless_dev *wdev,
++#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE) || \
++	(defined(CFG_CFG80211_VERSION) && (KERNEL_VERSION(6, 17, 0) <= CFG_CFG80211_VERSION))
++		int radio_idx,
++#endif
++#if (KERNEL_VERSION(6, 14, 0) <= LINUX_VERSION_CODE) || \
++	(defined(CFG_CFG80211_VERSION) && (KERNEL_VERSION(6, 14, 0) <= CFG_CFG80211_VERSION))
++		unsigned int link_id,
++#endif
+ 		int *dbm)
+ {
+ 	struct net_device *dev = NULL;

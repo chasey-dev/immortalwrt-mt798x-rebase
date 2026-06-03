@@ -1,0 +1,48 @@
+--- a/mt_wifi/common/cmm_info.c
++++ b/mt_wifi/common/cmm_info.c
+@@ -39,6 +39,9 @@
+ #endif
+ 
+ #define MCAST_WCID_TO_REMOVE 0 /* Pat: TODO */
++#ifdef MIN
++#undef MIN
++#endif
+ #define MIN(a, b)					((a) < (b) ? (a) : (b))
+ INT UNII4BandSupportRegions[] = {25, 26};
+ INT MCSMappingRateTable[] = {
+--- a/mt_wifi/feature/rrm/rrm.c
++++ b/mt_wifi/feature/rrm/rrm.c
+@@ -2507,6 +2507,9 @@ VOID RRM_PeerMeasureReqAction(
+ 		IN PRTMP_ADAPTER pAd,
+ 		IN MLME_QUEUE_ELEM *Elem)
+ {
++#ifdef MIN
++#undef MIN
++#endif
+ #define MIN(_x, _y) ((_x) > (_y) ? (_x) : (_y))
+ 	MEASURE_REQ_INFO MeasureReqInfo;
+ 	RRM_BEACON_REQ_INFO BcnReq;
+--- a/mt_wifi/feature/rrm/rrm_tlv.c
++++ b/mt_wifi/feature/rrm/rrm_tlv.c
+@@ -980,6 +980,9 @@ VOID RRM_EnqueueNeighborRep(
+ 	IN PCHAR pSsid,
+ 	IN UINT8 SsidLen)
+ {
++#ifdef MIN
++#undef MIN
++#endif
+ #define MIN(_x, _y) ((_x) > (_y) ? (_x) : (_y))
+ 	UINT loop;
+ 	HEADER_802_11 ActHdr;
+--- a/mt_wifi/os/linux/cfg80211/cfg80211_vndr_ap.c
++++ b/mt_wifi/os/linux/cfg80211/cfg80211_vndr_ap.c
+@@ -31,6 +31,9 @@
+  *                           D A T A
+  *******************************************************************************
+  */
++#ifdef MIN
++#undef MIN
++#endif
+ #define MIN(a, b)					((a) < (b) ? (a) : (b))
+ 
+ /*******************************************************************************

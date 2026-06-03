@@ -1,0 +1,15 @@
+--- a/mt_osal_net.c
++++ b/mt_osal_net.c
+@@ -669,7 +669,12 @@ EXPORT_SYMBOL(mt_os_net_dev_get_iw_stats
+ 
+ int mt_init_dummy_netdev(struct net_device *dev)
+ {
++#if KERNEL_VERSION(6, 9, 0) <= LINUX_VERSION_CODE
++	init_dummy_netdev(dev);
++	return 0;
++#else
+ 	return init_dummy_netdev(dev);
++#endif
+ }
+ EXPORT_SYMBOL(mt_init_dummy_netdev);
+ 

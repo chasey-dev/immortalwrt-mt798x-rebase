@@ -1,0 +1,26 @@
+--- a/wlan_hwifi/utility.h
++++ b/wlan_hwifi/utility.h
+@@ -36,17 +36,23 @@
+ #endif /* CONFIG_MULDF_HELPER */
+ #include "os/mt_linux.h"
+ 
++#ifndef __bf_shf
+ #define __bf_shf(x) (__builtin_ffsll(x) - 1)
++#endif
+ 
++#ifndef field_prep
+ #define field_prep(_mask, _val)						\
+ 	({								\
+ 		((typeof(_mask))(_val) << __bf_shf(_mask)) & (_mask);	\
+ 	})
++#endif
+ 
++#ifndef field_get
+ #define field_get(_mask, _reg)						\
+ 	({								\
+ 		(typeof(_mask))(((_reg) & (_mask)) >> __bf_shf(_mask));	\
+ 	})
++#endif
+ 
+ #define SET_FIELD(_field, _val)	\
+ 	({	\

@@ -1,0 +1,11 @@
+--- a/mt_wifi/include/rtmp_def.h
++++ b/mt_wifi/include/rtmp_def.h
+@@ -2636,6 +2636,8 @@ enum {
+ #define WCID_SHIFT 0x200
+ #endif
+ 
++#ifndef MAC_ADDR_STR_LEN
+ #define MAC_ADDR_STR_LEN 17  /* in format of xx:xx:xx:xx:xx:xx*/
++#endif
+ 
+ #endif /* __RTMP_DEF_H__ */

@@ -1,0 +1,34 @@
+--- a/mt_wifi/common/cmm_mat_iparp.c
++++ b/mt_wifi/common/cmm_mat_iparp.c
+@@ -676,28 +676,10 @@ static NDIS_STATUS MATProto_IP_Init(
+ 
+ static inline void IPintToIPstr(int ipint, char Ipstr[20], ULONG BufLen)
+ {
+-	int temp = 0;
+ 	int ret;
+-	temp = ipint & 0x000FF;
+-	ret = snprintf(Ipstr, BufLen, "%d.", temp);
+-	if (os_snprintf_error(BufLen, ret)) {
+-		MTWF_PRINT("%s: snprintf error!\n", __func__);
+-		return;
+-	}
+-	temp = (ipint >> 8) & 0x000FF;
+-	ret = snprintf(Ipstr, BufLen, "%s%d.", Ipstr, temp);
+-	if (os_snprintf_error(BufLen, ret)) {
+-		MTWF_PRINT("%s: snprintf error!\n", __func__);
+-		return;
+-	}
+-	temp = (ipint >> 16) & 0x000FF;
+-	ret = snprintf(Ipstr, BufLen, "%s%d.", Ipstr, temp);
+-	if (os_snprintf_error(BufLen, ret)) {
+-		MTWF_PRINT("%s: snprintf error!\n", __func__);
+-		return;
+-	}
+-	temp = (ipint >> 24) & 0x000FF;
+-	ret = snprintf(Ipstr, BufLen, "%s%d", Ipstr, temp);
++	ret = snprintf(Ipstr, BufLen, "%d.%d.%d.%d",
++		       ipint & 0xFF, (ipint >> 8) & 0xFF,
++		       (ipint >> 16) & 0xFF, (ipint >> 24) & 0xFF);
+ 	if (os_snprintf_error(BufLen, ret)) {
+ 		MTWF_PRINT("%s: snprintf error!\n", __func__);
+ 		return;

@@ -1,0 +1,20 @@
+--- a/mt_osal_net.c
++++ b/mt_osal_net.c
+@@ -134,7 +134,7 @@ static bool mt_os_net_dev_request_name(
+ 
+ 	if (ifNameIdx < 32) {
+ 		*ioctl_if = ifNameIdx;
+-		strlcpy(&net_dev->name[0], &desiredName[0], sizeof(net_dev->name));
++		strscpy(&net_dev->name[0], &desiredName[0], sizeof(net_dev->name));
+ 		return true;
+ 	} else {
+ 		MT_DEBUG_TRACE(
+@@ -520,7 +520,7 @@ void *mt_os_net_dev_create(
+ 	/* find a available interface name, max 32 interfaces */
+ 	if (!add_suffix) {
+ 		memset(&net_dev->name[0], 0, IFNAMSIZ);
+-		strlcpy(&net_dev->name[0], name_prefix, sizeof(net_dev->name));
++		strscpy(&net_dev->name[0], name_prefix, sizeof(net_dev->name));
+ 	} else {
+ 		status = mt_os_net_dev_request_name(
+ 			mc_row_id, ioctl_if, net_dev, name_prefix, dev_num, auto_suffix);

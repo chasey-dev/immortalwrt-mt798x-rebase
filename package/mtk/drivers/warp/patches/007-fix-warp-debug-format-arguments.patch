@@ -1,0 +1,35 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] warp: Remove unused debug format arguments
+
+SER recovery hint messages have one format conversion but receive an
+additional return-code argument. Remove this argument to match the format.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/regs/reg_v2/warp_hw_v2.c
++++ b/regs/reg_v2/warp_hw_v2.c
+@@ -2881,14 +2881,14 @@ warp_reset_hw(struct wed_entry *wed, u32
+ 
+ 		if (ret < 0) {
+ 			warp_dbg(WARP_DBG_ERR, "%s(): wed_tx reset check fail,ret=%d\n", __func__, ret);
+-			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__, ret);
++			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__);
+ 		}
+ 		/* TX free done reset - rx path */
+ 		ret = reset_rx_traffic(wed, reset_type);
+ 
+ 		if (ret < 0) {
+ 			warp_dbg(WARP_DBG_ERR, "%s(): wed_rx reset check fail,ret=%d\n", __func__, ret);
+-			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__, ret);
++			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__);
+ 		}
+ 
+ #ifdef WED_RX_D_SUPPORT
+@@ -2897,7 +2897,7 @@ warp_reset_hw(struct wed_entry *wed, u32
+ 
+ 		if (ret < 0) {
+ 			warp_dbg(WARP_DBG_ERR, "%s(): wed_rx_data check fail,ret=%d\n", __func__, ret);
+-			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__, ret);
++			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__);
+ 		}
+ #endif
+ 

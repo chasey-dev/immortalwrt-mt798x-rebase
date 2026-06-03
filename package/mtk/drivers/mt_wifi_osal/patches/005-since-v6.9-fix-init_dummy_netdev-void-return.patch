@@ -1,0 +1,23 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] mt_wifi_osal: Handle void init_dummy_netdev()
+
+init_dummy_netdev() returns void in newer kernels. Call it and return
+zero from the OSAL wrapper, retaining the old return path for older
+kernels.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/mt_osal_net.c
++++ b/mt_osal_net.c
+@@ -669,7 +669,12 @@ EXPORT_SYMBOL(mt_os_net_dev_get_iw_stats
+ 
+ int mt_init_dummy_netdev(struct net_device *dev)
+ {
++#if KERNEL_VERSION(6, 9, 0) <= LINUX_VERSION_CODE
++	init_dummy_netdev(dev);
++	return 0;
++#else
+ 	return init_dummy_netdev(dev);
++#endif
+ }
+ EXPORT_SYMBOL(mt_init_dummy_netdev);
+ 

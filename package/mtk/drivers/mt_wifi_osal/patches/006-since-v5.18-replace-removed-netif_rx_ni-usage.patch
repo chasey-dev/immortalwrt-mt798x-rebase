@@ -1,0 +1,18 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] mt_wifi_osal: Replace netif_rx_ni() with netif_rx()
+
+netif_rx_ni() is no longer available in the target kernel. Deliver
+the generated GARP packet through netif_rx().
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/mt_osal_cfg80211.c
++++ b/mt_osal_cfg80211.c
+@@ -3399,7 +3399,7 @@ static void mt_cfg80211_trigger_garp_for
+ 		MT_DEBUG_TRACE("garp create success for sta("MACSTR") connected to bss-%s\n",
+ 			MAC2STR(sta_mac), pNdev->name);
+ 		eth_type_trans(skb, skb->dev);
+-		netif_rx_ni(skb);
++		netif_rx(skb);
+ 	} else {
+ 		MT_DEBUG_TRACE("garp create fail\n");
+ 	}

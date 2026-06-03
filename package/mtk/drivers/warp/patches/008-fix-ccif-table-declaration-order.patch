@@ -1,0 +1,32 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] warp: fix CCIF register table declaration order
+
+WARP V3 places const before static in ccif_dummy_table and
+ccif_shadow_table. This triggers -Wold-style-declaration and fails
+MT7988 builds when the warning is treated as an error.
+
+Declaring both tables as static const puts the storage-class specifier
+first and resolves the build failure.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/regs/reg_v3/warp_hw_ccif.c
++++ b/regs/reg_v3/warp_hw_ccif.c
+@@ -76,7 +76,7 @@ warp_ccif_isr_ctrl(void *hw, bool enable
+ 		warp_io_write32((struct ccif_entry *) hw, WOX_AP2WO_MCU_CCIF4_CPUA_PCCIF_IRQ0_MASK_OFFSET, 0);
+ }
+ 
+-const static u32 ccif_dummy_table[] = {
++static const u32 ccif_dummy_table[] = {
+ 	WOX_AP2WO_MCU_CCIF4_CPUA_PCCIF_DUMMY1_OFFSET,
+ 	WOX_AP2WO_MCU_CCIF4_CPUA_PCCIF_DUMMY2_OFFSET,
+ 	WOX_AP2WO_MCU_CCIF4_CPUA_PCCIF_DUMMY3_OFFSET,
+@@ -87,7 +87,7 @@ const static u32 ccif_dummy_table[] = {
+ 	WOX_AP2WO_MCU_CCIF4_CPUA_PCCIF_DUMMY8_OFFSET
+ };
+ 
+-const static u32 ccif_shadow_table[] = {
++static const u32 ccif_shadow_table[] = {
+ 	WOX_AP2WO_MCU_CCIF4_CPUB2CPUA_SHADOW1_OFFSET,
+ 	WOX_AP2WO_MCU_CCIF4_CPUB2CPUA_SHADOW2_OFFSET,
+ 	WOX_AP2WO_MCU_CCIF4_CPUB2CPUA_SHADOW3_OFFSET,

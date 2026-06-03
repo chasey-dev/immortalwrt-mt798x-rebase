@@ -14,8 +14,9 @@ CMAKE_SOURCE_DIR:=$(PKG_BUILD_DIR)
 CMAKE_BINARY_DIR:=$(PKG_BUILD_DIR)
 
 define Package/mwctl
-  SECTION:=devel
-  CATEGORY:=Development
+  SECTION:=MTK Properties
+  CATEGORY:=MTK Properties
+  SUBMENU:=Applications
   TITLE:=vendor cmd for logan/mt76 driver
   DEPENDS:=+libnl-tiny
 endef

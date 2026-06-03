@@ -1,0 +1,18 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] warp: Use the kernel stdarg header
+
+Kernel builds provide variable-argument declarations through
+linux/stdarg.h. Including stdarg.h directly fails with this toolchain.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/warp_proc.c
++++ b/warp_proc.c
+@@ -25,7 +25,7 @@
+ #ifdef WED_PAO_SUPPORT
+ #include "regs/reg_v3/pao_hw.h"
+ #endif
+-#include <stdarg.h>
++#include <linux/stdarg.h>
+ #include "mcu/warp_woif.h"
+ #include "mcu/warp_wo.h"
+ #include "warp_meminfo_list.h"

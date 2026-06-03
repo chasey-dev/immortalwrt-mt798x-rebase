@@ -1,0 +1,28 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] mt_wifi_osal: Include vmalloc declarations
+
+Memory helpers and network allocation code require linux/vmalloc.h.
+Include it directly instead of relying on indirect kernel includes.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/inc/mt_osal_mem.h
++++ b/inc/mt_osal_mem.h
+@@ -4,6 +4,8 @@
+ #ifndef __MT_OSAL_MEM_H_
+ #define __MT_OSAL_MEM_H_
+ 
++#include <linux/vmalloc.h>
++
+ static inline int mt_os_mem_alloc(void **mem, size_t size, bool allow_suspend)
+ {
+ 	if (!mem)
+--- a/mt_osal_net.c
++++ b/mt_osal_net.c
+@@ -21,6 +21,7 @@
+ #include <linux/wireless.h>
+ #include <linux/netdevice.h>
+ #include <linux/etherdevice.h>
++#include <linux/vmalloc.h>
+ 
+ #define SUBMODULE "mt_osal_net"
+ #include <mt_osal_debug.h>

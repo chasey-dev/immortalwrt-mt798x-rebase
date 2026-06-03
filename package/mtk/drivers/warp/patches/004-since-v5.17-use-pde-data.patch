@@ -1,0 +1,224 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] warp: Use pde_data() for proc private data
+
+PDE_DATA() is no longer available in the target kernel. Proc callbacks
+use pde_data() to retrieve their private data.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/warp_proc.c
++++ b/warp_proc.c
+@@ -182,7 +182,7 @@ wdma_proc_show(struct seq_file *seq, voi
+ static int
+ wdma_proc_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, wdma_proc_show, PDE_DATA(file_inode(file)));
++	return single_open(file, wdma_proc_show, pde_data(file_inode(file)));
+ }
+ 
+ /*
+@@ -196,7 +196,7 @@ wdma_proc_write(struct file *file, const
+ 	char value[64] = {0};
+ 	char *end;
+ 	char choice;
+-	struct wdma_entry *wdma = (struct wdma_entry *)PDE_DATA(file_inode(file));
++	struct wdma_entry *wdma = (struct wdma_entry *)pde_data(file_inode(file));
+ 
+ 	if (!len1 || len1 >= sizeof(value))
+ 		return -EINVAL;
+@@ -286,7 +286,7 @@ warp_proc_handle(struct seq_file *seq, s
+ static int
+ wed_proc_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, wed_proc_show, PDE_DATA(file_inode(file)));
++	return single_open(file, wed_proc_show, pde_data(file_inode(file)));
+ }
+ 
+ /*
+@@ -299,7 +299,7 @@ wed_proc_write(struct file *file, const
+ 	char value[64] = {0};
+ 	char *end;
+ 	char choice;
+-	struct wed_entry *wed = (struct wed_entry *)PDE_DATA(file_inode(file));
++	struct wed_entry *wed = (struct wed_entry *)pde_data(file_inode(file));
+ 
+ 	if (!len1 || len1 >= sizeof(value))
+ 		return -EINVAL;
+@@ -348,7 +348,7 @@ warp_proc_cr_show(struct seq_file *seq,
+ static int
+ warp_proc_cr_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_cr_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_cr_show, pde_data(file_inode(file)));
+ }
+ 
+ /*
+@@ -367,7 +367,7 @@ warp_proc_cr_write(struct file *file, co
+ 	char *s = value;
+ 	unsigned long addr;
+ 	u32 cr_value = 0;
+-	struct warp_entry *warp = (struct warp_entry *)PDE_DATA(file_inode(file));
++	struct warp_entry *warp = (struct warp_entry *)pde_data(file_inode(file));
+ 
+ 	if (!len1 || len1 >= sizeof(value))
+ 		return -EINVAL;
+@@ -454,7 +454,7 @@ warp_proc_ctrl_show(struct seq_file *seq
+ static int
+ warp_proc_ctrl_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_ctrl_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_ctrl_show, pde_data(file_inode(file)));
+ }
+ 
+ /*
+@@ -471,7 +471,7 @@ warp_proc_ctrl_write(struct file *file,
+ 	char is_true;
+ 	char type;
+ 	char *s = value;
+-	struct warp_entry *warp = (struct warp_entry *)PDE_DATA(file_inode(file));
++	struct warp_entry *warp = (struct warp_entry *)pde_data(file_inode(file));
+ 
+ 	if (!len1 || len1 >= sizeof(value)) {
+ 		warp_dbg(WARP_DBG_OFF, "%s(): invalid length len1 %zu!\n", __func__, len1);
+@@ -529,7 +529,7 @@ warp_proc_trace_show(struct seq_file *se
+ static int
+ warp_proc_trace_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_trace_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_trace_show, pde_data(file_inode(file)));
+ }
+ 
+ /*
+@@ -546,7 +546,7 @@ warp_proc_trace_write(struct file *file,
+ 	char *token;
+ 	char *s = value;
+ 	unsigned int tmp;
+-	struct warp_ctrl *ctrl = (struct warp_ctrl *)PDE_DATA(file_inode(file));
++	struct warp_ctrl *ctrl = (struct warp_ctrl *)pde_data(file_inode(file));
+ 	struct warp_cputracer *tracer = &ctrl->bus.tracer;
+ 
+ 	if (!len1 || len1 >= sizeof(value))
+@@ -662,7 +662,7 @@ warp_proc_conf_show(struct seq_file *seq
+ static int
+ warp_proc_conf_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_conf_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_conf_show, pde_data(file_inode(file)));
+ }
+ 
+ /*
+@@ -680,7 +680,7 @@ warp_proc_conf_write(struct file *file,
+ 	char *token;
+ 	char *s = value;
+ 	unsigned int tmp;
+-	struct warp_ctrl *ctrl = (struct warp_ctrl *)PDE_DATA(file_inode(file));
++	struct warp_ctrl *ctrl = (struct warp_ctrl *)pde_data(file_inode(file));
+ 
+ 	if (!len1 || len1 >= sizeof(value))
+ 		return -EINVAL;
+@@ -841,7 +841,7 @@ warp_proc_state_show(struct seq_file *se
+ static int
+ warp_proc_state_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_state_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_state_show, pde_data(file_inode(file)));
+ }
+ 
+ /*
+@@ -855,7 +855,7 @@ warp_proc_state_write(struct file *file,
+ 	char value[64];
+ 	char *end;
+ 	char log;
+-	struct warp_entry *warp = (struct warp_entry *)PDE_DATA(file_inode(file));
++	struct warp_entry *warp = (struct warp_entry *)pde_data(file_inode(file));
+ 
+ 	if (!len1 || len1 >= sizeof(value))
+ 		return -EINVAL;
+@@ -897,7 +897,7 @@ warp_proc_cfg_show(struct seq_file *seq,
+ static int
+ warp_proc_cfg_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_cfg_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_cfg_show, pde_data(file_inode(file)));
+ }
+ 
+ /*
+@@ -918,7 +918,7 @@ warp_proc_tx_show(struct seq_file *seq,
+ static int
+ warp_proc_tx_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_tx_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_tx_show, pde_data(file_inode(file)));
+ }
+ 
+ /*
+@@ -939,7 +939,7 @@ warp_proc_rx_show(struct seq_file *seq,
+ static int
+ warp_proc_rx_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_rx_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_rx_show, pde_data(file_inode(file)));
+ }
+ 
+ 
+@@ -983,7 +983,7 @@ warp_proc_rxbm_show(struct seq_file *seq
+ static int
+ rxbm_proc_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_rxbm_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_rxbm_show, pde_data(file_inode(file)));
+ }
+ 
+ #ifdef WED_RX_HW_RRO_2_0
+@@ -1018,7 +1018,7 @@ wo_ee_proc_show(struct seq_file *seq, vo
+ static int
+ wo_ee_proc_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, wo_ee_proc_show, PDE_DATA(file_inode(file)));
++	return single_open(file, wo_ee_proc_show, pde_data(file_inode(file)));
+ }
+ 
+ 
+@@ -1082,14 +1082,14 @@ wo_proc_show(struct seq_file *seq, void
+ static int
+ wo_proc_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, wo_proc_show, PDE_DATA(file_inode(file)));
++	return single_open(file, wo_proc_show, pde_data(file_inode(file)));
+ }
+ 
+ static ssize_t
+ wo_proc_write(struct file *file, const char __user *usr_buff, size_t len1, loff_t *ppos)
+ {
+ 	u8 *buffer = NULL, *type = NULL, *sub_str = NULL, *input[11] = {0};
+-	struct warp_entry *warp = (struct warp_entry *)PDE_DATA(file_inode(file));
++	struct warp_entry *warp = (struct warp_entry *)pde_data(file_inode(file));
+ 	int scan_num = 0, input_idx = 0, input_total = 0;
+ 	struct warp_msg_cmd cmd = {0};
+ 	u8 sendmsg_buf[128] = {0};
+@@ -1674,7 +1674,7 @@ warp_proc_pao_show(struct seq_file *seq,
+ static int
+ warp_proc_pao_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_pao_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_pao_show, pde_data(file_inode(file)));
+ }
+ 
+ #ifdef HAVE_PROC_OPS
+@@ -1707,7 +1707,7 @@ warp_proc_rtqm_show(struct seq_file *seq
+ static int
+ warp_proc_rtqm_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_rtqm_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_rtqm_show, pde_data(file_inode(file)));
+ }
+ 
+ #ifdef HAVE_PROC_OPS
+@@ -1740,7 +1740,7 @@ warp_proc_rro_show(struct seq_file *seq,
+ static int
+ warp_proc_rro_open(struct inode *inode, struct file *file)
+ {
+-	return single_open(file, warp_proc_rro_show, PDE_DATA(file_inode(file)));
++	return single_open(file, warp_proc_rro_show, pde_data(file_inode(file)));
+ }
+ 
+ #ifdef HAVE_PROC_OPS

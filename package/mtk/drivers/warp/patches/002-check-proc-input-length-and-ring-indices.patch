@@ -1,0 +1,171 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] warp: Check proc input length and ring dump indices
+
+AX WARP checks proc control input length and WDMA ring dump indices
+before processing them. Port these checks to BE WARP.
+
+Proc write handlers also need room for a terminating NUL and must check
+required tokens before conversion. Reject oversized or incomplete input
+before using it to change driver state. RXBM input must contain an index
+before it can be stored.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/warp_proc.c
++++ b/warp_proc.c
+@@ -198,7 +198,11 @@ wdma_proc_write(struct file *file, const
+ 	char choice;
+ 	struct wdma_entry *wdma = (struct wdma_entry *)PDE_DATA(file_inode(file));
+ 
++	if (!len1 || len1 >= sizeof(value))
++		return -EINVAL;
++
+ 	if (buff && !copy_from_user(value, buff, len1)) {
++		value[len1] = '\0';
+ 		choice = warp_str_tol(value, &end, 10);
+ 		warp_dbg(WARP_DBG_OFF, "%s(): Choice=%d\n", __func__, choice);
+ 		wdma_proc_handle(wdma, choice, value);
+@@ -297,7 +301,11 @@ wed_proc_write(struct file *file, const
+ 	char choice;
+ 	struct wed_entry *wed = (struct wed_entry *)PDE_DATA(file_inode(file));
+ 
++	if (!len1 || len1 >= sizeof(value))
++		return -EINVAL;
++
+ 	if (buff && !copy_from_user(value, buff, len1)) {
++		value[len1] = '\0';
+ 		choice = warp_str_tol(value, &end, 10);
+ 		warp_dbg(WARP_DBG_OFF, "%s(): Choice=%d\n", __func__, choice);
+ 		wed_proc_handle(wed, choice, value);
+@@ -361,16 +369,28 @@ warp_proc_cr_write(struct file *file, co
+ 	u32 cr_value = 0;
+ 	struct warp_entry *warp = (struct warp_entry *)PDE_DATA(file_inode(file));
+ 
++	if (!len1 || len1 >= sizeof(value))
++		return -EINVAL;
++
+ 	if (buff && !copy_from_user(value, buff, len1)) {
++		value[len1] = '\0';
+ 		token = strsep(&s, " ");
++		if (!token || !*token)
++			return -EINVAL;
+ 		type = warp_str_tol(token, &end, 10);
+ 		token = strsep(&s, " ");
++		if (!token || !*token)
++			return -EINVAL;
+ 		is_write = warp_str_tol(token, &end, 10);
+ 		token = strsep(&s, " ");
++		if (!token || !*token)
++			return -EINVAL;
+ 		addr = warp_str_tol(token, &end, 16);
+ 
+ 		if (is_write) {
+ 			token = strsep(&s, " ");
++			if (!token || !*token)
++				return -EINVAL;
+ 			cr_value = warp_str_tol(token, &end, 16);
+ 		}
+ 
+@@ -453,10 +473,20 @@ warp_proc_ctrl_write(struct file *file,
+ 	char *s = value;
+ 	struct warp_entry *warp = (struct warp_entry *)PDE_DATA(file_inode(file));
+ 
++	if (!len1 || len1 >= sizeof(value)) {
++		warp_dbg(WARP_DBG_OFF, "%s(): invalid length len1 %zu!\n", __func__, len1);
++		return -EINVAL;
++	}
++
+ 	if (buff && !copy_from_user(value, buff, len1)) {
++		value[len1] = '\0';
+ 		token = strsep(&s, " ");
++		if (!token || !*token)
++			return -EINVAL;
+ 		type = warp_str_tol(token, &end, 10);
+ 		token = strsep(&s, " ");
++		if (!token || !*token)
++			return -EINVAL;
+ 		is_true = warp_str_tol(token, &end, 10);
+ 
+ 		warp_proc_ctrl_handle(warp, type, is_true);
+@@ -519,10 +549,18 @@ warp_proc_trace_write(struct file *file,
+ 	struct warp_ctrl *ctrl = (struct warp_ctrl *)PDE_DATA(file_inode(file));
+ 	struct warp_cputracer *tracer = &ctrl->bus.tracer;
+ 
++	if (!len1 || len1 >= sizeof(value))
++		return -EINVAL;
++
+ 	if (buff && !copy_from_user(value, buff, len1)) {
++		value[len1] = '\0';
+ 		token = strsep(&s, " ");
++		if (!token || !*token)
++			return -EINVAL;
+ 		choice = warp_str_tol(token, &end, 10);
+ 		token = strsep(&s, " ");
++		if (!token || !*token)
++			return -EINVAL;
+ 
+ 		switch (choice) {
+ 		case WHNAT_TRACE_EN:
+@@ -644,7 +682,11 @@ warp_proc_conf_write(struct file *file,
+ 	unsigned int tmp;
+ 	struct warp_ctrl *ctrl = (struct warp_ctrl *)PDE_DATA(file_inode(file));
+ 
++	if (!len1 || len1 >= sizeof(value))
++		return -EINVAL;
++
+ 	if (buff && !copy_from_user(value, buff, len1)) {
++		value[len1] = '\0';
+ 		token = strsep(&s, ":");
+ 		if (token)
+ 			warp_idx = warp_str_tol(token, &end, 10);
+@@ -668,6 +710,8 @@ warp_proc_conf_write(struct file *file,
+ 				struct dybm_conf_t *dybm_conf = NULL;
+ 				u8 bm_str[3] = "TX";
+ 
++				if (!s || !*s)
++					return -EINVAL;
+ 				tmp = warp_str_tol(s, &end, 10);
+ 
+ 				if (bm == 0)
+@@ -813,7 +857,11 @@ warp_proc_state_write(struct file *file,
+ 	char log;
+ 	struct warp_entry *warp = (struct warp_entry *)PDE_DATA(file_inode(file));
+ 
++	if (!len1 || len1 >= sizeof(value))
++		return -EINVAL;
++
+ 	if (buff && !copy_from_user(value, buff, len1)) {
++		value[len1] = '\0';
+ 		log = warp_str_tol(value, &end, 10);
+ 
+ 		switch (log) {
+@@ -903,10 +951,14 @@ rxbm_proc_write(struct file *file, const
+ 	char buffer[64] = {0};
+ 	int num, idx1;
+ 
++	if (!len1 || len1 >= sizeof(buffer))
++		return -EINVAL;
++
+ 	if (buff && !copy_from_user(buffer, buff, len1)) {
++		buffer[len1] = '\0';
+ 		num = sscanf(buffer, "%d", &idx1);
+-		if (num < 0)
+-			return -1;
++		if (num != 1)
++			return -EINVAL;
+ 		warp_dbg(WARP_DBG_OFF, "rxbm_proc_write= %d\n", num);
+ 		proc_settings.rxbm_idx = idx1;
+ 	}
+--- a/wdma.c
++++ b/wdma.c
+@@ -62,6 +62,11 @@ dump_rx_ring_raw(struct wdma_entry *wdma
+ 	struct warp_ring *ring = &wdma->res_ctrl.rx_ctrl.rx_ring_ctrl.ring[ring_id];
+ 	u8 *addr;
+ 	u32 size;
++	if ((ring_id >= wdma->res_ctrl.rx_ctrl.rx_ring_ctrl.ring_num)
++		|| (idx >= WED_TX_RING_SIZE)) {
++		return;
++	}
++
+ 	/*WDMA Tx Ring content*/
+ 	warp_dbg(WARP_DBG_OFF, "==========WDMA RX RING RAW (%d/0x%x)==========\n",
+ 		 ring_id, idx);

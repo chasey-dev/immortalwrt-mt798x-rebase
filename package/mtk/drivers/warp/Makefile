@@ -35,7 +35,7 @@ define KernelPackage/warp
   CATEGORY:=MTK Properties
   TITLE:=MTK warp driver
 
-  DEPENDS:=+(TARGET_airoha):kmod-hw_nat +(TARGET_mediatek):kmod-mediatek_hnat
+  DEPENDS:=@TARGET_mediatek +kmod-mediatek_hnat
 
   FILES:=$(PKG_BUILD_DIR)/mtk_warp.ko
   AUTOLOAD:=$(call AutoLoad,60,mtk_warp,1)

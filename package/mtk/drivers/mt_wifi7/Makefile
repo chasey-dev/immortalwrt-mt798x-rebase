@@ -313,6 +313,7 @@ define KernelPackage/mt_wifi7
   CATEGORY:=MTK Properties
   TITLE:=MTK wifi7 AP driver
   DEPENDS:=+wifi-profile +MTK_WIFI7_OSAL_SUPPORT:kmod-mt_wifi_osal +!MTK_WIFI7_OSAL_SUPPORT:kmod-mt_wifi_cmn +blkid +MTK_WIFI7_CFG80211_SUPPORT:kmod-cfg80211 +nand-utils
+  DEPENDS+=+@DRIVER_11BE_SUPPORT +@DRIVER_11AX_SUPPORT +@DRIVER_11AC_SUPPORT
 ifeq ($(CONFIG_MTK_CONNINFRA_APSOC),y)
   DEPENDS+=+kmod-conninfra
 endif

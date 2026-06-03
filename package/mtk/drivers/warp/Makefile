@@ -8,7 +8,8 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=warp
 P4REV:=
-PKG_VERSION:=
+PKG_SOURCE_DATE:=2025-06-13
+PKG_SOURCE_VERSION:=433271
 PKG_SOURCE:=warp_20250613-433271.tar.xz
 PKG_SOURCE_URL:=https://github.com/chasey-dev/objs/releases/download/v1
 PKG_HASH:=6537088695c124135b695bf4ce6d4f9febecd3fb41889c4419de77780dca6488

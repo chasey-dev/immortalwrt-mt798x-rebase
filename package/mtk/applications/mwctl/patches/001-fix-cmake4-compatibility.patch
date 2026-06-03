@@ -1,0 +1,15 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] build: Fix CMake 4 compatibility
+
+CMake 4 rejects compatibility with versions older than 3.5. Raise the
+minimum required version to 3.5 so mwctl can be configured.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 2.8)
++cmake_minimum_required(VERSION 3.5)
+ 
+ PROJECT(mwctl C)
+ ADD_DEFINITIONS(-Os -Wall -Werror --std=gnu99 -g3)

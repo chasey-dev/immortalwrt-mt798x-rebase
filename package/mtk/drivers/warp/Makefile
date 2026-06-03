@@ -46,12 +46,15 @@ define KernelPackage/warp/config
 	source "$(SOURCE)/config.in"
 endef
 
+KCFLAGS += $(addprefix -Wno-error=,missing-prototypes missing-declarations)
+
 
 define Build/Compile
 	$(MAKE) -C "$(LINUX_DIR)" V=1 \
 		CROSS_COMPILE="$(TARGET_CROSS)" \
 		ARCH="$(LINUX_KARCH)" \
 		M="$(PKG_BUILD_DIR)" \
+		KCFLAGS="$(KCFLAGS)" \
 		$(foreach c, $(PKG_KCONFIG),$(if $(CONFIG_$c),CONFIG_$(c)=$(CONFIG_$(c)))) \
 		modules
 endef

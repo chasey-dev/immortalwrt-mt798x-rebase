@@ -353,6 +353,7 @@ KCFLAGS += \
 	-DMT_WIFI_COMMON_SUPPORT
 endif
 
+KCFLAGS += $(addprefix -Wno-error=,missing-prototypes missing-declarations)
 KCFLAGS += $(if $(CONFIG_MTK_WIFI7_OSAL_SUPPORT), -DMT_WIFI_COMMON_SUPPORT -I$(STAGING_DIR)/usr/include/mt_wifi)
 
 ifneq ($(CONFIG_PACKAGE_kmod-mt7915_),y)

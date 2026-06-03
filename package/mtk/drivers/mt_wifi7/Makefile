@@ -371,6 +371,7 @@ endif
 endif
 endif
 
+KCFLAGS += $(addprefix -Wno-error=,missing-prototypes missing-declarations)
 KCFLAGS += $(if $(CONFIG_MTK_WIFI7_OSAL_SUPPORT), -DMT_WIFI_COMMON_SUPPORT -DMT_WIFI_OSAL_SUPPORT -I$(STAGING_DIR)/usr/include/mt_wifi -I$(STAGING_DIR)/usr/include/mt_wifi/os)
 
 define collect_module_symvers

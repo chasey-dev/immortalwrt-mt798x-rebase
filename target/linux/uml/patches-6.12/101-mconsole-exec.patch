@@ -59,6 +59,7 @@
 +    "PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin",
 +    NULL
 +  };
++  req->request.data[MCONSOLE_MAX_DATA - 1] = '\0';
 +  char *argv[] = {
 +    "/bin/sh", "-c",
 +    req->request.data + strlen("exec "),

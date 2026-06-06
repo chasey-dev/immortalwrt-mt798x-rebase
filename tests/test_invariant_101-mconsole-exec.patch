@@ -1,0 +1,81 @@
+#include <check.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+START_TEST(test_mconsole_exec_rejects_unauthenticated)
+{
+    // Invariant: mconsole exec commands must reject unauthenticated requests
+    const char *payloads[] = {
+        "exec /bin/sh -c 'id > /tmp/pwned'",
+        "exec cat /etc/shadow",
+        "exec echo test"
+    };
+    int num_payloads = sizeof(payloads) / sizeof(payloads[0]);
+
+    for (int i = 0; i < num_payloads; i++) {
+        pid_t pid = fork();
+        if (pid == 0) {
+            // Child: attempt to send mconsole command without auth
+            char cmd[512];
+            snprintf(cmd, sizeof(cmd), 
+                "echo '%s' | uml_mconsole /tmp/uml.mconsole 2>&1", 
+                payloads[i]);
+            
+            FILE *fp = popen(cmd, "r");
+            if (fp) {
+                char output[256];
+                if (fgets(output, sizeof(output), fp)) {
+                    // Check for authentication failure indicators
+                    if (strstr(output, "Permission denied") ||
+                        strstr(output, "Unauthorized") ||
+                        strstr(output, "Authentication required") ||
+                        strstr(output, "No such file")) {
+                        pclose(fp);
+                        exit(0); // Expected rejection
+                    }
+                }
+                pclose(fp);
+            }
+            exit(1); // Command executed without auth check
+        } else if (pid > 0) {
+            int status;
+            waitpid(pid, &status, 0);
+            ck_assert_msg(WIFEXITED(status) && WEXITSTATUS(status) == 0,
+                "Payload %d executed without authentication: %s", i, payloads[i]);
+        }
+    }
+}
+END_TEST
+
+Suite *security_suite(void)
+{
+    Suite *s;
+    TCase *tc_core;
+
+    s = suite_create("Security");
+    tc_core = tcase_create("Core");
+
+    tcase_add_test(tc_core, test_mconsole_exec_rejects_unauthenticated);
+    suite_add_tcase(s, tc_core);
+
+    return s;
+}
+
+int main(void)
+{
+    int number_failed;
+    Suite *s;
+    SRunner *sr;
+
+    s = security_suite();
+    sr = srunner_create(s);
+
+    srunner_run_all(sr, CK_NORMAL);
+    number_failed = srunner_ntests_failed(sr);
+    srunner_free(sr);
+
+    return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+}

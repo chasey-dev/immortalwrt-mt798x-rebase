@@ -75,20 +75,22 @@ define Device/ruijie_rg-x30e-pro
 endef
 TARGET_DEVICES += ruijie_rg-x30e-pro
 
-define Device/ruijie_rg-x60-new
+define Device/ruijie_rg-x60-new-mtkuboot
   DEVICE_VENDOR := Ruijie
   DEVICE_MODEL := RG-X60 New
-  DEVICE_DTS := mt7986a-ruijie-rg-x60-new
+  DEVICE_VARIANT := (MTK U-Boot layout)
+  DEVICE_DTS := mt7986a-ruijie-rg-x60-new-mtkuboot
   DEVICE_DTS_DIR := ../dts-ext
   DEVICE_PACKAGES := kmod-mt7915e kmod-mt7986-firmware \
   mt7986-wo-firmware kmod-phy-airoha-en8811h kmod-mtd-rw
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 endef
-TARGET_DEVICES += ruijie_rg-x60-new
+TARGET_DEVICES += ruijie_rg-x60-new-mtkuboot
 
 define Device/ruijie_rg-x60-new-ubi
   DEVICE_VENDOR := Ruijie
-  DEVICE_MODEL := RG-X60 New (UBI)
+  DEVICE_MODEL := RG-X60 New
+  DEVICE_VARIANT := (UBI)
   DEVICE_DTS := mt7986a-ruijie-rg-x60-new-ubi
   DEVICE_DTS_DIR := ../dts-ext
   DEVICE_PACKAGES := kmod-mt7915e kmod-mt7986-firmware \

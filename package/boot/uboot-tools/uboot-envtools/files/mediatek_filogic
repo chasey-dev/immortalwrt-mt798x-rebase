@@ -140,7 +140,7 @@ gatonetworks,gdsp)
 	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x10000" "0x10000"
 	;;
 glinet,gl-mt3000|\
-ruijie,rg-x60-new)
+ruijie,rg-x60-new-mtkuboot)
 	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x80000" "0x20000"
 	;;
 openembed,som7981)

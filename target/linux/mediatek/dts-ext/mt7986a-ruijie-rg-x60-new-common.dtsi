@@ -253,10 +253,6 @@
 	status = "okay";
 };
 
-&hnat {
-	status = "okay";
-};
-
 &trng {
 	status = "okay";
 };

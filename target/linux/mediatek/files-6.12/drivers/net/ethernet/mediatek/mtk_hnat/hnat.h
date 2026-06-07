@@ -212,6 +212,14 @@
 #define GDM_ALL_FRC_MASK                                                      \
 	(GDM_UFRC_MASK | GDM_BFRC_MASK | GDM_MFRC_MASK | GDM_OFRC_MASK)
 
+/* PPE Default CPU Port */
+#define SP1_DFT_CPORT GENMASK(7, 4)
+#define SP2_DFT_CPORT GENMASK(11, 8)
+#define SP3_DFT_CPORT GENMASK(15, 12)
+
+/* PPE Default CPU Port 1 */
+#define SP15_DFT_CPORT GENMASK(31, 28)
+
 /* PPE Side Band FIFO Debug Mask */
 #define SB_MED_FULL_DRP_EN (0x1 << 11)
 

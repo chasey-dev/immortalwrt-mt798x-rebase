@@ -757,6 +757,7 @@ setup_model()
 	mercusys,mr90x* |\
 	netcore,n60* |\
 	netgear,wax220 |\
+	ruijie,rg-x60-new*|\
 	ruijie,rg-x60-pro |\
 	smartrg,sdg-86* |\
 	tplink,archer-ax80-v1 |\

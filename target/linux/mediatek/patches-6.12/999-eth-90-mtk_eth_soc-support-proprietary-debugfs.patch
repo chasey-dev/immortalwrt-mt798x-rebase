@@ -1,10 +1,12 @@
 ---
-[v12] net: ethernet: mtk_eth_soc: support proprietary debugfs
+[v13] net: ethernet: mtk_eth_soc: support proprietary debugfs
 
 Add comprehensive proprietary debugfs support for MTK Ethernet driver. This
 provides extensive debugging interfaces for register access, statistics,
 configuration inspection, and hardware state monitoring.
 ---
+v13: Refactor esw_cnt command to ensure that they can read the GDM and
+     MT753x MIB counters.
 v12: Refactor mac_cnt and xfi_cnt commands to ensure that they can read the
      MIB counters.
 v11: Refactor phy_read_mmd/phy_write_mmd support for mii_mgr_cl45 command.
@@ -50,23 +52,12 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  mtk_eth-$(CONFIG_NET_MEDIATEK_SOC_WED) += mtk_wed_debugfs.o
 --- /dev/null
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_dbg.c
-@@ -0,0 +1,2750 @@
+@@ -0,0 +1,2818 @@
++// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + *   Copyright (C) 2025 MediaTek Inc.
-+ *
-+ *   This program is free software; you can redistribute it and/or modify
-+ *   it under the terms of the GNU General Public License as published by
-+ *   the Free Software Foundation; version 2 of the License
-+ *
-+ *   This program is distributed in the hope that it will be useful,
-+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
-+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-+ *   GNU General Public License for more details.
-+ *
-+ *   Copyright (C) 2009-2016 John Crispin <blogic@openwrt.org>
-+ *   Copyright (C) 2009-2016 Felix Fietkau <nbd@openwrt.org>
-+ *   Copyright (C) 2013-2016 Michael Lee <igvtee@gmail.com>
 + */
++
 +#include <linux/of_address.h>
 +#include <linux/of_mdio.h>
 +#include <linux/debugfs.h>
@@ -80,6 +71,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
 +#include "mtk_eth_dbg.h"
 +#include "mtk_wed_regs.h"
 +
++static struct mtk_gdm_hw_stats gdm_hw_stats[MTK_MAX_DEVS];
 +static struct mtk_gmac_hw_stats gmac_hw_stats[MTK_MAX_DEVS];
 +static struct mtk_xmac_hw_stats xmac_hw_stats[MTK_MAX_DEVS];
 +
@@ -832,80 +824,82 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
 +}
 +
 +static void mtk_gdm_reg_dump_v3(struct seq_file *m, struct mtk_eth *eth,
-+				u32 gdm_id, u32 mib_base)
++				u32 gdm_id)
 +{
-+	seq_printf(m, "| GDMA%d_RX_GBCNT  : %010u (Rx Good Bytes)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base));
-+	seq_printf(m, "| GDMA%d_RX_GPCNT  : %010u (Rx Good Pkts)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x08));
-+	seq_printf(m, "| GDMA%d_RX_OERCNT : %010u (overflow error)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x10));
-+	seq_printf(m, "| GDMA%d_RX_FERCNT : %010u (FCS error)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x14));
-+	seq_printf(m, "| GDMA%d_RX_SERCNT : %010u (too short)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x18));
-+	seq_printf(m, "| GDMA%d_RX_LERCNT : %010u (too long)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x1C));
-+	seq_printf(m, "| GDMA%d_RX_CERCNT : %010u (checksum error)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x20));
-+	seq_printf(m, "| GDMA%d_RX_FCCNT  : %010u (flow control)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x24));
-+	seq_printf(m, "| GDMA%d_RX_VDPCNT : %010u (VID drop)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x28));
-+	seq_printf(m, "| GDMA%d_RX_PFCCNT : %010u (priority flow control)\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x2C));
-+	seq_printf(m, "| GDMA%d_TX_GBCNT  : %010u (Tx Good Bytes)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x40));
-+	seq_printf(m, "| GDMA%d_TX_GPCNT  : %010u (Tx Good Pkts)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x48));
-+	seq_printf(m, "| GDMA%d_TX_SKIPCNT: %010u (abort count)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x50));
-+	seq_printf(m, "| GDMA%d_TX_COLCNT : %010u (collision count)|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x54));
-+	seq_printf(m, "| GDMA%d_TX_OERCNT : %010u (overflow error)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x58));
-+	seq_printf(m, "| GDMA%d_TX_FCCNT  : %010u (flow control)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x60));
-+	seq_printf(m, "| GDMA%d_TX_PFCCNT : %010u (priority flow control)\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x64));
++	struct mtk_gdm_hw_stats *hw_stats = &gdm_hw_stats[gdm_id];
++
++	seq_printf(m, "| GDMA%d_RX_GBCNT  : %010llu (Rx Good Bytes)	|\n",
++		   gdm_id + 1, hw_stats->rx_bytes);
++	seq_printf(m, "| GDMA%d_RX_GPCNT  : %010llu (Rx Good Pkts)	|\n",
++		   gdm_id + 1, hw_stats->rx_packets);
++	seq_printf(m, "| GDMA%d_RX_OERCNT : %010llu (overflow error)	|\n",
++		   gdm_id + 1, hw_stats->rx_overflow);
++	seq_printf(m, "| GDMA%d_RX_FERCNT : %010llu (FCS error)	|\n",
++		   gdm_id + 1, hw_stats->rx_fcs_errors);
++	seq_printf(m, "| GDMA%d_RX_SERCNT : %010llu (too short)	|\n",
++		   gdm_id + 1, hw_stats->rx_short_errors);
++	seq_printf(m, "| GDMA%d_RX_LERCNT : %010llu (too long)	|\n",
++		   gdm_id + 1, hw_stats->rx_long_errors);
++	seq_printf(m, "| GDMA%d_RX_CERCNT : %010llu (checksum error)	|\n",
++		   gdm_id + 1, hw_stats->rx_checksum_errors);
++	seq_printf(m, "| GDMA%d_RX_FCCNT  : %010llu (flow control)	|\n",
++		   gdm_id + 1, hw_stats->rx_flow_control);
++	seq_printf(m, "| GDMA%d_RX_VDPCNT : %010llu (VID drop)	|\n",
++		   gdm_id + 1, hw_stats->rx_vid_drop);
++	seq_printf(m, "| GDMA%d_RX_PFCCNT : %010llu (priority flow control)\n",
++		   gdm_id + 1, hw_stats->rx_priority_flow_control);
++	seq_printf(m, "| GDMA%d_TX_GBCNT  : %010llu (Tx Good Bytes)	|\n",
++		   gdm_id + 1, hw_stats->tx_bytes);
++	seq_printf(m, "| GDMA%d_TX_GPCNT  : %010llu (Tx Good Pkts)	|\n",
++		   gdm_id + 1, hw_stats->tx_packets);
++	seq_printf(m, "| GDMA%d_TX_SKIPCNT: %010llu (abort count)	|\n",
++		   gdm_id + 1, hw_stats->tx_skip);
++	seq_printf(m, "| GDMA%d_TX_COLCNT : %010llu (collision count)|\n",
++		   gdm_id + 1, hw_stats->tx_collisions);
++	seq_printf(m, "| GDMA%d_TX_OERCNT : %010llu (overflow error)	|\n",
++		   gdm_id + 1, hw_stats->tx_overflow);
++	seq_printf(m, "| GDMA%d_TX_FCCNT  : %010llu (flow control)	|\n",
++		   gdm_id + 1, hw_stats->tx_flow_control);
++	seq_printf(m, "| GDMA%d_TX_PFCCNT : %010llu (priority flow control)\n",
++		   gdm_id + 1, hw_stats->tx_priority_flow_control);
 +	seq_puts(m, "|						|\n");
 +}
 +
 +static void mtk_gdm_reg_dump_v2(struct seq_file *m, struct mtk_eth *eth,
-+				u32 gdm_id, u32 mib_base)
++				u32 gdm_id)
 +{
-+	seq_printf(m, "| GDMA%d_RX_GBCNT  : %010u (Rx Good Bytes)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base));
-+	seq_printf(m, "| GDMA%d_RX_GPCNT  : %010u (Rx Good Pkts)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x08));
-+	seq_printf(m, "| GDMA%d_RX_OERCNT : %010u (overflow error)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x10));
-+	seq_printf(m, "| GDMA%d_RX_FERCNT : %010u (FCS error)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x14));
-+	seq_printf(m, "| GDMA%d_RX_SERCNT : %010u (too short)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x18));
-+	seq_printf(m, "| GDMA%d_RX_LERCNT : %010u (too long)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x1C));
-+	seq_printf(m, "| GDMA%d_RX_CERCNT : %010u (checksum error)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x20));
-+	seq_printf(m, "| GDMA%d_RX_FCCNT  : %010u (flow control)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x24));
-+	seq_printf(m, "| GDMA%d_TX_SKIPCNT: %010u (abort count)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x28));
-+	seq_printf(m, "| GDMA%d_TX_COLCNT : %010u (collision count)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x2C));
-+	seq_printf(m, "| GDMA%d_TX_GBCNT  : %010u (Tx Good Bytes)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x30));
-+	seq_printf(m, "| GDMA%d_TX_GPCNT  : %010u (Tx Good Pkts)	|\n",
-+		   gdm_id, mtk_r32(eth, mib_base + 0x38));
++	struct mtk_gdm_hw_stats *hw_stats = &gdm_hw_stats[gdm_id];
++
++	seq_printf(m, "| GDMA%d_RX_GBCNT  : %010llu (Rx Good Bytes)	|\n",
++		   gdm_id + 1, hw_stats->rx_bytes);
++	seq_printf(m, "| GDMA%d_RX_GPCNT  : %010llu (Rx Good Pkts)	|\n",
++		   gdm_id + 1, hw_stats->rx_packets);
++	seq_printf(m, "| GDMA%d_RX_OERCNT : %010llu (overflow error)	|\n",
++		   gdm_id + 1, hw_stats->rx_overflow);
++	seq_printf(m, "| GDMA%d_RX_FERCNT : %010llu (FCS error)	|\n",
++		   gdm_id + 1, hw_stats->rx_fcs_errors);
++	seq_printf(m, "| GDMA%d_RX_SERCNT : %010llu (too short)	|\n",
++		   gdm_id + 1, hw_stats->rx_short_errors);
++	seq_printf(m, "| GDMA%d_RX_LERCNT : %010llu (too long)	|\n",
++		   gdm_id + 1, hw_stats->rx_long_errors);
++	seq_printf(m, "| GDMA%d_RX_CERCNT : %010llu (checksum error)	|\n",
++		   gdm_id + 1, hw_stats->rx_checksum_errors);
++	seq_printf(m, "| GDMA%d_RX_FCCNT  : %010llu (flow control)	|\n",
++		   gdm_id + 1, hw_stats->rx_flow_control);
++	seq_printf(m, "| GDMA%d_TX_SKIPCNT: %010llu (abort count)	|\n",
++		   gdm_id + 1, hw_stats->tx_skip);
++	seq_printf(m, "| GDMA%d_TX_COLCNT : %010llu (collision count)	|\n",
++		   gdm_id + 1, hw_stats->tx_collisions);
++	seq_printf(m, "| GDMA%d_TX_GBCNT  : %010llu (Tx Good Bytes)	|\n",
++		   gdm_id + 1, hw_stats->tx_bytes);
++	seq_printf(m, "| GDMA%d_TX_GPCNT  : %010llu (Tx Good Pkts)	|\n",
++		   gdm_id + 1, hw_stats->tx_packets);
 +	seq_puts(m, "|						|\n");
 +}
 +
-+static void mtk_gdm_cnt_read(struct seq_file *m, struct mtk_eth *eth)
++static void mtk_gdm_cnt_dump(struct seq_file *m, struct mtk_eth *eth)
 +{
-+	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
-+	struct mtk_hw_stats *hw_stats;
-+	u32 i, mib_base;
++	u32 i;
 +
 +	seq_puts(m, "\n			<<CPU>>\n");
 +	seq_puts(m, "			   |\n");
@@ -920,14 +914,10 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
 +		if (!eth->mac[i] || !eth->mac[i]->hw_stats)
 +			continue;
 +
-+		hw_stats = eth->mac[i]->hw_stats;
-+
-+		mib_base = reg_map->gdm1_cnt + hw_stats->reg_offset * i;
-+
 +		if (mtk_is_netsys_v3_or_greater(eth))
-+			mtk_gdm_reg_dump_v3(m, eth, i + 1, mib_base);
++			mtk_gdm_reg_dump_v3(m, eth, i);
 +		else
-+			mtk_gdm_reg_dump_v2(m, eth, i + 1, mib_base);
++			mtk_gdm_reg_dump_v2(m, eth, i);
 +	}
 +
 +	seq_puts(m, "+-----------------------------------------------+\n");
@@ -955,7 +945,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
 +{
 +	struct mtk_eth *eth = m->private;
 +
-+	mtk_gdm_cnt_read(m, eth);
++	mtk_gdm_cnt_dump(m, eth);
 +
 +	if (!mt7530_is_exist(eth))
 +		return 0;
@@ -1001,17 +991,97 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
 +	mt7530_dump_each_port(m, eth, 0x4088);
 +	seq_puts(m, "Rx Pause Packet     :");
 +	mt7530_dump_each_port(m, eth, 0x408C);
-+	mt7530_mdio_w32(eth, 0x4fe0, 0xf0);
-+	mt7530_mdio_w32(eth, 0x4fe0, 0x800000f0);
 +
 +	seq_puts(m, "\n");
 +
 +	return 0;
 +}
 +
++static void mtk_gdm_reg_read_v3(struct mtk_eth *eth, u32 gdm_id, u32 mib_base)
++{
++	struct mtk_gdm_hw_stats *hw_stats = &gdm_hw_stats[gdm_id];
++
++	hw_stats->rx_bytes = mtk_r64(eth, mib_base);
++	hw_stats->rx_packets = mtk_r32(eth, mib_base + 0x08);
++	hw_stats->rx_overflow = mtk_r32(eth, mib_base + 0x10);
++	hw_stats->rx_fcs_errors = mtk_r32(eth, mib_base + 0x14);
++	hw_stats->rx_short_errors = mtk_r32(eth, mib_base + 0x18);
++	hw_stats->rx_long_errors = mtk_r32(eth, mib_base + 0x1c);
++	hw_stats->rx_checksum_errors = mtk_r32(eth, mib_base + 0x20);
++	hw_stats->rx_flow_control = mtk_r32(eth, mib_base + 0x24);
++	hw_stats->rx_vid_drop = mtk_r32(eth, mib_base + 0x28);
++	hw_stats->rx_priority_flow_control = mtk_r32(eth, mib_base + 0x2c);
++	hw_stats->tx_bytes = mtk_r64(eth, mib_base + 0x40);
++	hw_stats->tx_packets = mtk_r32(eth, mib_base + 0x48);
++	hw_stats->tx_skip = mtk_r32(eth, mib_base + 0x50);
++	hw_stats->tx_collisions = mtk_r32(eth, mib_base + 0x54);
++	hw_stats->tx_overflow = mtk_r32(eth, mib_base + 0x58);
++	hw_stats->tx_flow_control = mtk_r32(eth, mib_base + 0x60);
++	hw_stats->tx_priority_flow_control = mtk_r32(eth, mib_base + 0x64);
++}
++
++static void mtk_gdm_reg_read_v2(struct mtk_eth *eth, u32 gdm_id, u32 mib_base)
++{
++	struct mtk_gdm_hw_stats *hw_stats = &gdm_hw_stats[gdm_id];
++
++	hw_stats->rx_bytes = mtk_r64(eth, mib_base);
++	hw_stats->rx_packets = mtk_r32(eth, mib_base + 0x08);
++	hw_stats->rx_overflow = mtk_r32(eth, mib_base + 0x10);
++	hw_stats->rx_fcs_errors = mtk_r32(eth, mib_base + 0x14);
++	hw_stats->rx_short_errors = mtk_r32(eth, mib_base + 0x18);
++	hw_stats->rx_long_errors = mtk_r32(eth, mib_base + 0x1c);
++	hw_stats->rx_checksum_errors = mtk_r32(eth, mib_base + 0x20);
++	hw_stats->rx_flow_control = mtk_r32(eth, mib_base + 0x24);
++	hw_stats->tx_skip = mtk_r32(eth, mib_base + 0x28);
++	hw_stats->tx_collisions = mtk_r32(eth, mib_base + 0x2c);
++	hw_stats->tx_bytes = mtk_r64(eth, mib_base + 0x30);
++	hw_stats->tx_packets = mtk_r32(eth, mib_base + 0x38);
++}
++
++static void mtk_gdm_cnt_read(struct mtk_eth *eth)
++{
++	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
++	struct mtk_hw_stats *hw_stats;
++	u32 i, mib_base;
++
++	for (i = 0; i < MTK_MAX_DEVS; i++) {
++		if (!eth->mac[i] || !eth->mac[i]->hw_stats)
++			continue;
++
++		hw_stats = eth->mac[i]->hw_stats;
++
++		mib_base = reg_map->gdm1_cnt + hw_stats->reg_offset;
++
++		if (mtk_is_netsys_v3_or_greater(eth))
++			mtk_gdm_reg_read_v3(eth, i, mib_base);
++		else
++			mtk_gdm_reg_read_v2(eth, i, mib_base);
++	}
++}
++
 +static int mtk_esw_cnt_open(struct inode *inode, struct file *file)
 +{
++	struct mtk_eth *eth = (struct mtk_eth *)inode->i_private;
++
++	/* Ensure data is read only once here to prevent multiple reads
++	 * that could result in data loss.
++	 */
++	mtk_gdm_cnt_read(eth);
++
 +	return single_open(file, mtk_esw_cnt_read, inode->i_private);
++}
++
++static int mtk_esw_cnt_release(struct inode *inode, struct file *file)
++{
++	struct mtk_eth *eth = (struct mtk_eth *)inode->i_private;
++
++	/* Clear the MT753x MIB counters here */
++	if (mt7530_is_exist(eth)) {
++		mt7530_mdio_w32(eth, 0x4fe0, 0xf0);
++		mt7530_mdio_w32(eth, 0x4fe0, 0x800000f0);
++	}
++
++	return single_release(inode, file);
 +}
 +
 +static const struct file_operations mtk_eth_debugfs_esw_cnt_fops = {
@@ -1019,7 +1089,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
 +	.open = mtk_esw_cnt_open,
 +	.read = seq_read,
 +	.llseek = seq_lseek,
-+	.release = single_release
++	.release = mtk_esw_cnt_release
 +};
 +
 +static void mtk_mac_mib_dump(struct seq_file *m, u32 gdm_id)
@@ -2629,7 +2699,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
 +		.proc_open = mtk_esw_cnt_open,
 +		.proc_read = seq_read,
 +		.proc_lseek = seq_lseek,
-+		.proc_release = single_release
++		.proc_release = mtk_esw_cnt_release
 +	};
 +	static const struct proc_ops mtk_eth_procfs_mac_cnt_fops = {
 +		.proc_open = mtk_mac_cnt_open,
@@ -2803,22 +2873,10 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
 +}
 --- /dev/null
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_dbg.h
-@@ -0,0 +1,533 @@
+@@ -0,0 +1,541 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + *   Copyright (C) 2025 MediaTek Inc.
-+ *
-+ *   This program is free software; you can redistribute it and/or modify
-+ *   it under the terms of the GNU General Public License as published by
-+ *   the Free Software Foundation; version 2 of the License
-+ *
-+ *   This program is distributed in the hope that it will be useful,
-+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
-+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-+ *   GNU General Public License for more details.
-+ *
-+ *   Copyright (C) 2009-2016 John Crispin <blogic@openwrt.org>
-+ *   Copyright (C) 2009-2016 Felix Fietkau <nbd@openwrt.org>
-+ *   Copyright (C) 2013-2016 Michael Lee <igvtee@gmail.com>
 + */
 +
 +#ifndef MTK_ETH_DBG_H
@@ -3256,6 +3314,26 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
 +	long		id;
 +};
 +
++struct mtk_gdm_hw_stats {
++	u64 tx_packets;
++	u64 tx_bytes;
++	u64 tx_skip;
++	u64 tx_collisions;
++	u64 tx_overflow;
++	u64 tx_flow_control;
++	u64 tx_priority_flow_control;
++	u64 rx_packets;
++	u64 rx_bytes;
++	u64 rx_overflow;
++	u64 rx_fcs_errors;
++	u64 rx_short_errors;
++	u64 rx_long_errors;
++	u64 rx_checksum_errors;
++	u64 rx_flow_control;
++	u64 rx_vid_drop;
++	u64 rx_priority_flow_control;
++};
++
 +struct mtk_gmac_hw_stats {
 +	u64 tx_uc_packets;
 +	u64 tx_uc_bytes;
@@ -3490,7 +3568,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  		skb_record_rx_queue(skb, 0);
  		napi_gro_receive(napi, skb);
  
-@@ -5826,6 +5849,12 @@ static void mtk_restore_qdma_cfg(struct
+@@ -5861,6 +5884,12 @@ static void mtk_restore_qdma_cfg(struct
  			reg_map->qdma.tx_sch_rate + 0x4);
  }
  
@@ -3503,7 +3581,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  static void mtk_prepare_for_reset(struct mtk_eth *eth)
  {
  	struct mtk_mac *mac;
-@@ -6417,6 +6446,7 @@ static const struct net_device_ops mtk_n
+@@ -6453,6 +6482,7 @@ static const struct net_device_ops mtk_n
  	.ndo_set_mac_address	= mtk_set_mac_address,
  	.ndo_validate_addr	= eth_validate_addr,
  	.ndo_eth_ioctl		= mtk_do_ioctl,
@@ -3511,7 +3589,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	.ndo_change_mtu		= mtk_change_mtu,
  	.ndo_tx_timeout		= mtk_tx_timeout,
  	.ndo_get_stats64        = mtk_get_stats64,
-@@ -7296,6 +7326,8 @@ static int mtk_probe(struct platform_dev
+@@ -7333,6 +7363,8 @@ static int mtk_probe(struct platform_dev
  			goto err_deinit_ppe;
  	}
  
@@ -3548,7 +3626,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  
  /* QDMA Global Configuration Register */
  #define MTK_RX_2B_OFFSET	BIT(31)
-@@ -876,6 +886,7 @@
+@@ -877,6 +887,7 @@
  #define MTK_FE_CDM4_FSM		0x298
  #define MTK_FE_CDM5_FSM		0x318
  #define MTK_FE_CDM6_FSM		0x328
@@ -3556,7 +3634,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  #define MTK_FE_GDM1_FSM		0x228
  #define MTK_FE_GDM2_FSM		0x22C
  #define MTK_FE_GDM3_FSM		0x23C
-@@ -1571,9 +1582,12 @@ struct mtk_reg_map {
+@@ -1572,9 +1583,12 @@ struct mtk_reg_map {
  		u32	delay_irq;	/* delay interrupt */
  		u32	fc_th;		/* flow control */
  		u32	int_grp;
@@ -3569,7 +3647,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  		u32	crx_ptr;	/* tx release cpu pointer */
  		u32	drx_ptr;	/* tx release dma pointer */
  		u32	fq_head;	/* fq head pointer */
-@@ -1729,6 +1743,7 @@ struct mtk_eth {
+@@ -1730,6 +1744,7 @@ struct mtk_eth {
  	struct mtk_qdma_shaper		qdma_shaper;
  	struct clk			*clks[MTK_CLK_MAX];
  

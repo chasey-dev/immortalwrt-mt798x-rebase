@@ -142,8 +142,11 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  #endif
 --- /dev/null
 +++ b/include/net/netfilter/nf_conntrack_qos.h
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,64 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +#ifndef _NF_CONNTRACK_QOS_H
 +#define _NF_CONNTRACK_QOS_H
@@ -307,8 +310,12 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  	nf_ct_labels_ext_add(ct);
 --- /dev/null
 +++ b/net/netfilter/nf_conntrack_qos.c
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,29 @@
 +// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
++
 +/* QoS handling for netfilter. */
 +
 +#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt

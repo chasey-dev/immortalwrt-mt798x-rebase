@@ -178,8 +178,11 @@ v1: Initial device tree support for BPI-R4-Mini with base DTS and storage
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-mini-emmc.dtso
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,62 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -240,8 +243,11 @@ v1: Initial device tree support for BPI-R4-Mini with base DTS and storage
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-mini-nand.dtso
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,108 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -348,8 +354,11 @@ v1: Initial device tree support for BPI-R4-Mini with base DTS and storage
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-mini-nand-nmbm.dtso
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,90 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -438,8 +447,11 @@ v1: Initial device tree support for BPI-R4-Mini with base DTS and storage
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-mini-sd.dtso
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,44 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;

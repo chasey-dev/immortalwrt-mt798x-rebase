@@ -51,6 +51,7 @@ openwrt,one|\
 qihoo,360t7|\
 routerich,ax3000-ubootmod|\
 routerich,be7200|\
+ruijie,rg-x60-new-ubi|\
 snr,snr-cpe-ax2|\
 tplink,tl-7dr7230-v1|\
 tplink,tl-7dr7230-v2|\
@@ -140,7 +141,8 @@ dlink,aquila-pro-ai-m60-a1)
 gatonetworks,gdsp)
 	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x10000" "0x10000"
 	;;
-glinet,gl-mt3000)
+glinet,gl-mt3000|\
+ruijie,rg-x60-new-mtkuboot)
 	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x80000" "0x20000"
 	;;
 openembed,som7981)

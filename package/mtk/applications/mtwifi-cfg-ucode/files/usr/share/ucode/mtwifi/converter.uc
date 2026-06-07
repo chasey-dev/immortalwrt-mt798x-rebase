@@ -24,11 +24,6 @@ import { set_indexed_value } from 'datconf';
 // Helper Functions
 // ==========================================
 
-function to_str(val) {
-	if (val == null) return "";
-	return val + "";
-}
-
 // UCI bool => 0 / 1
 // for null inputs that not set in UCI, return null
 function strict_bool(val) {
@@ -123,7 +118,7 @@ export function convert(uci_cfg) {
 	// BssidNum is how many SSIDs enabled, we assume that vifs were initialized by BssidNum
 	// so we set BssidNum = max ap index + 1
 	let bssid_count = (ap_count > 0) ? (max_ap_idx + 1) : 1;
-	dat.BssidNum = to_str(bssid_count);
+	dat.BssidNum = bssid_count;
 
     // ------------------------------------------
 	// global radio config in current DEVICE 
@@ -137,7 +132,7 @@ export function convert(uci_cfg) {
 	
 	// calculate wireless mode
 	let wmode_int = calc_wireless_mode(conf.band, conf.htmode);
-	dat.WirelessMode = to_str(wmode_int);
+	dat.WirelessMode = wmode_int;
 	let is_ax = (wmode_int >= 16); // for TWT checking, etc.
 
 	// Channel, check auto or not
@@ -146,7 +141,7 @@ export function convert(uci_cfg) {
 		dat.Channel = "0";
 	} else {
 		dat.AutoChannelSelect = "0";
-		dat.Channel = to_str(conf.channel);
+		dat.Channel = conf.channel;
 	}
 
 	// CountryRegion code
@@ -154,9 +149,9 @@ export function convert(uci_cfg) {
 		dat.CountryCode = conf.country;
 		let regions = defs.COUNTRY_REGIONS[conf.country] || [1, 0];
 		if (conf.band == "2g") {
-			dat.CountryRegion = to_str(regions[0]);
+			dat.CountryRegion = regions[0];
 		} else {
-			dat.CountryRegionABand = to_str(regions[1]);
+			dat.CountryRegionABand = regions[1];
 		}
 	}
 
@@ -164,7 +159,7 @@ export function convert(uci_cfg) {
 	let txp = int(conf.txpower);
 	if (txp && txp < 100) {
 		dat.PERCENTAGEenable = "1";
-		dat.TxPower = to_str(txp);
+		dat.TxPower = txp;
 	} else {
 		dat.PERCENTAGEenable = "0";
 		dat.TxPower = "100";
@@ -183,7 +178,7 @@ export function convert(uci_cfg) {
 	}
 
     // TWT, ALWAYS set to 0 for NON AX devices
-	dat.TWTSupport = (is_ax && conf.twt) ? to_str(conf.twt) : "0";
+	dat.TWTSupport = (is_ax && conf.twt) ? conf.twt : "0";
 
 	// chip-wide cfgs
 	// for DBDC cards, only set for main DEVICE
@@ -194,7 +189,7 @@ export function convert(uci_cfg) {
 			let dat_key = v[0];
 			let def_val = v[1];
 			// priority: uci_key, default value
-			dat[dat_key] = to_str(conf[uci_key] || def_val);
+			dat[dat_key] = conf[uci_key] || def_val;
 		}
 	}
 
@@ -214,9 +209,9 @@ export function convert(uci_cfg) {
 			let c = ifaces[k].config;
 			if (c.mode == "sta") {
 				dat.ApCliEnable = c.disabled ? "0" : "1";
-				dat.ApCliSsid = to_str(c.ssid);
-				dat.ApCliBssid = to_str(c.bssid);
-				dat.ApCliWPAPSK = to_str(c.key);
+				dat.ApCliSsid = c.ssid;
+				dat.ApCliBssid = c.bssid;
+				dat.ApCliWPAPSK = c.key;
 
 				// uci encryption mode => DAT cfg 
 				let enc_info = defs.ENC_2_DAT[c.encryption];
@@ -250,7 +245,7 @@ export function convert(uci_cfg) {
 	for (let k, v in defs.VIF_CFGS) {
 		let default_str = "";
 		for (let i = 0; i < bssid_count; i++) {
-			default_str = set_indexed_value(default_str, i, to_str(v));
+			default_str = set_indexed_value(default_str, i, v);
 		}
 		dat[k] = default_str;
 	}
@@ -258,7 +253,7 @@ export function convert(uci_cfg) {
 	// set default ACL cfgs
 	for (let k, v in defs.VIF_ACL) {
 		for (let i = 0; i < defs.MAX_MBSSID; i++) {
-			dat[`${k}${i}`] = to_str(v);
+			dat[`${k}${i}`] = v;
 		}
 	}
 
@@ -293,7 +288,7 @@ export function convert(uci_cfg) {
 		// like SSIDx, WPAPSKx, they are filled with single values
 		let set_suffix = function(key, val) {
 			if (val != null) {
-				dat[`${key}${suffix_key_idx}`] = to_str(val);
+				dat[`${key}${suffix_key_idx}`] = val;
 			}
 		};
 
@@ -303,7 +298,7 @@ export function convert(uci_cfg) {
 		// e.g. 12;17;26, sets 17 when k = 1, also now ap_idx = 1
 		let set_token = function(key, val) {
 			if (val != null) {
-				dat[key] = set_indexed_value(dat[key], vif_idx, to_str(val));
+				dat[key] = set_indexed_value(dat[key], vif_idx, val);
 			}
 		};
 

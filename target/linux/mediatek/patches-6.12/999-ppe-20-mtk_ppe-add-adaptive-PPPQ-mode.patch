@@ -32,18 +32,16 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
-@@ -1981,6 +1981,11 @@ mtk_ppe_check_pppq_path(struct mtk_mac *
- 	    (dsa_port == 5 && wifi_rx))
- 		return 1;
- 
-+	if (mtk_is_netsys_v3_or_greater(mac->hw)) {
-+		if (mac->hw->qos_toggle == 3 && mac->speed <= SPEED_2500 && wifi_rx)
-+			return 1;
-+	}
+@@ -2033,6 +2033,9 @@ mtk_ppe_check_pppq_path(struct mtk_eth *
+ 		/* Handle cases of GMAC port linked less or equal to 1Gbps */
+ 		if (odev_speed <= SPEED_1000)
+ 			return 1;
 +
- 	return 0;
- }
++		if (eth->qos_toggle == 3 && odev_speed <= SPEED_2500 && wifi_rx)
++			return 1;
+ 	}
  
+ 	return 0;
 --- a/drivers/net/ethernet/mediatek/mtk_ppe.c
 +++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
 @@ -718,16 +718,29 @@ __mtk_foe_entry_clear(struct mtk_ppe *pp
@@ -111,7 +109,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  	hwe->ib1 = entry->ib1;
 --- a/drivers/net/ethernet/mediatek/mtk_ppe.h
 +++ b/drivers/net/ethernet/mediatek/mtk_ppe.h
-@@ -379,6 +379,7 @@ mtk_ppe_check_skb(struct mtk_ppe *ppe, s
+@@ -380,6 +380,7 @@ mtk_ppe_check_skb(struct mtk_ppe *ppe, s
  	__mtk_ppe_check_skb(ppe, skb, hash);
  }
  
@@ -144,12 +142,13 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  	return len;
 --- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
 +++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
-@@ -334,7 +334,7 @@ mtk_flow_set_output_device(struct mtk_et
+@@ -331,7 +331,8 @@ mtk_flow_set_output_device(struct mtk_et
  		ct_mark = ct->mark;
  	}
  
--	if (eth->qos_toggle == 2 && mtk_ppe_check_pppq_path(mac, idev, dsa_port)) {
-+	if ((eth->qos_toggle == 2 || eth->qos_toggle == 3) && mtk_ppe_check_pppq_path(mac, idev, dsa_port)) {
+-	if (eth->qos_toggle == 2 && mtk_ppe_check_pppq_path(eth, idev, odev, dsa_port)) {
++	if ((eth->qos_toggle == 2 || eth->qos_toggle == 3) &&
++	    mtk_ppe_check_pppq_path(eth, idev, odev, dsa_port)) {
  		if ((dsa_port >= 0) && ct && nf_ct_protonum(ct) == IPPROTO_TCP) {
  			/* Dispatch the IPv4/IPv6 TCP Ack packets to the high-priority
  			 * queue, assuming they are less than 64 bytes.

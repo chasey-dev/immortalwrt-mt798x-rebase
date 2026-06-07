@@ -128,7 +128,12 @@ v1: Refactor and decouple crypto TX with NF_HNAT driver.
  	u8		vlan:1;
 --- /dev/null
 +++ b/drivers/net/ethernet/mediatek/mtk_tnl.h
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,42 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ */
++
 +#ifndef MTK_TNL_H
 +#define MTK_TNL_H
 +

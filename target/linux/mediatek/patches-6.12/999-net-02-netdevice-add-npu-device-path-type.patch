@@ -1,16 +1,19 @@
 ---
-[v1] nft_flow_offload: Add L2TP flow offload support for NPU
+[v2] netdevice: Add tunnel offload device path type
 
-The patch adds DEV_PATH_L2TP to the device path types that can be offloaded, and
-extend net_device_path structure to record tunnel parameters.
+Support tunnel hardware offload by extending enum net_device_path_type with
+tunnel related definitions and extending struct net_device_path with essential
+tunnel related parameters.
+The "dst" is used to find xfrm_state for supporting tunnl over IPSec.
 
 ---
 v1: Add L2TP flow offload support for NPU
+v2: Support tunnel over IPSec hardware offload
 ---
 
 --- a/include/linux/netdevice.h
 +++ b/include/linux/netdevice.h
-@@ -838,6 +838,7 @@ enum net_device_path_type {
+@@ -840,6 +840,7 @@ enum net_device_path_type {
  	DEV_PATH_DSA,
  	DEV_PATH_MACVLAN,
  	DEV_PATH_MTK_WDMA,
@@ -18,19 +21,13 @@ v1: Add L2TP flow offload support for NPU
  };
  
  struct net_device_path {
-@@ -847,6 +848,7 @@ struct net_device_path {
- 		struct {
- 			u16		id;
- 			__be16		proto;
-+			u8		h_source[ETH_ALEN];
- 			u8		h_dest[ETH_ALEN];
- 		} encap;
- 		struct {
-@@ -870,9 +872,26 @@ struct net_device_path {
- 			u8 bss;
+@@ -873,9 +874,30 @@ struct net_device_path {
  			u8 amsdu;
+ 			u8 tid;
  		} mtk_wdma;
 +		struct {
++			u8 h_source[ETH_ALEN];
++			u8 h_dest[ETH_ALEN];
 +			union nf_inet_addr sip;
 +			union nf_inet_addr dip;
 +			u16 sport;
@@ -44,6 +41,8 @@ v1: Add L2TP flow offload support for NPU
 +				} l2tp;
 +				/* Extend other tunnel here */
 +			};
++			/* Info used to find xfrm_state for IPSec (encap direction) */
++			struct dst_entry *dst;
 +		} tunnel;
  	};
  };

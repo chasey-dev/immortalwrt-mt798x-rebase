@@ -330,11 +330,15 @@ index ef936d9..8c18c1c 100644
   * @np:		Pointer to device node indentifying a MediaTek USXGMII PCS
 diff --git a/include/linux/phy/phy-mtk-xfi-tphy.h b/include/linux/phy/phy-mtk-xfi-tphy.h
 new file mode 100644
-index 0000000..0e0ac9d
+index 0000000..fadeb30
 --- /dev/null
 +++ b/include/linux/phy/phy-mtk-xfi-tphy.h
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,27 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
++
 +#ifndef __LINUX_PHY_MTK_XFI_TPHY_H
 +#define __LINUX_PHY_MTK_XFI_TPHY_H
 +

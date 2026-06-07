@@ -32,6 +32,18 @@ static uc_resource_type_t *datconf_type;
 	return NULL; \
 } while(0)
 
+/* Convert ucode value to C string, null value as empty string */
+#define datconf_ucv_to_cstr(vm, val, c_val, s_val) do { \
+	(s_val) = NULL; \
+	if (ucv_type(val) == UC_STRING) { \
+		(c_val) = ucv_string_get(val); \
+	} else { \
+		if (ucv_type(val) != UC_NULL) \
+			(s_val) = ucv_to_string(vm, val); \
+		(c_val) = (s_val) ? (s_val) : ""; \
+	} \
+} while (0)
+
 /* --- Helper: Get Error --- */
 
 static uc_value_t *
@@ -85,6 +97,7 @@ uc_datconf_ctx_set(uc_vm_t *vm, size_t nargs)
 	struct kvc_context **ctx = uc_fn_this("datconf.context");
 	uc_value_t *key = uc_fn_arg(0);
 	uc_value_t *val = uc_fn_arg(1);
+	const char *c_val;
 	int ret;
 	char *s_val;
 
@@ -94,14 +107,9 @@ uc_datconf_ctx_set(uc_vm_t *vm, size_t nargs)
 	if (ucv_type(key) != UC_STRING)
 		err_return(EINVAL);
 
-	/* Convert value to string if necessary, handle non-strings gracefully */
-	if (ucv_type(val) == UC_STRING) {
-		ret = kvc_set(*ctx, ucv_string_get(key), ucv_string_get(val));
-	} else {
-		s_val = ucv_to_string(vm, val);
-		ret = kvc_set(*ctx, ucv_string_get(key), s_val ? s_val : "");
-		free(s_val);
-	}
+	datconf_ucv_to_cstr(vm, val, c_val, s_val);
+	ret = kvc_set(*ctx, ucv_string_get(key), c_val);
+	free(s_val);
 
 	if (ret != 0)
 		err_return(ret);
@@ -182,6 +190,7 @@ uc_datconf_ctx_merge(uc_vm_t *vm, size_t nargs)
 {
 	struct kvc_context **ctx = uc_fn_this("datconf.context");
 	uc_value_t *obj = uc_fn_arg(0);
+	const char *c_val;
 	char *s_val;
 
 	if (!ctx || !*ctx)
@@ -191,13 +200,9 @@ uc_datconf_ctx_merge(uc_vm_t *vm, size_t nargs)
 		err_return(EINVAL);
 
 	ucv_object_foreach(obj, k, v) {
-		if (ucv_type(v) == UC_STRING) {
-			kvc_set(*ctx, k, ucv_string_get(v));
-		} else {
-			s_val = ucv_to_string(vm, v);
-			kvc_set(*ctx, k, s_val ? s_val : "");
-			free(s_val);
-		}
+		datconf_ucv_to_cstr(vm, v, c_val, s_val);
+		kvc_set(*ctx, k, c_val);
+		free(s_val);
 	}
 
 	return ucv_boolean_new(true);
@@ -334,6 +339,7 @@ uc_datconf_set_indexed_value(uc_vm_t *vm, size_t nargs)
 	uc_value_t *str = uc_fn_arg(0);
 	uc_value_t *idx = uc_fn_arg(1);
 	uc_value_t *val = uc_fn_arg(2);
+	const char *c_val;
 	const char *res_str;
 	uc_value_t *rv;
 	char *s_val;
@@ -341,13 +347,9 @@ uc_datconf_set_indexed_value(uc_vm_t *vm, size_t nargs)
 	if (ucv_type(str) != UC_STRING || ucv_type(idx) != UC_INTEGER)
 		err_return(EINVAL);
 
-	if (ucv_type(val) == UC_STRING) {
-		res_str = dat_set_indexed_value(ucv_string_get(str), (size_t)ucv_int64_get(idx), ucv_string_get(val));
-	} else {
-		s_val = ucv_to_string(vm, val);
-		res_str = dat_set_indexed_value(ucv_string_get(str), (size_t)ucv_int64_get(idx), s_val ? s_val : "");
-		free(s_val);
-	}
+	datconf_ucv_to_cstr(vm, val, c_val, s_val);
+	res_str = dat_set_indexed_value(ucv_string_get(str), (size_t)ucv_int64_get(idx), c_val);
+	free(s_val);
 
 	if (!res_str)
 		err_return(ENOMEM);

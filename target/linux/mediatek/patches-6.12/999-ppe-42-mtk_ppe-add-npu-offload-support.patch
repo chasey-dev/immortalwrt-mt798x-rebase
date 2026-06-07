@@ -1,17 +1,24 @@
 ---
-[v1] mtk_ppe: Add NPU offload support
+[v2] mtk_ppe: Add tunnel hardware offload support
 
 Add NPU offload capability to the MediaTek PPE offload driver. This patch handles
 the FLOW_ACTION_NPU_ENCAP flow action by configuring the PPE entry to forward packets
 to NPU.
 
 When an NPU entry is present in the flow data, the driver configures the FOE entry
-with the TOPS entry ID and sets the tport to TPORT_NPU_QDMA. This directs matching
-packets to be processed by the NPU hardware instead of the CPU, enabling
-hardware-accelerated packet forwarding for flows that support NPU offload.
+with the TOPS entry ID and sets the tport to TPORT_NPU_QDMA. The configuration will
+redirect the matched packets to be routed to NPU hardware instead of CPU so that the
+system can lower the burden of CPU to process tunnel encapsulation/decapsulation
+procedures.
+
+Additionally, adds support for tunnel over IPSec by performing dynamic xfrm_state
+lookup using xs_info when available. To support encrypted tunnel hardware offload,
+the tport is set to TPORT_NPU_EIP197_QDMA to route the packets to NPU and EIP197
+accordingly for hardware offload.
 
 ---
 v1: Add NPU offload support in binding PPE entry
+v2: Add tunnel over IPSec hardware offload
 ---
 
 --- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
@@ -24,23 +31,48 @@ v1: Add NPU offload support in binding PPE entry
  };
  
  static const struct rhashtable_params mtk_flow_ht_params = {
-@@ -641,6 +642,9 @@ mtk_flow_offload_replace(struct mtk_eth
+@@ -660,6 +661,31 @@ mtk_flow_offload_replace(struct mtk_eth
  			if (data.ipsec.cdrt_id == 0)
  				return -EOPNOTSUPP;
  			break;
 +		case FLOW_ACTION_NPU_ENCAP:
-+			data.npu_entry = act->npu_entry;
++			data.npu_entry = act->npu.npu_entry;
++			if (act->npu.dst) {
++				struct xfrm_state *xs_old = dst_xfrm(act->npu.dst);
++				struct xfrm_state *xs;
++
++				if (!xs_old)
++					return -EOPNOTSUPP;
++				/*
++				 * Since the xfrm_state in tunnel dst_entry may out-of-date
++				 * by rekey. Try to find new xfrm_state here.
++				 */
++				xs = xfrm_state_lookup_byaddr(dev_net(act->npu.dst->dev),
++							      xs_old->mark.v, &xs_old->id.daddr,
++							      &xs_old->props.saddr, xs_old->id.proto,
++							      xs_old->props.family);
++				if (!xs)
++					return -EOPNOTSUPP;
++
++				data.ipsec.cdrt_id = mtk_flow_offload_get_cdrt(xs);
++				xfrm_state_put(xs);
++				if (data.ipsec.cdrt_id == 0)
++					return -EOPNOTSUPP;
++			}
 +			break;
  		default:
  			return -EOPNOTSUPP;
  		}
-@@ -797,6 +801,11 @@ mtk_flow_offload_replace(struct mtk_eth
+@@ -816,6 +842,14 @@ mtk_flow_offload_replace(struct mtk_eth
  		mtk_foe_entry_set_tport(eth, &foe, TPORT_EIP197_QDMA);
  	}
  
 +	if (data.npu_entry) {
 +		mtk_foe_entry_set_tops_entry(eth, &foe, data.npu_entry);
-+		mtk_foe_entry_set_tport(eth, &foe, TPORT_NPU_QDMA);
++		if (data.ipsec.cdrt_id)
++			mtk_foe_entry_set_tport(eth, &foe, TPORT_NPU_EIP197_QDMA);
++		else
++			mtk_foe_entry_set_tport(eth, &foe, TPORT_NPU_QDMA);
 +	}
 +
  	entry = kzalloc(sizeof(*entry), GFP_KERNEL);

@@ -100,8 +100,8 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add mxl862 switch dsa tag 8021q flow
  #else
  	return -ENODEV;
 @@ -282,7 +286,7 @@ mtk_flow_set_output_device(struct mtk_et
+ 	struct mtk_wdma_info info = {};
  	struct nf_conn *ct = NULL;
- 	struct mtk_mac *mac;
  	u32 ct_mark = 0;
 -	int pse_port, dsa_port, queue;
 +	int pse_port, dsa_port, dsa_proto, queue;
@@ -112,12 +112,12 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add mxl862 switch dsa tag 8021q flow
  		goto out;
  	}
  
--	dsa_port = mtk_flow_get_dsa_port(&odev);
-+	dsa_port = mtk_flow_get_dsa_port(&odev, &dsa_proto);
+-	dsa_port = mtk_flow_get_dsa_port(&odev_conduit);
++	dsa_port = mtk_flow_get_dsa_port(&odev_conduit, &dsa_proto);
  
- 	if (odev == eth->netdev[0]) {
- 		mac = eth->mac[0];
-@@ -323,7 +327,7 @@ mtk_flow_set_output_device(struct mtk_et
+ 	if (odev_conduit == eth->netdev[0])
+ 		pse_port = PSE_GDM1_PORT;
+@@ -320,7 +324,7 @@ mtk_flow_set_output_device(struct mtk_et
  		return -EOPNOTSUPP;
  
  	if (dsa_port >= 0) {
@@ -126,7 +126,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add mxl862 switch dsa tag 8021q flow
  		queue = 3 + dsa_port;
  	} else {
  		queue = (pse_port == PSE_GDM3_PORT) ? 2 : pse_port - 1;
-@@ -413,6 +417,7 @@ mtk_flow_offload_replace(struct mtk_eth
+@@ -411,6 +415,7 @@ mtk_flow_offload_replace(struct mtk_eth
  		flow_rule_match_meta(rule, &match);
  		if (mtk_is_netsys_v2_or_greater(eth)) {
  			idev = __dev_get_by_index(&init_net, match.key->ingress_ifindex);
@@ -134,7 +134,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add mxl862 switch dsa tag 8021q flow
  			if (mtk_flow_is_valid_idev(eth, idev)) {
  				struct mtk_mac *mac = netdev_priv(idev);
  
-@@ -602,6 +607,14 @@ mtk_flow_offload_replace(struct mtk_eth
+@@ -600,6 +605,14 @@ mtk_flow_offload_replace(struct mtk_eth
  			return err;
  	}
  
@@ -149,7 +149,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add mxl862 switch dsa tag 8021q flow
  	if (offload_type == MTK_PPE_PKT_TYPE_BRIDGE)
  		foe.bridge.vlan = data.vlan_in;
  
-@@ -611,14 +624,6 @@ mtk_flow_offload_replace(struct mtk_eth
+@@ -609,14 +622,6 @@ mtk_flow_offload_replace(struct mtk_eth
  	if (data.pppoe.num == 1)
  		mtk_foe_entry_set_pppoe(eth, &foe, data.pppoe.sid);
  

@@ -1,18 +1,15 @@
 ---
-[v1] nft_flow_offload: Add L2TP flow offload support for NPU
+[v2] nft_flow_offload: Add tunnel hardware offload support
 
-Add NPU L2TP tunnel offload support to nftables flow offload. This patch
-introduces the `mt_flow_tnl_offload` callback function and extends the flow
-forwarding infrastructure to handle L2TP tunnel paths.
-
-The patch adds DEV_PATH_L2TP to the device path types that can be offloaded, and
-includes an `npu_entry` field in the forward info structure to track NPU offload
-entries. The `mtk_flow_tnl_offload` function pointer allows vendor-specific
-tunnel offload implementations to integrate with the nftables flow offload
-framework, enabling hardware-accelerated L2TP VPN tunnels through the NPU.
+Support tunnel offload in nftables flow offload. A new callback function
+mtk_flow_tnl_offload is required to implement if the platform support tunnel
+hardware offload. Additionally, in order to support encrypted tunnel scenario,
+the "dst" is recorded in the struct nft_forward_info. The structure contains
+essential information to query correct crypto offload parameters.
 
 ---
-v1: Add L2TP flow offload support for NPU
+v1: Add L2TP tunnel hardware offload support
+v2: Add tunnel over IPSec hardware offload support
 ---
 
 --- a/net/netfilter/nft_flow_offload.c
@@ -27,15 +24,16 @@ v1: Add L2TP flow offload support for NPU
  static void
  nft_flow_offload_dscp_init(struct flow_offload *flow, const struct nf_conn *ct,
  			   enum ip_conntrack_dir dir)
-@@ -181,6 +184,7 @@ struct nft_forward_info {
+@@ -181,6 +184,8 @@ struct nft_forward_info {
  	u8 h_source[ETH_ALEN];
  	u8 h_dest[ETH_ALEN];
  	u32 priority;
 +	u32 npu_entry;
++	struct dst_entry *dst;
  	enum flow_offload_xmit_type xmit_type;
  };
  
-@@ -227,6 +231,7 @@ static void nft_dev_path_info(const stru
+@@ -227,6 +232,7 @@ static void nft_dev_path_info(const stru
  		case DEV_PATH_VLAN:
  		case DEV_PATH_PPPOE:
  		case DEV_PATH_MACVLAN:
@@ -43,25 +41,35 @@ v1: Add L2TP flow offload support for NPU
  			if (is_zero_ether_addr(info->h_source))
  				memcpy(info->h_source, path->dev->dev_addr, ETH_ALEN);
  
-@@ -238,6 +243,13 @@ static void nft_dev_path_info(const stru
+@@ -238,6 +244,13 @@ static void nft_dev_path_info(const stru
  				break;
  			}
  
-+			/* TODO: Add case for other tunnel */
 +			if (mtk_flow_tnl_offload &&
 +			    mtk_flow_tnl_offload(path, &info->npu_entry) >= 0) {
-+				memcpy(info->h_dest, path->encap.h_dest, ETH_ALEN);
++				memcpy(info->h_dest, path->tunnel.h_dest, ETH_ALEN);
++				info->dst = path->tunnel.dst;
 +				break;
 +			}
 +
  			/* DEV_PATH_VLAN and DEV_PATH_PPPOE */
  			if (info->num_encaps >= NF_FLOW_TABLE_ENCAP_MAX) {
  				info->indev = NULL;
-@@ -386,6 +398,7 @@ static int nft_dev_forward_path(const st
+@@ -386,6 +399,8 @@ static int nft_dev_forward_path(const st
  		route->tuple[dir].out.hw_ifindex = info.hw_outdev->ifindex;
  		route->tuple[dir].xmit_type = info.xmit_type;
  	}
-+	route->tuple[dir].npu_entry = info.npu_entry;
++	route->tuple[dir].npu.npu_entry = info.npu_entry;
++	route->tuple[dir].npu.dst = info.dst;
  
  	return 0;
  }
+@@ -686,6 +701,8 @@ err_flow_alloc:
+ 	dst_release(route.tuple[dir].dst);
+ 	dst_release(route.tuple[!dir].dst);
+ err_flow_route:
++	dst_release(route.tuple[dir].npu.dst);
++	dst_release(route.tuple[!dir].npu.dst);
+ 	clear_bit(IPS_OFFLOAD_BIT, &ct->status);
+ out:
+ 	regs->verdict.code = NFT_BREAK;

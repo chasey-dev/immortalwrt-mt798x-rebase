@@ -60,7 +60,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  		return false;
 --- a/drivers/net/ethernet/mediatek/mtk_ppe.h
 +++ b/drivers/net/ethernet/mediatek/mtk_ppe.h
-@@ -410,5 +410,8 @@ int mtk_ppe_debugfs_init(struct mtk_ppe
+@@ -411,5 +411,8 @@ int mtk_ppe_debugfs_init(struct mtk_ppe
  int mtk_ppe_internal_debugfs_init(struct mtk_eth *eth);
  void mtk_foe_entry_get_stats(struct mtk_ppe *ppe, struct mtk_flow_entry *entry,
  			     int *idle);
@@ -172,12 +172,12 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  mtk_flow_set_output_device(struct mtk_eth *eth, struct mtk_foe_entry *foe,
  			   struct net_device *idev, struct net_device *odev,
  			   struct flow_cls_offload *f, const u8 *dest_mac,
-@@ -251,13 +334,20 @@ mtk_flow_set_output_device(struct mtk_et
+@@ -248,13 +331,20 @@ mtk_flow_set_output_device(struct mtk_et
  		ct_mark = ct->mark;
  	}
  
--	if (eth->qos_toggle == 2 && mtk_ppe_check_pppq_path(mac, idev, dsa_port))
-+	if (eth->qos_toggle == 2 && mtk_ppe_check_pppq_path(mac, idev, dsa_port)) {
+-	if (eth->qos_toggle == 2 && mtk_ppe_check_pppq_path(eth, idev, odev, dsa_port))
++	if (eth->qos_toggle == 2 && mtk_ppe_check_pppq_path(eth, idev, odev, dsa_port)) {
 +		if ((dsa_port >= 0) && ct && nf_ct_protonum(ct) == IPPROTO_TCP) {
 +			/* Dispatch the IPv4/IPv6 TCP Ack packets to the high-priority
 +			 * queue, assuming they are less than 64 bytes.

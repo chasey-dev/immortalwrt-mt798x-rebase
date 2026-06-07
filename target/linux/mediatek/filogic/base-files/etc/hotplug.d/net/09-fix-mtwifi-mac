@@ -75,8 +75,17 @@ mtwifi_set_macs()
 
         set_macs_to_dat "$b0_mac" "$b1_mac"
         ;;
-    ruijie,rg-x30e-pro)
+    ruijie,rg-x30e-pro|\
+    ruijie,rg-x60-new-mtkuboot)
         local base_mac="$(mtd_get_mac_ascii product_info ethaddr)"
+        local b0_mac="$(macaddr_add $base_mac 2)"
+        local b1_mac="$(macaddr_add $base_mac 3)"
+        
+        set_macs_to_dat "$b0_mac" "$b1_mac"
+        ;;
+    ruijie,rg-x60-new-ubi)
+        local voldev="/dev/$(grep -l "product_info" /sys/class/ubi/ubi0_*/name | cut -d/ -f5)"
+        local base_mac="$(strings $voldev | grep "^ethaddr=" | cut -d'=' -f2)"
         local b0_mac="$(macaddr_add $base_mac 2)"
         local b1_mac="$(macaddr_add $base_mac 3)"
         

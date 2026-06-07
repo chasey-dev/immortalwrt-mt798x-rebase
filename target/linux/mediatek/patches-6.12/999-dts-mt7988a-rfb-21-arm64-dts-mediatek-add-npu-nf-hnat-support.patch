@@ -1,10 +1,10 @@
 --- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
 +++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
-@@ -1297,6 +1297,7 @@
- 			dma-names = "tnl-sync";
+@@ -1308,6 +1308,7 @@
+ 			interrupt-names = "tdma-tx-pause", "mbox", "wdt";
  
  			fe_mem = <&eth>;
 +			hnat = <&hnat>;
  		};
  
- 		tops-mbox {
+ 		npu-ocd@0e500000 {

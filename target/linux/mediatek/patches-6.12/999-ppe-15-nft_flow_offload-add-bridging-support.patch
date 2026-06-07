@@ -1,10 +1,11 @@
 ---
-[v2] netfilter: add bridging support to the nft_flow_offload
+[v3] netfilter: add bridging support to the nft_flow_offload
 
 Without this patch, the bridging traffic is unable to BIND using
 nft_flow_offload.
 ---
-v2: Fix IPv6 bridge offload fail without bridge master route
+v3: Fix bridge VLAN untag underflow WARN.
+v2: Fix IPv6 bridge offload fail without bridge master route.
 v1: Add bridging support to nft_flow_offload.
 ---
 
@@ -132,23 +133,20 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  			if (is_zero_ether_addr(info->h_source))
  				memcpy(info->h_source, path->dev->dev_addr, ETH_ALEN);
  
-@@ -150,9 +213,12 @@ static void nft_dev_path_info(const stru
+@@ -150,10 +213,8 @@ static void nft_dev_path_info(const stru
  				info->num_encaps++;
  				break;
  			case DEV_PATH_BR_VLAN_UNTAG:
 -				if (WARN_ON_ONCE(info->num_encaps-- == 0)) {
 -					info->indev = NULL;
 -					break;
-+				if (info->num_encaps > 0) {
+-				}
++				if (info->num_encaps > 0)
 +					info->num_encaps--;
-+					if (WARN_ON_ONCE(info->num_encaps == 0)) {
-+						info->indev = NULL;
-+ 						break;
-+					}
- 				}
  				break;
  			case DEV_PATH_BR_VLAN_KEEP:
-@@ -161,7 +227,6 @@ static void nft_dev_path_info(const stru
+ 				break;
+@@ -161,7 +222,6 @@ static void nft_dev_path_info(const stru
  			info->xmit_type = FLOW_OFFLOAD_XMIT_DIRECT;
  			break;
  		default:
@@ -156,7 +154,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  			break;
  		}
  	}
-@@ -192,22 +257,44 @@ static bool nft_flowtable_find_dev(const
+@@ -192,22 +252,44 @@ static bool nft_flowtable_find_dev(const
  	return found;
  }
  
@@ -207,7 +205,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  
  	route->tuple[!dir].in.ifindex = info.indev->ifindex;
  	for (i = 0; i < info.num_encaps; i++) {
-@@ -224,13 +311,15 @@ static void nft_dev_forward_path(struct
+@@ -224,13 +306,15 @@ static void nft_dev_forward_path(struct
  		route->tuple[dir].out.hw_ifindex = info.hw_outdev->ifindex;
  		route->tuple[dir].xmit_type = info.xmit_type;
  	}
@@ -228,7 +226,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  {
  	struct dst_entry *this_dst = skb_dst(pkt->skb);
  	struct dst_entry *other_dst = NULL;
-@@ -272,8 +361,76 @@ static int nft_flow_route(const struct n
+@@ -272,8 +356,76 @@ static int nft_flow_route(const struct n
  
  	if (route->tuple[dir].xmit_type	== FLOW_OFFLOAD_XMIT_NEIGH &&
  	    route->tuple[!dir].xmit_type == FLOW_OFFLOAD_XMIT_NEIGH) {
@@ -307,7 +305,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  	}
  
  	return 0;
-@@ -328,10 +485,12 @@ static void nft_flow_offload_eval(const
+@@ -328,10 +480,12 @@ static void nft_flow_offload_eval(const
  
  	switch (ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple.dst.protonum) {
  	case IPPROTO_TCP:
@@ -322,7 +320,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  			goto out;
  		break;
  	case IPPROTO_UDP:
-@@ -364,8 +523,13 @@ static void nft_flow_offload_eval(const
+@@ -364,8 +518,13 @@ static void nft_flow_offload_eval(const
  		goto out;
  
  	dir = CTINFO2DIR(ctinfo);

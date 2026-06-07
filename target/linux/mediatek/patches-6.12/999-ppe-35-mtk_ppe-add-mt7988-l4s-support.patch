@@ -44,7 +44,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add mt7988 l4s support
  			   bool amsdu_en)
 --- a/drivers/net/ethernet/mediatek/mtk_ppe.h
 +++ b/drivers/net/ethernet/mediatek/mtk_ppe.h
-@@ -418,6 +418,8 @@ int mtk_foe_entry_set_tport(struct mtk_e
+@@ -425,6 +425,8 @@ int mtk_foe_entry_set_tport(struct mtk_e
  			    int tport);
  int mtk_foe_entry_set_cdrt(struct mtk_eth *eth, struct mtk_foe_entry *entry,
  			   int cdrt);
@@ -160,17 +160,19 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add mt7988 l4s support
  		ret = snprintf(name, sizeof(name), "qdma_sch%ld", i);
 --- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
 +++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
-@@ -344,7 +344,12 @@ mtk_flow_set_output_device(struct mtk_et
+@@ -341,8 +341,13 @@ mtk_flow_set_output_device(struct mtk_et
  		ct_mark = ct->mark;
  	}
  
--	if ((eth->qos_toggle == 2 || eth->qos_toggle == 3) && mtk_ppe_check_pppq_path(mac, idev, dsa_port)) {
+-	if ((eth->qos_toggle == 2 || eth->qos_toggle == 3) &&
+-	    mtk_ppe_check_pppq_path(eth, idev, odev, dsa_port)) {
 +	/* Prevent the L4S packet enter QDMA repeatedly */
 +	if (eth->l4s_toggle && idev->ieee80211_ptr) {
 +		/* Set the original destination port to tops entry */
 +		mtk_foe_entry_set_tops_entry(eth, foe, pse_port);
 +		pse_port = PSE_TDMA_PORT;
-+	} else if ((eth->qos_toggle == 2 || eth->qos_toggle == 3) && mtk_ppe_check_pppq_path(mac, idev, dsa_port)) {
++	} else if ((eth->qos_toggle == 2 || eth->qos_toggle == 3) &&
++		   mtk_ppe_check_pppq_path(eth, idev, odev, dsa_port)) {
  		if ((dsa_port >= 0) && ct && nf_ct_protonum(ct) == IPPROTO_TCP) {
  			/* Dispatch the IPv4/IPv6 TCP Ack packets to the high-priority
  			 * queue, assuming they are less than 64 bytes.

@@ -1,5 +1,5 @@
 ---
-[v1] net: ethernet: mtk_ppe: add 464xlat clat support
+[v2] net: ethernet: mtk_ppe: add 464xlat clat support
 
 Without this patch, traffic could not be hardware-offloaded
 by PPE when our platform act as 464-xlat CLAT gateway.
@@ -7,6 +7,7 @@ by PPE when our platform act as 464-xlat CLAT gateway.
 Users can enable this feature using the following commands.
  - echo "1 <NAT64_PREFIX>" > /sys/kernel/debug/mtk_ppe/464xlat
 ---
+v2: Add 6-to-4 xlat IP header identification increment
 v1: Add 464XLAT CLAT hardware offload support.
 ---
 
@@ -16,12 +17,12 @@ Date: Mon, 16 Mar 2026 17:20:55 +0800
 Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
 
 ---
- drivers/net/ethernet/mediatek/mtk_ppe.c       |  97 +++++--
- drivers/net/ethernet/mediatek/mtk_ppe.h       |  24 +-
- .../net/ethernet/mediatek/mtk_ppe_debugfs.c   | 122 ++++++++-
- .../net/ethernet/mediatek/mtk_ppe_offload.c   | 242 +++++++++++++++---
- drivers/net/ethernet/mediatek/mtk_ppe_regs.h  |   1 +
- 5 files changed, 418 insertions(+), 68 deletions(-)
+ drivers/net/ethernet/mediatek/mtk_ppe.c       |  90 +++++--
+ drivers/net/ethernet/mediatek/mtk_ppe.h       |  25 +-
+ .../net/ethernet/mediatek/mtk_ppe_debugfs.c   | 130 +++++++++-
+ .../net/ethernet/mediatek/mtk_ppe_offload.c   | 245 +++++++++++++++---
+ drivers/net/ethernet/mediatek/mtk_ppe_regs.h  |   2 +
+ 5 files changed, 424 insertions(+), 68 deletions(-)
 
 --- a/drivers/net/ethernet/mediatek/mtk_ppe.c
 +++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
@@ -104,21 +105,10 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  	}
  
  	hash = (hv1 & hv2) | ((~hv1) & hv3);
-@@ -464,6 +468,43 @@ int mtk_foe_entry_set_pse_port(struct mt
+@@ -464,6 +468,32 @@ int mtk_foe_entry_set_pse_port(struct mt
  	return 0;
  }
  
-+static u16 __mtk_foe_entry_get_chkbase(struct iphdr *iph)
-+{
-+	__wsum csum = csum_unfold(iph->check);
-+
-+	/* Remove the variable per-packet fields from the checksum */
-+	csum = csum_sub(csum, csum_unfold(iph->tot_len));
-+	csum = csum_sub(csum, csum_unfold(iph->id));
-+
-+	return ntohs(csum_fold(csum));
-+}
-+
 +static int mtk_foe_entry_set_csum_base(struct mtk_eth *eth,
 +				       struct mtk_foe_entry *entry,
 +				       __be32 src_addr, __be32 dest_addr)
@@ -131,7 +121,8 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
 +
 +	iph.ihl = 5;
 +	iph.version = 4;
-+	iph.tos = entry->ipv6_6rd.dscp;
++	if (!mtk_is_netsys_v3_or_greater(eth))
++		iph.tos = entry->ipv6_6rd.dscp;
 +	iph.frag_off = htons(IP_DF); /* Do not fragment */
 +	iph.ttl = entry->ipv6_6rd.ttl;
 +	iph.protocol = FIELD_GET(MTK_FOE_IB1_UDP, entry->ib1) ? IPPROTO_UDP : IPPROTO_TCP;
@@ -139,8 +130,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
 +	iph.daddr = dest_addr;
 +	iph.check = ip_fast_csum(&iph, iph.ihl);
 +
-+	entry->ipv6_6rd.hdr_csum = __mtk_foe_entry_get_chkbase(&iph);
-+	entry->ipv6_6rd.flag = IP_DF >> 13; /* Do not fragment, without offset */
++	entry->ipv6_6rd.hdr_csum = ~be16_to_cpu(iph.check);
 +
 +	return 0;
 +}
@@ -148,7 +138,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  int mtk_foe_entry_set_ipv4_tuple(struct mtk_eth *eth,
  				 struct mtk_foe_entry *entry, bool egress,
  				 __be32 src_addr, __be16 src_port,
-@@ -486,6 +527,7 @@ int mtk_foe_entry_set_ipv4_tuple(struct
+@@ -486,6 +516,7 @@ int mtk_foe_entry_set_ipv4_tuple(struct
  	case MTK_PPE_PKT_TYPE_IPV6_6RD:
  		entry->ipv6_6rd.tunnel_src_ip = be32_to_cpu(src_addr);
  		entry->ipv6_6rd.tunnel_dest_ip = be32_to_cpu(dest_addr);
@@ -156,7 +146,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  		return 0;
  	default:
  		WARN_ON_ONCE(1);
-@@ -566,11 +608,19 @@ int mtk_foe_entry_set_dsa(struct mtk_eth
+@@ -566,11 +597,19 @@ int mtk_foe_entry_set_dsa(struct mtk_eth
  int mtk_foe_entry_set_dscp(struct mtk_eth *eth, struct mtk_foe_entry *entry,
  			   unsigned int dscp)
  {
@@ -176,7 +166,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  	if (mtk_is_netsys_v3_or_greater(eth) && eth->dscp_toggle == 1) {
  		u32 *udf = mtk_foe_entry_udf(eth, entry);
  		*udf |= FIELD_PREP(MTK_FOE_UDF_KEEP_ECN, 1) |
-@@ -1096,6 +1146,11 @@ void __mtk_ppe_check_skb(struct mtk_ppe
+@@ -1096,6 +1135,11 @@ void __mtk_ppe_check_skb(struct mtk_ppe
  			continue;
  		}
  
@@ -202,7 +192,15 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  };
  
  #define MTK_FOE_IB2_QID			GENMASK(3, 0)
-@@ -191,16 +193,20 @@ struct mtk_foe_ipv4 {
+@@ -102,6 +104,7 @@ enum {
+ 
+ #define MTK_FOE_UDF_KEEP_ECN		BIT(9)
+ #define MTK_FOE_UDF_KEEP_DSCP		BIT(10)
++#define MTK_FOE_UDF_6RDA_IP4_ID_INC_EN	BIT(16)
+ 
+ #define MTK_FOE_TPORT_IDX		GENMASK(3, 0)
+ #define MTK_FOE_CDRT_IDX		GENMASK(7, 0)
+@@ -191,16 +194,20 @@ struct mtk_foe_ipv4 {
  	struct mtk_foe_mac_info l2;
  };
  
@@ -226,7 +224,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  
  	u32 ib2;
  
-@@ -343,6 +349,17 @@ struct mtk_foe_accounting {
+@@ -343,6 +350,17 @@ struct mtk_foe_accounting {
  	u64	packets;
  };
  
@@ -244,7 +242,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  struct mtk_ppe {
  	struct mtk_eth *eth;
  	struct device *dev;
-@@ -443,5 +460,6 @@ int mtk_flow_entry_match_len(struct mtk_
+@@ -443,5 +461,6 @@ int mtk_flow_entry_match_len(struct mtk_
  bool mtk_flow_entry_match(struct mtk_eth *eth, struct mtk_flow_entry *entry,
  			  struct mtk_foe_entry *data, int len);
  void mtk_flow_offload_teardown_by_tnl(struct mtk_eth *eth, u32 mode, int id);
@@ -343,7 +341,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  		}
  
  		if (type >= MTK_PPE_PKT_TYPE_IPV4_DSLITE) {
-@@ -490,6 +512,85 @@ mtk_ppe_internal_debugfs_foe_bind_show(s
+@@ -490,6 +512,88 @@ mtk_ppe_internal_debugfs_foe_bind_show(s
  }
  DEFINE_SHOW_ATTRIBUTE(mtk_ppe_internal_debugfs_foe_bind);
  
@@ -373,10 +371,11 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
 +						      const char __user *buf,
 +						      size_t length, loff_t *offset)
 +{
++	u32 mask = MTK_PPE_GLO_CFG_TSID_EN | MTK_PPE_GLO_CFG_NEW_IPV4_ID_INC_EN;
 +	struct seq_file *m = file->private_data;
 +	struct mtk_eth *eth = m->private;
-+	char line[64] = {0};
 +	char addr[INET6_ADDRSTRLEN];
++	char line[64] = {0};
 +	int enable, ret, i;
 +
 +	if (!eth->xlat464)
@@ -408,6 +407,8 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
 +
 +		ppe_m32(eth->ppe[i], MTK_PPE_FLOW_CFG, MTK_PPE_FLOW_CFG_464XLAT,
 +			enable ? MTK_PPE_FLOW_CFG_464XLAT : 0);
++
++		ppe_m32(eth->ppe[i], MTK_PPE_GLO_CFG, mask, enable ? mask : 0);
 +	}
 +
 +	if (enable)
@@ -429,7 +430,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  int mtk_ppe_internal_debugfs_init(struct mtk_eth *eth)
  {
  	struct dentry *root;
-@@ -546,6 +647,17 @@ int mtk_ppe_internal_debugfs_init(struct
+@@ -546,6 +650,17 @@ int mtk_ppe_internal_debugfs_init(struct
  		debugfs_create_symlink(name, root, name_symlink);
  	}
  
@@ -717,7 +718,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  	if (!is_valid_ether_addr(data.eth.h_source) ||
  	    !is_valid_ether_addr(data.eth.h_dest))
  		return -EINVAL;
-@@ -575,11 +696,35 @@ mtk_flow_offload_replace(struct mtk_eth
+@@ -575,11 +696,37 @@ mtk_flow_offload_replace(struct mtk_eth
  		return -EOPNOTSUPP;
  	}
  
@@ -743,6 +744,8 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
 +					be32_to_cpu(target->ipv6.dest_ip[i]);
 +
 +			foe.ipv6_6rd.ttl = ttl ? ttl : 127;
++			foe.ipv6_6rd.flag = IP_DF >> 13; /* Do not fragment, without offset */
++			foe.ipv6.udf |= FIELD_PREP(MTK_FOE_UDF_6RDA_IP4_ID_INC_EN, 1);
 +
 +			mtk_flow_set_ipv6_addr(eth, &foe, &data);
 +
@@ -753,7 +756,7 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  		data.v4.src_addr = addrs.key->src;
  		data.v4.dst_addr = addrs.key->dst;
  
-@@ -591,6 +736,25 @@ mtk_flow_offload_replace(struct mtk_eth
+@@ -591,6 +739,25 @@ mtk_flow_offload_replace(struct mtk_eth
  
  		flow_rule_match_ipv6_addrs(rule, &addrs);
  
@@ -781,7 +784,15 @@ Subject: [PATCH] net: ethernet: mtk_ppe: add 464xlat clat support
  
 --- a/drivers/net/ethernet/mediatek/mtk_ppe_regs.h
 +++ b/drivers/net/ethernet/mediatek/mtk_ppe_regs.h
-@@ -32,6 +32,7 @@
+@@ -18,6 +18,7 @@
+ #define MTK_PPE_GLO_CFG_UDP_LITE_EN		BIT(10)
+ #define MTK_PPE_GLO_CFG_UDP_LEN_DROP		BIT(11)
+ #define MTK_PPE_GLO_CFG_MCAST_ENTRIES		GNEMASK(13, 12)
++#define MTK_PPE_GLO_CFG_NEW_IPV4_ID_INC_EN	BIT(20)
+ #define MTK_PPE_GLO_CFG_CS0_PIPE_EN		BIT(29)
+ #define MTK_PPE_GLO_CFG_SRH_CACHE_FIRST_EN	BIT(30)
+ #define MTK_PPE_GLO_CFG_BUSY			BIT(31)
+@@ -32,6 +33,7 @@
  #define MTK_PPE_FLOW_CFG_IP6_3T_ROUTE		BIT(8)
  #define MTK_PPE_FLOW_CFG_IP6_5T_ROUTE		BIT(9)
  #define MTK_PPE_FLOW_CFG_IP6_6RD		BIT(10)

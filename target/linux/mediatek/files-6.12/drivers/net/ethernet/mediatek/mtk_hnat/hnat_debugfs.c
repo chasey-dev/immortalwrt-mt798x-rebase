@@ -883,6 +883,7 @@ static int cr_set_usage(int level)
 	pr_info("              6     0~255      Set UDP keep alive interval\n");
 	pr_info("              7     0~1        Set hnat counter update to nf_conntrack\n");
 	pr_info("              8     0~6        Set PPE hash simple mode\n");
+	pr_info("              10    0 or 10    Set PPE default cpu port for GMACs\n");
 
 	return 0;
 }
@@ -1044,6 +1045,31 @@ static int set_hash_simple_mode(int mode)
 	return 0;
 }
 
+static int set_default_cpu_port(int port)
+{
+	bool is_v3 = hnat_priv->data->version == MTK_HNAT_V3;
+	int ppe_id;
+
+	/* only allows ADMA and TOPS to be set as CPU port */
+	if (port != PSE_ADMA_PORT && !(is_v3 && port == PSE_TDMA_PORT)) {
+		pr_err("Invalid CPU port %d\n", port);
+		return -EINVAL;
+	}
+
+	for (ppe_id = 0; ppe_id < CFG_PPE_NUM; ppe_id++) {
+		/* SP1/2/3 = GMAC1/2/3 source ports (MT798x) */
+		cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_DFT_CPORT, SP1_DFT_CPORT, port);
+		cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_DFT_CPORT, SP2_DFT_CPORT, port);
+		cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_DFT_CPORT, SP3_DFT_CPORT, port);
+		/* SP15 = GMAC3 source ports(MT7987) */
+		cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_DFT_CPORT1, SP15_DFT_CPORT, port);
+	}
+
+	pr_info("Set PPE default CPU port = %d\n", port);
+
+	return 0;
+}
+
 static const debugfs_write_func hnat_set_func[] = {
 	[0] = hnat_set_usage,
 	[1] = hnat_cpu_reason,
@@ -1061,11 +1087,12 @@ static const debugfs_write_func entry_set_func[] = {
 };
 
 static const debugfs_write_func cr_set_func[] = {
-	[0] = cr_set_usage,      [1] = binding_threshold,
-	[2] = tcp_bind_lifetime, [3] = fin_bind_lifetime,
-	[4] = udp_bind_lifetime, [5] = tcp_keep_alive,
-	[6] = udp_keep_alive,    [7] = set_nf_update_toggle,
-	[8] = set_hash_simple_mode,
+	[0] = cr_set_usage,	    [1] = binding_threshold,
+	[2] = tcp_bind_lifetime,    [3] = fin_bind_lifetime,
+	[4] = udp_bind_lifetime,    [5] = tcp_keep_alive,
+	[6] = udp_keep_alive,       [7] = set_nf_update_toggle,
+	[8] = set_hash_simple_mode, [9] = cr_set_usage,
+	[10] = set_default_cpu_port,
 };
 
 static int read_mib(struct mtk_hnat *h, u32 ppe_id,
@@ -2298,6 +2325,8 @@ static ssize_t hnat_setting_write(struct file *file, const char __user *buffer,
 	case 6:
 	case 7:
 	case 8:
+	case 9:
+	case 10:
 		p_token = strsep(&p_buf, p_delimiter);
 		if (!p_token)
 			arg1 = 0;

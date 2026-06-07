@@ -1595,14 +1595,20 @@ static u16 ppe_get_chkbase(struct iphdr *iph)
 	u16 org_chksum = ntohs(iph->check);
 	u16 org_tot_len = ntohs(iph->tot_len);
 	u16 org_id = ntohs(iph->id);
-	u16 chksum_tmp, tot_len_tmp, id_tmp;
+	u8 org_dscp_ecn = iph->tos;
+	u16 chksum_tmp, tot_len_tmp, id_tmp, dscp_ecn_tmp;
 	u32 tmp = 0;
 	u16 chksum_base = 0;
 
 	chksum_tmp = ~(org_chksum);
 	tot_len_tmp = ~(org_tot_len);
 	id_tmp = ~(org_id);
-	tmp = chksum_tmp + tot_len_tmp + id_tmp;
+	if (hnat_priv->data->version > MTK_HNAT_V2) {
+		dscp_ecn_tmp = ~(org_dscp_ecn);
+		tmp = chksum_tmp + tot_len_tmp + id_tmp + dscp_ecn_tmp;
+	} else {
+		tmp = chksum_tmp + tot_len_tmp + id_tmp;
+	}
 	tmp = ((tmp >> 16) & 0x7) + (tmp & 0xFFFF);
 	tmp = ((tmp >> 16) & 0x7) + (tmp & 0xFFFF);
 	chksum_base = tmp & 0xFFFF;

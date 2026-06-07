@@ -91,10 +91,13 @@ index 0000000..d9e0230
 +	tristate "Driver for the MediaTek MT753x switch"
 diff --git a/drivers/net/phy/mtk/mt753x/Makefile b/drivers/net/phy/mtk/mt753x/Makefile
 new file mode 100644
-index 0000000..16e9775
+index 0000000..5090de0
 --- /dev/null
 +++ b/drivers/net/phy/mtk/mt753x/Makefile
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,15 @@
++# SPDX-License-Identifier: GPL-2.0-only
++#
++# Copyright (C) 2025 MediaTek Inc.
 +#
 +# Makefile for MediaTek MT753x gigabit switch
 +#

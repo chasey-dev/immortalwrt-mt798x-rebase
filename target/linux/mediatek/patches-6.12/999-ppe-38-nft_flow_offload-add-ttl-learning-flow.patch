@@ -37,8 +37,11 @@ Subject: [PATCH] netfilter: nft_flow_offload: add ttl learning flow
  #endif
 --- /dev/null
 +++ b/include/net/netfilter/nf_conntrack_ttl.h
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,44 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ */
 +
 +#ifndef _NF_CONNTRACK_TTL_H
 +#define _NF_CONNTRACK_TTL_H

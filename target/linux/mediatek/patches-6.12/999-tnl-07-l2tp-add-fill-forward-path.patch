@@ -1,20 +1,21 @@
 ---
-[v1] l2tp: Add fill_forward_path callback support
+[v2] l2tp: Add fill_forward_path callback to support tunnel hardware offload
 
-Add fill_forward_path callback to L2TP PPP channel operations to enable hardware
+Add fill_forward_path callback to L2TP PPP channel operations to enable NPU hardware
 offload for L2TP tunnels. This patch implements the `pppol2tp_fill_forward_path`
-function and adds the `mtk_npu_l2tp_offloadable` callback hook.
+function.
 
 The fill_forward_path callback is part of the kernel's flow offload infrastructure,
 allowing L2TP tunnel devices to participate in hardware-accelerated packet forwarding.
 The `mtk_npu_l2tp_offloadable` function pointer enables vendor-specific checks to
 determine whether a particular L2TP session can be offloaded to NPU hardware.
 
-This support enables L2TP VPN traffic to be processed by hardware acceleration when
-supported by the underlying network device, significantly improving VPN performance.
+Additionally, adds L2TP over IPSec detection by checking dst_xfrm(). When IPSec
+is present, record the dst_entry for finding xfrm_state when binding PPE entry.
 
 ---
 v1: Add 'fill_forward_path' callback support in L2TP
+v2: Add L2TP over IPSec hardware offload support
 ---
 
 --- a/net/l2tp/l2tp_ppp.c
@@ -42,7 +43,7 @@ v1: Add 'fill_forward_path' callback support in L2TP
  };
  
  static const struct proto_ops pppol2tp_ops;
-@@ -373,6 +379,81 @@ abort:
+@@ -373,6 +379,86 @@ abort:
  	return 1;
  }
  
@@ -93,8 +94,8 @@ v1: Add 'fill_forward_path' callback support in L2TP
 +		goto err_put_dst;
 +	}
 +
-+	neigh_ha_snapshot(path->encap.h_dest, n, n->dev);
-+	memcpy(path->encap.h_source, n->dev->dev_addr, ETH_ALEN);
++	neigh_ha_snapshot(path->tunnel.h_dest, n, n->dev);
++	memcpy(path->tunnel.h_source, n->dev->dev_addr, ETH_ALEN);
 +
 +	/* Set L2TP path information */
 +	path->tunnel.sport = inet->inet_sport;
@@ -106,8 +107,13 @@ v1: Add 'fill_forward_path' callback support in L2TP
 +	path->dev = ctx->dev;
 +	ctx->dev = n->dev;
 +
++	/* Check if L2TP is over IPsec */
++	if (dst_xfrm(dst))
++		path->tunnel.dst = dst;
++	else
++		dst_release(dst);
++
 +	neigh_release(n);
-+	dst_release(dst);
 +	l2tp_session_put(session);
 +
 +	return 0;

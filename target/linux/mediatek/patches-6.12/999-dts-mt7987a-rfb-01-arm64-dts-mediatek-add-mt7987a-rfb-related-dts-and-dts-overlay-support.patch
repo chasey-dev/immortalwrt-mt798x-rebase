@@ -52,8 +52,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth1-i2p5g.dtso
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,33 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -85,8 +88,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-usb.dtso
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,28 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -113,8 +119,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-spim-nor.dtso
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,64 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -177,8 +186,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-e2p5g.dtso
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,43 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -220,8 +232,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8855-gsw.dtso
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,64 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -284,8 +299,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-emmc.dtso
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,86 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -370,8 +388,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-mt7531-gsw.dtso
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,90 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -552,8 +573,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-mt7531.dtso
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,94 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -646,8 +670,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8855.dtso
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,209 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -855,8 +882,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-sd.dtso
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,77 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -932,8 +962,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8801sb.dtso
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,43 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -975,8 +1008,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8801sb.dtso
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,44 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -1019,8 +1055,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-e2p5g.dtso
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,42 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -1061,8 +1100,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-sfp.dtso
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,53 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -1114,8 +1156,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-spim-nand-nmbm.dtso
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,117 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -1231,8 +1276,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-spim-nand.dtso
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,117 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -1348,8 +1396,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-spim2-nand.dtso
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,137 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;
@@ -1485,8 +1536,11 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-spim2-nand-nmbm.dtso
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,133 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
 +
 +/dts-v1/;
 +/plugin/;

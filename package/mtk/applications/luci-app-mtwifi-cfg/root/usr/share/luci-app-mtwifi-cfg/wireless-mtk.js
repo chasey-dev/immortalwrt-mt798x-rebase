@@ -780,7 +780,7 @@ return view.extend({
 			];
 
 			if (bss.network.isClientDisconnectSupported()) {
-				if (table.firstElementChild.childNodes.length < 6)
+				if (table.firstElementChild.childNodes.length < 7)
 					table.firstElementChild.appendChild(E('th', { 'class': 'th cbi-section-actions'}));
 
 				row.push(E('button', {

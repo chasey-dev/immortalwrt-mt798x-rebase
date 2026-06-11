@@ -68,7 +68,15 @@ export function array_unique(arr) {
 	return out;
 };
 
-// lock helper
+/**
+ * Run one operation while holding an exclusive lock file.
+ *
+ * Failure exits with status 1 so netifd can retry the wireless operation.
+ *
+ * @param {Function} func - Operation to run while locked.
+ * @param {string} lock_file - Lock file path.
+ * @param {string} event - Human-readable event label for logs.
+ */
 export function with_lock(func, lock_file, event) {
     // open file, create file if not exist
     let fd = fs.open(lock_file, "w+");

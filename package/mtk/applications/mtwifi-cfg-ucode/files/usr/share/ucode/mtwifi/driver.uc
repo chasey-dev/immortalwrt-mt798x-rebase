@@ -195,78 +195,63 @@ export function scan_related_vifs(dev) {
 };
 
 // ==========================================
-// Driver Operations (modules / iwpriv)
+// Driver Operations
 // ==========================================
 
-// ! this is DOWN sequence !
-const DRIVERS = ["mtk_warp_proxy", "mtk_warp", "mt_wifi"];
-
-// check if drivers were installed as modules
+/**
+ * Check whether the mtwifi driver stack is available as loaded modules.
+ *
+ * @returns {boolean} true when mt_wifi is loaded.
+ */
 export function is_kmod() {
-	if (!fs.access(`/sys/module/mt_wifi`)) {
-		log.error(`[Driver] mt_wifi is buit-in. Install as kmod(s)!!`);
+	if (!fs.access("/sys/module/mt_wifi")) {
+		log.error("[Driver] mt_wifi module is not loaded.");
 		return false;
 	}
 
 	return true;
 };
 
-// hard reset driver modules
-export function reload() {	
-	// uninstall
-	for (let drv in DRIVERS) system(`rmmod ${drv}`);
-	log.notice("[Driver] Removing Kernel Modules...");
-
-	sleep(2000);
-
-	// install
-	for (let drv in reverse(DRIVERS)) system(`modprobe ${drv}`);
-	log.notice("[Driver] Installing Kernel Modules...");
-
-	sleep(1000);
-};
-
-// iwpriv exec wrapper
-export function exec_iwpriv(ifname, key, val) {
-	let cmd = `iwpriv ${ifname} set ${key}=${val}`;
-	log.debug(`[iwpriv] ${cmd}`);
+/**
+ * Run one mtwifi mwctl set command.
+ *
+ * @param {string} ifname - Interface name.
+ * @param {string} key - iwpriv key.
+ * @param {any} val - iwpriv value serialized into key=value.
+ */
+export function exec_mwctl(ifname, key, val) {
+	let cmd = `mwctl ${ifname} set ${key}=${val}`;
+	log.debug(`[mwctl] ${cmd}`);
 	system(cmd);
 };
 
-// trigger ApCli reconnect
+/**
+ * Trigger ApCli reconnect on an existing client interface.
+ *
+ * @param {string} ifname - ApCli interface name.
+ */
 export function trigger_apcli(ifname) {
-	exec_iwpriv(ifname, "ApCliEnable", "1");
-	exec_iwpriv(ifname, "ApCliAutoConnect", "3");
+	exec_mwctl(ifname, "ApCliEnable", "1");
+	exec_mwctl(ifname, "ApCliAutoConnect", "3");
 };
 
-// ==========================================
-// Special HW Logics
-// ==========================================
-
-// init DBDC main card
-// in DBDC cards, init main card first,
-// set main iface DOWN and UP
-export function init_dbdc_card(ifname) {
-	log.notice(`[Driver] Init main vif of DBDC main card: ${ifname}...`);
-	ifup(ifname);
-	sleep(1000);
-	ifdown(ifname);
-	log.notice(`[Driver] Init main vif of DBDC main card done!!!`);
-};
-
-// apply runtime Hooks
-// set iwpriv settings
+/**
+ * Apply AP-only runtime iwpriv hooks after hostapd brings the VIF up.
+ *
+ * These hooks cover private driver controls that are still outside hostapd DAT
+ * generation. Non-AP interfaces are ignored.
+ *
+ * @param {Object} iface_cfg - wifi-iface config projected from UCI:
+ *   mode - UCI interface mode, ap or sta.
+ * @param {string} mtwifi_ifname - Real mtwifi interface name.
+ */
 export function apply_runtime_hooks(iface_cfg, mtwifi_ifname) {
-	switch(iface_cfg.mode) {
-		case "ap":
-			for (let uci_k, v in defs.IWPRIV_AP_CFGS) {
-				// v[0]=cmd, v[1]=default
-				let val = iface_cfg[uci_k] || v[1];
-				exec_iwpriv(mtwifi_ifname, v[0], val);
-			}
-			break;
-		case "sta":
-			trigger_apcli(mtwifi_ifname);
-			break;
+	if (iface_cfg.mode != "ap")
+		return;
+
+	for (let uci_k, v in defs.IWPRIV_AP_CFGS) {
+		// v[0]=cmd, v[1]=default
+		let val = iface_cfg[uci_k] || v[1];
+		exec_mwctl(mtwifi_ifname, v[0], val);
 	}
 };

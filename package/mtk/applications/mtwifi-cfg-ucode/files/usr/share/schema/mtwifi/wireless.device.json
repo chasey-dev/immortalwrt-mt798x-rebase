@@ -11,17 +11,39 @@
                 "6g"
             ]
         },
+        "phy": {
+            "type": "string",
+            "description": "cfg80211 phy name"
+        },
         "channel": {
             "type": "string",
             "description": "WiFi Channel (can be 'auto')"
         },
         "hwmode": {
             "type": "string",
-            "description": "Hardware mode (e.g., 11a, 11g, 11ax)"
+            "description": "Hardware mode (e.g., 11a, 11g, 11ax, 11be)"
         },
         "htmode": {
             "type": "string",
-            "description": "High Throughput Mode (e.g., HE160, HE80)"
+            "description": "High Throughput Mode (e.g., HE160, EHT160, EHT320-2)",
+            "enum": [
+                "HT20",
+                "HT40",
+                "VHT20",
+                "VHT40",
+                "VHT80",
+                "VHT160",
+                "HE20",
+                "HE40",
+                "HE80",
+                "HE160",
+                "EHT20",
+                "EHT40",
+                "EHT80",
+                "EHT160",
+                "EHT320",
+                "EHT320-2"
+            ]
         },
         "noscan": {
             "type": "boolean",
@@ -39,14 +61,6 @@
             "type": "boolean",
             "description": "Enable MU-MIMO Beamformer"
         },
-        "dbdc_main": {
-            "type": "boolean",
-            "description": "Is DBDC main card"
-        },
-        "whnat": {
-            "type": "boolean",
-            "description": "Enable WHNAT (Hardware NAT for WiFi)"
-        },
         "country": {
             "type": "string",
             "description": "Country code (e.g., CN, US)"
@@ -54,6 +68,10 @@
         "twt": {
             "type": "string",
             "description": "Target Wake Time support"
+        },
+        "sta_mlo": {
+            "type": "boolean",
+            "description": "Reserved raw override for ApcliMloDisable. true writes 1, false writes 0"
         }
     }
 }

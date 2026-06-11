@@ -1085,21 +1085,13 @@ return view.extend({
 						o.value('2', _('Force'));
 					}
 
-					var is_dbdc_main = uci.get('wireless', radioNet.getWifiDeviceName(), 'dbdc_main') == '1';
-
-					if (is_dbdc_main)
-					{
-						o = ss.taboption('advanced', form.Flag, 'whnat', _('Wireless HWNAT'));
-						o.default = o.enabled;
-	
-						o = ss.taboption('advanced', form.Value, 'beacon_int', _('Beacon Interval'));
-						o.optional = true;
-						o.datatype = 'range(20,999)';
-						o.placeholder = 100;
-					}
-
 					o = ss.taboption('advanced', form.Value, 'txpower', _('Maximum transmit power'));
 					o.datatype = 'range(1,100)';
+					o.placeholder = 100;
+
+					o = ss.taboption('advanced', form.Value, 'beacon_int', _('Beacon Interval'));
+					o.optional = true;
+					o.datatype = 'range(20,999)';
 					o.placeholder = 100;
 				}
 
@@ -1327,6 +1319,12 @@ return view.extend({
 					var bssid = ss.children[5];
 					bssid.depends('mode', 'sta');
 
+					o = ss.taboption('advanced', form.Value, 'macaddr', _('MAC address'), _('Override default MAC address - the range of usable addresses might be limited by the driver'));
+					o.datatype = 'macaddr';
+					o.rmempty = true;
+					o.depends('mode', 'ap');
+					o.depends('mode', 'sta');
+
 					o = ss.taboption('macfilter', form.ListValue, 'macfilter', _('MAC Address Filter'));
 					o.depends('mode', 'ap');
 					o.value('', _('disable'));
@@ -1398,18 +1396,22 @@ return view.extend({
 
 					o = ss.taboption('advanced', form.Flag, 'mumimo_dl', _('MU-MIMO DL'));
 					o.depends('mode', 'ap');
+					o.depends('mode', 'sta');
 					o.default = o.disabled;
 
 					o = ss.taboption('advanced', form.Flag, 'mumimo_ul', _('MU-MIMO UL'));
 					o.depends('mode', 'ap');
+					o.depends('mode', 'sta');
 					o.default = o.disabled;
 
 					o = ss.taboption('advanced', form.Flag, 'ofdma_dl', _('OFDMA DL'));
 					o.depends('mode', 'ap');
+					o.depends('mode', 'sta');
 					o.default = o.enabled;
 
 					o = ss.taboption('advanced', form.Flag, 'ofdma_ul', _('OFDMA UL'));
 					o.depends('mode', 'ap');
+					o.depends('mode', 'sta');
 					o.default = o.enabled;
 
 					o = ss.taboption('advanced', form.Flag, 'amsdu', _('A-MSDU'));

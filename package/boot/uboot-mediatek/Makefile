@@ -760,6 +760,13 @@ define U-Boot/mt7981_snr_snr-cpe-ax2
   DEPENDS:=+trusted-firmware-a-mt7981-spim-nand-ddr3
 endef
 
+define U-Boot/mt7981_vht_32x6
+  NAME:=Viettel VHT-32X6V1
+  BUILD_SUBTARGET:=filogic
+  BUILD_DEVICES:=vht_32x6
+  UBOOT_CONFIG:=mt7981_vht_32x6
+endef
+
 define U-Boot/mt7981_viettel_nr3053
   NAME:=Viettel NR3053
   BUILD_SUBTARGET:=filogic
@@ -1415,6 +1422,7 @@ UBOOT_TARGETS := \
 	mt7981_qihoo_360t7 \
 	mt7981_qihoo_360t7-ubi \
 	mt7981_snr_snr-cpe-ax2 \
+	mt7981_vht_32x6 \
 	mt7981_viettel_nr3053 \
 	mt7981_wirelesstag_zx7981pd \
 	mt7981_xiaomi_mi-router-ax3000t \

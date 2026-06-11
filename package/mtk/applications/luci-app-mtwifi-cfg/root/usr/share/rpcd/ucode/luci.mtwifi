@@ -1,0 +1,93 @@
+'use strict';
+
+import * as fs from 'fs';
+import * as l1parser from 'l1parser';
+import { cursor } from 'uci';
+
+/**
+ * Check whether a UCI wireless section is an mtwifi radio.
+ *
+ * @param {string} device - UCI wifi-device section name.
+ * @returns {boolean} true when the section is an mtwifi wifi-device.
+ */
+function is_mtwifi_radio(device) {
+	let uci = cursor();
+
+	uci.load('wireless');
+
+	let ok = uci.get('wireless', device) == 'wifi-device' &&
+		uci.get('wireless', device, 'type') == 'mtwifi';
+
+	uci.unload();
+
+	return ok;
+}
+
+/**
+ * Read the ApCli prefix for one mtwifi radio while the L1 context is open.
+ *
+ * @param {string} device - UCI wifi-device section name.
+ * @returns {(string|null)} ApCli interface prefix, or null when unavailable.
+ */
+function l1_apcli_prefix(device) {
+	let l1 = l1parser.open();
+
+	if (!l1)
+		return null;
+
+	let devs = l1.list() || [];
+	let found = false;
+
+	for (let devname in devs) {
+		if (devname == device) {
+			found = true;
+			break;
+		}
+	}
+
+	let prefix = found ? l1.get(device, 'apcli_ifname') || 'apcli' : null;
+
+	l1.close();
+
+	return prefix;
+}
+
+/**
+ * Resolve the ApCli interface used for MTK scan requests.
+ *
+ * @param {string} device - UCI wifi-device section name.
+ * @returns {(string|null)} ApCli scan interface name, or null on invalid input.
+ */
+function mtwifi_scan_ifname(device) {
+	if (!device || !is_mtwifi_radio(device))
+		return null;
+
+	let prefix = l1_apcli_prefix(device);
+
+	if (!prefix)
+		return null;
+
+	let ifname = `${prefix}0`;
+
+	if (!fs.access(`/sys/class/net/${ifname}`))
+		return null;
+
+	return ifname;
+}
+
+const methods = {
+	getScanName: {
+		args: {
+			device: 'device'
+		},
+		call: function(request) {
+			let ifname = mtwifi_scan_ifname(request.args?.device);
+
+			return {
+				device: ifname
+			};
+		}
+	}
+};
+
+return { 'luci.mtwifi': methods };

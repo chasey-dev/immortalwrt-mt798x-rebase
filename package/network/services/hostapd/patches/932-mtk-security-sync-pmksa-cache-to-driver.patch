@@ -1,0 +1,287 @@
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -1414,11 +1414,35 @@ int hostapd_add_pmkid(struct hostapd_dat
+ 	params.pmkid = pmkid;
+ 	params.pmk = pmk;
+ 	params.pmk_len = pmk_len;
++	(void) akmp;
+ 
+ 	return hostapd_drv_add_pmkid(hapd, &params);
+ }
+ 
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++int hostapd_add_mtk_pmkid(struct hostapd_data *hapd, const u8 *aa,
++			  const u8 *sta_addr, const u8 *link_addr,
++			  const u8 *pmk, size_t pmk_len, const u8 *pmkid,
++			  int akmp)
++{
++	struct wpa_pmkid_params params;
++
++	os_memset(&params, 0, sizeof(params));
++	params.bssid = sta_addr;
++	params.pmkid = pmkid;
++	params.pmk = pmk;
++	params.pmk_len = pmk_len;
++	params.mtk_own_addr = aa;
++	params.mtk_sta_addr = sta_addr;
++	params.mtk_link_addr = link_addr;
++	params.mtk_akmp = akmp;
++
++	return hostapd_drv_add_pmkid(hapd, &params);
++}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
++
+ static int hostapd_drv_remove_pmkid(struct hostapd_data *hapd,
+ 				    struct wpa_pmkid_params *params)
+ {
+@@ -1439,3 +1463,23 @@ int hostapd_remove_pmkid(struct hostapd_
+ 
+ 	return hostapd_drv_remove_pmkid(hapd, &params);
+ }
++
++
++#ifdef CONFIG_DRIVER_NL80211_MTK
++int hostapd_remove_mtk_pmkid(struct hostapd_data *hapd, const u8 *aa,
++			     const u8 *sta_addr, const u8 *link_addr,
++			     const u8 *pmkid, int akmp)
++{
++	struct wpa_pmkid_params params;
++
++	os_memset(&params, 0, sizeof(params));
++	params.bssid = sta_addr;
++	params.pmkid = pmkid;
++	params.mtk_own_addr = aa;
++	params.mtk_sta_addr = sta_addr;
++	params.mtk_link_addr = link_addr;
++	params.mtk_akmp = akmp;
++
++	return hostapd_drv_remove_pmkid(hapd, &params);
++}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -514,5 +514,14 @@ int hostapd_add_pmkid(struct hostapd_dat
+ 		      size_t pmk_len, const u8 *pmkid, int akmp);
+ int hostapd_remove_pmkid(struct hostapd_data *hapd, const u8 *sta_addr,
+ 			 const u8 *pmkid);
++#ifdef CONFIG_DRIVER_NL80211_MTK
++int hostapd_add_mtk_pmkid(struct hostapd_data *hapd, const u8 *aa,
++			  const u8 *sta_addr, const u8 *link_addr,
++			  const u8 *pmk, size_t pmk_len, const u8 *pmkid,
++			  int akmp);
++int hostapd_remove_mtk_pmkid(struct hostapd_data *hapd, const u8 *aa,
++			     const u8 *sta_addr, const u8 *link_addr,
++			     const u8 *pmkid, int akmp);
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ 
+ #endif /* AP_DRV_OPS */
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -656,13 +656,21 @@ static void wpa_auth_pmksa_free_cb(struc
+ 				   void *ctx)
+ {
+ 	struct wpa_authenticator *wpa_auth = ctx;
++	const u8 *aa = wpa_auth->addr;
++
++#ifdef CONFIG_IEEE80211BE
++	if (wpa_auth->is_ml)
++		aa = wpa_auth->mld_addr;
++#endif /* CONFIG_IEEE80211BE */
++
+ 	wpa_auth_for_each_sta(wpa_auth, wpa_auth_pmksa_clear_cb, entry);
+ 
+ 	/* Remove matching PMKID from the driver, if it had been added, e.g.,
+ 	 * by external SAE authentication */
+ 	if (wpa_auth->cb->remove_pmkid)
+-		wpa_auth->cb->remove_pmkid(wpa_auth->cb_ctx, entry->spa,
+-					   entry->pmkid);
++		wpa_auth->cb->remove_pmkid(wpa_auth->cb_ctx, aa, entry->spa,
++					   wpa_auth->addr, entry->pmkid,
++					   entry->akmp);
+ }
+ 
+ 
+@@ -6945,6 +6953,10 @@ int wpa_auth_pmksa_add_sae(struct wpa_au
+ 		return -1;
+ 
+ 	entry->sae_vlan_id = vlan_id;
++	if (!is_ml && wpa_auth->cb->add_pmkid)
++		wpa_auth->cb->add_pmkid(wpa_auth->cb_ctx, aa, addr, addr,
++					entry->pmk, entry->pmk_len,
++					entry->pmkid, entry->akmp);
+ 
+ 	return 0;
+ }
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -431,7 +431,11 @@ struct wpa_auth_callbacks {
+ 	struct wpa_authenticator * (*next_primary_auth)(void *ctx);
+ #endif /* CONFIG_IEEE80211BE */
+ 	int (*get_drv_flags)(void *ctx, u64 *drv_flags, u64 *drv_flags2);
+-	int (*remove_pmkid)(void *ctx, const u8 *sta_addr, const u8 *pmkid);
++	int (*add_pmkid)(void *ctx, const u8 *aa, const u8 *sta_addr,
++			 const u8 *link_addr, const u8 *pmk, size_t pmk_len,
++			 const u8 *pmkid, int akmp);
++	int (*remove_pmkid)(void *ctx, const u8 *aa, const u8 *sta_addr,
++			    const u8 *link_addr, const u8 *pmkid, int akmp);
+ };
+ 
+ struct wpa_authenticator * wpa_init(const u8 *addr,
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -1678,11 +1678,37 @@ static int hostapd_wpa_auth_get_drv_flag
+ }
+ 
+ 
+-static int hostapd_wpa_auth_remove_pmkid(void *ctx, const u8 *sta_addr,
+-					 const u8 *pmkid)
++#ifdef CONFIG_DRIVER_NL80211_MTK
++static int hostapd_wpa_auth_add_pmkid(void *ctx, const u8 *aa,
++				      const u8 *sta_addr,
++				      const u8 *link_addr, const u8 *pmk,
++				      size_t pmk_len, const u8 *pmkid,
++				      int akmp)
+ {
+ 	struct hostapd_data *hapd = ctx;
+ 
++	return hostapd_add_mtk_pmkid(hapd, aa, sta_addr, link_addr, pmk,
++				     pmk_len, pmkid, akmp);
++}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
++
++static int hostapd_wpa_auth_remove_pmkid(void *ctx, const u8 *aa,
++					 const u8 *sta_addr,
++					 const u8 *link_addr,
++					 const u8 *pmkid, int akmp)
++{
++	struct hostapd_data *hapd = ctx;
++
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	if (os_memcmp(aa, link_addr, ETH_ALEN) == 0)
++		return hostapd_remove_mtk_pmkid(hapd, aa, sta_addr, link_addr,
++						pmkid, akmp);
++#else /* CONFIG_DRIVER_NL80211_MTK */
++	(void) aa;
++	(void) link_addr;
++	(void) akmp;
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ 	return hostapd_remove_pmkid(hapd, sta_addr, pmkid);
+ }
+ 
+@@ -1742,6 +1768,9 @@ int hostapd_setup_wpa(struct hostapd_dat
+ 		.next_primary_auth = hostapd_next_primary_auth,
+ #endif /* CONFIG_IEEE80211BE */
+ 		.get_drv_flags = hostapd_wpa_auth_get_drv_flags,
++#ifdef CONFIG_DRIVER_NL80211_MTK
++		.add_pmkid = hostapd_wpa_auth_add_pmkid,
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ 		.remove_pmkid = hostapd_wpa_auth_remove_pmkid,
+ 	};
+ 	const u8 *wpa_ie;
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2998,6 +2998,12 @@ struct wpa_pmkid_params {
+ 	size_t pmk_len;
+ 	u32 pmk_lifetime;
+ 	u8 pmk_reauth_threshold;
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	const u8 *mtk_own_addr;
++	const u8 *mtk_sta_addr;
++	const u8 *mtk_link_addr;
++	int mtk_akmp;
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ };
+ 
+ /* Mask used to specify which connection parameters have to be updated */
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10437,6 +10437,62 @@ static int nl80211_pmkid(struct i802_bss
+ }
+ 
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++/* Must match the MTK driver struct mt_priv_pmkid ABI. */
++struct mtk_pmkid_entry {
++	u8 bssid[ETH_ALEN];
++	u8 sta[ETH_ALEN];
++	u8 link_addr[ETH_ALEN];
++	u8 pmkid[PMKID_LEN];
++	u8 add_remove;
++	int akmp;
++};
++
++static int nl80211_mtk_set_pmkid(struct i802_bss *bss,
++				 struct wpa_pmkid_params *params, bool add)
++{
++	struct mtk_pmkid_entry entry = {};
++	struct nl_msg *msg;
++	struct nlattr *data;
++
++	if (!params->mtk_own_addr || !params->mtk_sta_addr ||
++	    !params->mtk_link_addr || !params->pmkid)
++		return -EINVAL;
++
++	os_memcpy(entry.bssid, params->mtk_own_addr, ETH_ALEN);
++	os_memcpy(entry.sta, params->mtk_sta_addr, ETH_ALEN);
++	os_memcpy(entry.link_addr, params->mtk_link_addr, ETH_ALEN);
++	os_memcpy(entry.pmkid, params->pmkid, PMKID_LEN);
++	entry.add_remove = add ? 1 : 0;
++	entry.akmp = params->mtk_akmp;
++
++	wpa_printf(MSG_INFO,
++		   "nl80211: MTK %s PMKID own=" MACSTR " sta=" MACSTR
++		   " %s=" MACSTR " akmp=0x%x",
++		   add ? "add" : "remove", MAC2STR(entry.bssid),
++		   MAC2STR(entry.sta), add ? "sta_link" : "ap_link",
++		   MAC2STR(entry.link_addr), entry.akmp);
++
++	msg = nl80211_bss_msg(bss, 0, NL80211_CMD_VENDOR);
++	if (!msg ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, MTK_NL80211_VENDOR_ID) ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
++			MTK_NL80211_VENDOR_SUBCMD_SET_PMKID) ||
++	    !(data = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)) ||
++	    nla_put(msg, MTK_NL80211_VENDOR_ATTR_SET_PMKSA_CACHE,
++		    sizeof(entry), &entry))
++		goto fail;
++
++	nla_nest_end(msg, data);
++	return send_and_recv_cmd(bss->drv, msg);
++
++fail:
++	nlmsg_free(msg);
++	return -ENOBUFS;
++}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
++
+ static int nl80211_add_pmkid(void *priv, struct wpa_pmkid_params *params)
+ {
+ 	struct i802_bss *bss = priv;
+@@ -10445,6 +10501,11 @@ static int nl80211_add_pmkid(void *priv,
+ 	bool skip_pmk = params->pmk_len > PMK_MAX_LEN;
+ 	int ret;
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	if (params->mtk_own_addr)
++		return nl80211_mtk_set_pmkid(bss, params, true);
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
+ 	if (params->bssid)
+ 		wpa_printf(MSG_DEBUG, "nl80211: Add PMKID for " MACSTR,
+ 			   MAC2STR(params->bssid));
+@@ -10479,6 +10540,11 @@ static int nl80211_remove_pmkid(void *pr
+ 	struct i802_bss *bss = priv;
+ 	int ret;
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	if (params->mtk_own_addr)
++		return nl80211_mtk_set_pmkid(bss, params, false);
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
+ 	if (params->bssid)
+ 		wpa_printf(MSG_DEBUG, "nl80211: Delete PMKID for " MACSTR,
+ 			   MAC2STR(params->bssid));

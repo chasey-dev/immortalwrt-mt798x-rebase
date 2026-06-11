@@ -1,0 +1,10 @@
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -634,6 +634,7 @@ int hostapd_notif_assoc(struct hostapd_d
+ 					     &sta->mld_info);
+ 		}
+ #endif /* CONFIG_IEEE80211BE */
++		wpa_auth_set_auth_alg(sta->wpa_sm, sta->auth_alg);
+ 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
+ 					  hapd->iface->freq,
+ 					  ie, ielen,

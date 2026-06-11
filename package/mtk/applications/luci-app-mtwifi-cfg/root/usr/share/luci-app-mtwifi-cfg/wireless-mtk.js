@@ -321,6 +321,15 @@ function add_dep_he_feature(o) {
 	o.depends({'_freq': 'HE160', '!contains': true});
 }
 
+function add_dep_eht_feature(o) {
+	o.depends({'_freq': 'EHT20', '!contains': true});
+	o.depends({'_freq': 'EHT40', '!contains': true});
+	o.depends({'_freq': 'EHT80', '!contains': true});
+	o.depends({'_freq': 'EHT160', '!contains': true});
+	o.depends({'_freq': 'EHT320', '!contains': true});
+	o.depends({'_freq': 'EHT320-2', '!contains': true});
+}
+
 var CBIWifiFrequencyValue = form.Value.extend({
 	callFrequencyList: rpc.declare({
 		object: 'iwinfo',
@@ -334,10 +343,12 @@ var CBIWifiFrequencyValue = form.Value.extend({
 			network.getWifiDevice(section_id),
 			this.callFrequencyList(section_id)
 		]).then(L.bind(function(data) {
+			var has_acs = L.hasSystemFeature('hostapd', 'acs');
+
 			this.channels = {
-				'2g': [ 'auto', 'auto', true ],
-				'5g': [ 'auto', 'auto', true ],
-				'6g': [ 'auto', 'auto', true ],
+				'2g': has_acs ? [ 'auto', 'auto', true ] : [],
+				'5g': has_acs ? [ 'auto', 'auto', true ] : [],
+				'6g': has_acs ? [ 'auto', 'auto', true ] : [],
 				'60g': []
 			};
 
@@ -368,8 +379,9 @@ var CBIWifiFrequencyValue = form.Value.extend({
 			this.modes = [
 				'', 'Legacy', hwmodelist.a || hwmodelist.b || hwmodelist.g,
 				'n', 'N', hwmodelist.n,
-				'ac', 'AC', hwmodelist.ac,
-				'ax', 'AX', hwmodelist.ax
+				'ac', 'AC', L.hasSystemFeature('hostapd', '11ac') && hwmodelist.ac,
+				'ax', 'AX', L.hasSystemFeature('hostapd', '11ax') && hwmodelist.ax,
+				'be', 'BE', L.hasSystemFeature('hostapd', '11be') && hwmodelist.be
 			];
 
 			var htmodelist = L.toArray(data[0] ? data[0].getHTModes() : null)
@@ -392,7 +404,27 @@ var CBIWifiFrequencyValue = form.Value.extend({
 					'HE80', '80 MHz', htmodelist.HE80,
 					'HE40', '40 MHz', htmodelist.HE40,
 					'HE20', '20 MHz', htmodelist.HE20
-				]
+				],
+				'be': {
+					'2g': [
+						'EHT40', '40 MHz', htmodelist.EHT40,
+						'EHT20', '20 MHz', htmodelist.EHT20
+					],
+					'5g': [
+						'EHT160', '160 MHz', htmodelist.EHT160,
+						'EHT80', '80 MHz', htmodelist.EHT80,
+						'EHT40', '40 MHz', htmodelist.EHT40,
+						'EHT20', '20 MHz', htmodelist.EHT20
+					],
+					'6g': [
+						'EHT320-2', '320 MHz (2)', htmodelist.EHT320 && this.channels['6g'].length > 3,
+						'EHT320', '320 MHz', htmodelist.EHT320 && this.channels['6g'].length > 3,
+						'EHT160', '160 MHz', htmodelist.EHT160,
+						'EHT80', '80 MHz', htmodelist.EHT80,
+						'EHT40', '40 MHz', htmodelist.EHT40,
+						'EHT20', '20 MHz', htmodelist.EHT20
+					]
+				}
 			};
 
 			this.bands = {
@@ -409,6 +441,11 @@ var CBIWifiFrequencyValue = form.Value.extend({
 					'5g', '5 GHz', true
 				],
 				'ax': [
+					'2g', '2.4 GHz', this.channels['2g'].length > 3,
+					'5g', '5 GHz', this.channels['5g'].length > 3,
+					'6g', '6 GHz', this.channels['6g'].length > 3,
+				],
+				'be': [
 					'2g', '2.4 GHz', this.channels['2g'].length > 3,
 					'5g', '5 GHz', this.channels['5g'].length > 3,
 					'6g', '6 GHz', this.channels['6g'].length > 3,
@@ -436,15 +473,19 @@ var CBIWifiFrequencyValue = form.Value.extend({
 	},
 
 	toggleWifiMode: function(elem) {
-		this.toggleWifiHTMode(elem);
 		this.toggleWifiBand(elem);
 	},
 
 	toggleWifiHTMode: function(elem) {
 		var mode = elem.querySelector('.mode');
+		var band = elem.querySelector('.band');
 		var bwdt = elem.querySelector('.htmode');
+		var htmodes = this.htmodes[mode.value];
 
-		this.setValues(bwdt, this.htmodes[mode.value]);
+		if (mode.value == 'be')
+			htmodes = htmodes[band.value] || htmodes['5g'];
+
+		this.setValues(bwdt, htmodes);
 	},
 
 	toggleWifiBand: function(elem) {
@@ -453,6 +494,7 @@ var CBIWifiFrequencyValue = form.Value.extend({
 
 		this.setValues(band, this.bands[mode.value]);
 		this.toggleWifiChannel(elem);
+		this.toggleWifiHTMode(elem);
 
 		this.map.checkDepends();
 	},
@@ -476,7 +518,9 @@ var CBIWifiFrequencyValue = form.Value.extend({
 
 		this.setValues(mode, this.modes);
 
-		if (/HE20|HE40|HE80|HE160/.test(htval))
+		if (/EHT20|EHT40|EHT80|EHT160|EHT320|EHT320-2/.test(htval))
+			mode.value = 'be';
+		else if (/HE20|HE40|HE80|HE160/.test(htval))
 			mode.value = 'ax';
 		else if (/VHT20|VHT40|VHT80|VHT160/.test(htval))
 			mode.value = 'ac';
@@ -577,6 +621,8 @@ var CBIWifiFrequencyValue = form.Value.extend({
 		if (value[0] && value[1] && value[2])
 		{
 			uci.set('wireless', section_id, 'htmode', value[0]);
+			if (this.useBandOption)
+				uci.set('wireless', section_id, 'band', value[1]);
 			uci.set('wireless', section_id, 'channel', value[2]);
 		}
 	}
@@ -1026,12 +1072,14 @@ return view.extend({
 
 						o = ss.taboption('advanced', form.Flag, 'mu_beamformer', _('MU-MIMO'));
 						add_dep_he_feature(o);
+						add_dep_eht_feature(o);
 						add_dep_vht_feature(o);
 						o.default = o.disabled;
 						o.rmempty = false;
 
 						o = ss.taboption('advanced', form.ListValue, 'twt', _('Target Wake Time'));
 						add_dep_he_feature(o);
+						add_dep_eht_feature(o);
 						o.value('', _('Disable'));
 						o.value('1', _('Enable'));
 						o.value('2', _('Force'));

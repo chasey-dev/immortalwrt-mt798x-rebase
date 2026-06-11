@@ -1,0 +1,32 @@
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -6079,7 +6079,12 @@ static void handle_assoc(struct hostapd_
+ 			set_beacon = true;
+ 	}
+ 
++#ifdef CONFIG_OWE
++	if (wpa_auth_sta_key_mgmt(sta->wpa_sm) != WPA_KEY_MGMT_OWE &&
++	    update_ht_state(hapd, sta) > 0)
++#else /* CONFIG_OWE */
+ 	if (update_ht_state(hapd, sta) > 0)
++#endif /* CONFIG_OWE */
+ 		set_beacon = true;
+ 
+ 	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -2970,6 +2970,14 @@ static int nl80211_mgmt_subscribe_ap_dev
+ 					   false) < 0)
+ 			wpa_printf(MSG_DEBUG,
+ 				   "nl80211: Failed to subscribe to handle Authentication frames - SAE offload may not work");
++#ifdef CONFIG_OWE
++		type = (WLAN_FC_TYPE_MGMT << 2) |
++			(WLAN_FC_STYPE_ASSOC_REQ << 4);
++		if (nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0,
++					   false) < 0)
++			wpa_printf(MSG_DEBUG,
++				   "nl80211: Failed to subscribe to Association Request frames - OWE may not work");
++#endif /* CONFIG_OWE */
+ 	}
+ 
+ 	nl80211_mgmt_handle_register_eloop(bss);

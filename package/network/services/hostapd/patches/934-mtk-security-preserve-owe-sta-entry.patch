@@ -1,0 +1,28 @@
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -5147,6 +5147,7 @@ static int add_associated_sta(struct hos
+ 	int set = 1;
+ 	const u8 *mld_link_addr = NULL;
+ 	bool mld_link_sta = false;
++	bool owe_assoc_req = false;
+ 	u16 eml_cap = 0;
+ 
+ #ifdef CONFIG_IEEE80211BE
+@@ -5196,7 +5197,16 @@ static int add_associated_sta(struct hos
+ 		   wpa_auth_sta_ft_tk_already_set(sta->wpa_sm),
+ 		   wpa_auth_sta_fils_tk_already_set(sta->wpa_sm));
+ 
+-	if (!mld_link_sta && !sta->added_unassoc &&
++#ifdef CONFIG_OWE
++	/*
++	 * The MTK driver creates an authenticated STA entry before hostapd
++	 * handles the OWE association request. Deleting it here sends a
++	 * deauth and removes the state needed by the later assoc response.
++	 */
++	owe_assoc_req = wpa_auth_sta_key_mgmt(sta->wpa_sm) == WPA_KEY_MGMT_OWE;
++#endif /* CONFIG_OWE */
++
++	if (!owe_assoc_req && !mld_link_sta && !sta->added_unassoc &&
+ 	    (!(sta->flags & WLAN_STA_AUTHORIZED) ||
+ 	     (reassoc && sta->ft_over_ds && sta->auth_alg == WLAN_AUTH_FT) ||
+ 	     (!wpa_auth_sta_ft_tk_already_set(sta->wpa_sm) &&

@@ -583,7 +583,10 @@ export function generate(interface, data, config, vlans, stas, phy_features) {
 
 	iface_interworking(config);
 
-	iface.wpa_key_mgmt(config, data.config.band);
+	// MTK AP interoperability requires SHA256-only for required-PMF WPA2-PSK.
+	let use_psk_sha256_only = config.auth_type == 'psk' &&
+		config.wpa == 2 && config.ieee80211w == 2;
+	iface.wpa_key_mgmt(config, data.config.band, use_psk_sha256_only);
 	append_vars(config, [
 		'wpa_key_mgmt',
 	]);

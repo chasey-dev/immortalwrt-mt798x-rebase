@@ -1445,45 +1445,86 @@ return view.extend({
 
 				o.write = function(section_id, value) {
 					var e = this.section.children.filter(function(o) { return o.option == 'encryption' })[0].formvalue(section_id),
-					    co = this.section.children.filter(function(o) { return o.option == 'cipher' })[0], c = co.formvalue(section_id);
+					    copt = (hwtype == 'mtwifi' && e == 'sae') ? '_sae_cipher' : 'cipher',
+					    co = this.section.children.filter(function(o) { return o.option == copt })[0],
+					    c = co ? co.formvalue(section_id) : null;
 
 					if (value == 'wpa' || value == 'wpa2' || value == 'wpa3' || value == 'wpa3-mixed')
 						uci.unset('wireless', section_id, 'key');
 
-					if (co.isActive(section_id) && e && (c == 'tkip' || c == 'ccmp' || c == 'tkip+ccmp'))
+					if (hwtype == 'mtwifi') {
+						uci.unset('wireless', section_id, 'pmf_sha256');
+						if (e != 'psk2' || (c != null && c != 'auto' && c != 'ccmp'))
+							uci.unset('wireless', section_id, 'ieee80211w');
+					}
+
+					if (co && co.isActive(section_id) && e && c && c != 'auto')
 						e += '+' + c;
 
 					uci.set('wireless', section_id, 'encryption', e);
 				};
 
-				o = ss.taboption('encryption', form.ListValue, 'cipher', _('Cipher'));
-				o.depends('encryption', 'wpa');
-				o.depends('encryption', 'wpa2');
-				o.depends('encryption', 'wpa3');
-				o.depends('encryption', 'wpa3-mixed');
-				o.depends('encryption', 'psk2');
-				o.depends('encryption', 'wpa-mixed');
-				o.depends('encryption', 'psk-mixed');
-				if (hwtype != 'mtwifi') {
+				if (hwtype == 'mtwifi') {
+					var cipher = o = ss.taboption('encryption', form.ListValue, 'cipher', _('Cipher'));
 					o.depends('encryption', 'psk');
-				}
-				o.value('auto', _('auto'));
-				o.value('ccmp', _('Force CCMP (AES)'));
-				o.value('tkip', _('Force TKIP'));
-				o.value('tkip+ccmp', _('Force TKIP and CCMP (AES)'));
-				o.write = ss.children.filter(function(o) { return o.option == 'encryption' })[0].write;
+					o.depends('encryption', 'psk2');
+					o.depends('encryption', 'psk-mixed');
+					o.value('auto', _('auto'));
+					o.value('ccmp', _('Force CCMP (AES)'));
+					o.value('tkip', _('Force TKIP'));
+					o.value('tkip+ccmp', _('Force TKIP and CCMP (AES)'));
+					o.write = ss.children.filter(function(o) { return o.option == 'encryption' })[0].write;
 
-				o.cfgvalue = function(section_id) {
-					var v = String(uci.get('wireless', section_id, 'encryption'));
-					if (v.match(/\+/)) {
-						v = v.replace(/^[^+]+\+/, '');
-						if (v == 'aes')
-							v = 'ccmp';
-						else if (v == 'tkip+aes' || v == 'aes+tkip' || v == 'ccmp+tkip')
-							v = 'tkip+ccmp';
-					}
-					return v;
-				};
+					o.cfgvalue = function(section_id) {
+						var v = String(uci.get('wireless', section_id, 'encryption'));
+						if (v.match(/\+/)) {
+							v = v.replace(/^[^+]+\+/, '');
+							if (v == 'aes')
+								v = 'ccmp';
+							else if (v == 'tkip+aes' || v == 'aes+tkip' || v == 'ccmp+tkip')
+								v = 'tkip+ccmp';
+							return v;
+						}
+						return 'auto';
+					};
+
+					o = ss.taboption('encryption', form.ListValue, '_sae_cipher', _('Cipher'));
+					o.depends('encryption', 'sae');
+					o.value('auto', _('auto'));
+					o.value('ccmp', _('Force CCMP (AES)'));
+					o.value('gcmp', _('Force GCMP (AES)'));
+					o.value('gcmp256', _('Force GCMP-256 (AES)'));
+					o.write = ss.children.filter(function(o) { return o.option == 'encryption' })[0].write;
+					o.cfgvalue = cipher.cfgvalue;
+				}
+				else {
+					o = ss.taboption('encryption', form.ListValue, 'cipher', _('Cipher'));
+					o.depends('encryption', 'wpa');
+					o.depends('encryption', 'wpa2');
+					o.depends('encryption', 'wpa3');
+					o.depends('encryption', 'wpa3-mixed');
+					o.depends('encryption', 'psk2');
+					o.depends('encryption', 'wpa-mixed');
+					o.depends('encryption', 'psk-mixed');
+					o.depends('encryption', 'psk');
+					o.value('auto', _('auto'));
+					o.value('ccmp', _('Force CCMP (AES)'));
+					o.value('tkip', _('Force TKIP'));
+					o.value('tkip+ccmp', _('Force TKIP and CCMP (AES)'));
+					o.write = ss.children.filter(function(o) { return o.option == 'encryption' })[0].write;
+
+					o.cfgvalue = function(section_id) {
+						var v = String(uci.get('wireless', section_id, 'encryption'));
+						if (v.match(/\+/)) {
+							v = v.replace(/^[^+]+\+/, '');
+							if (v == 'aes')
+								v = 'ccmp';
+							else if (v == 'tkip+aes' || v == 'aes+tkip' || v == 'ccmp+tkip')
+								v = 'tkip+ccmp';
+						}
+						return v;
+					};
+				}
 
 
 				var crypto_modes = [];
@@ -1632,7 +1673,8 @@ return view.extend({
 					}
 				}
 
-				crypto_modes.push(['none',       _('No Encryption'),   0]);
+				if (hwtype != 'mtwifi' || band != '6g')
+					crypto_modes.push(['none', _('No Encryption'), 0]);
 
 				crypto_modes.sort(function(a, b) { return b[2] - a[2] });
 
@@ -2046,6 +2088,36 @@ return view.extend({
 							o.depends('encryption', 'sae-mixed');
 						}
 					}
+				}
+
+				if (hwtype == 'mtwifi') {
+					o = ss.taboption('encryption', form.ListValue, 'ieee80211w', _('802.11w Management Frame Protection'), _("Note: Some wireless drivers do not fully support 802.11w. E.g. mwlwifi may have problems"));
+					o.value('0', _('Disabled'));
+					o.value('1', _('Optional'));
+					o.value('2', _('Required'));
+					add_dependency_permutations(o, { mode: ['ap', 'sta'], encryption: ['psk2'], cipher: ['auto', 'ccmp'] });
+					o.default = '0';
+					o.write = function(section_id, value) {
+						if (value != '0')
+							return form.ListValue.prototype.write.call(this, section_id, value);
+
+						return form.ListValue.prototype.remove.call(this, section_id);
+					};
+
+					o = ss.taboption('encryption', form.ListValue, 'sae_pwe', _('SAE PWE derivation'));
+					o.value('', _('Automatic'));
+					o.value('2', _('Both'));
+					o.value('0', _('Hunting-and-pecking'));
+					o.value('1', _('Hash-to-element'));
+					add_dependency_permutations(o, { mode: ['ap', 'sta'], encryption: ['sae', 'sae-mixed'] });
+					o.default = '';
+					o.rmempty = true;
+
+					o = ss.taboption('encryption', form.DynamicList, 'sae_groups', _('SAE groups'));
+					o.datatype = 'uinteger';
+					o.placeholder = '19';
+					add_dependency_permutations(o, { mode: ['ap', 'sta'], encryption: ['sae', 'sae-mixed'] });
+					o.rmempty = true;
 				}
 			});
 		};

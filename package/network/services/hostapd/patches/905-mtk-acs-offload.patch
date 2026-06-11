@@ -1,0 +1,220 @@
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -14309,12 +14309,46 @@ fail:
+ #endif /* CONFIG_DRIVER_NL80211_BRCM */
+ 
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++static int nl80211_mtk_do_acs(struct i802_bss *bss,
++			      struct drv_acs_params *params)
++{
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	struct nl_msg *msg;
++	struct nlattr *data;
++	int ret;
++
++	(void) params;
++
++	if (!(msg = nl80211_bss_msg(bss, 0, NL80211_CMD_VENDOR)) ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, MTK_NL80211_VENDOR_ID) ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
++			MTK_NL80211_VENDOR_SUBCMD_OFFLOAD_ACS) ||
++	    !(data = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA))) {
++		nlmsg_free(msg);
++		return -ENOBUFS;
++	}
++	nla_nest_end(msg, data);
++
++	wpa_printf(MSG_DEBUG, "nl80211: MTK do ACS");
++
++	ret = send_and_recv_cmd(drv, msg);
++	if (ret) {
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: MTK failed to invoke driver ACS function: %s",
++			   strerror(-ret));
++	}
++	return ret;
++}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
++
+ static int nl80211_do_acs(void *priv, struct drv_acs_params *params)
+ {
+-#if defined(CONFIG_DRIVER_NL80211_QCA) || defined(CONFIG_DRIVER_NL80211_BRCM)
++#if defined(CONFIG_DRIVER_NL80211_QCA) || defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_MTK)
+ 	struct i802_bss *bss = priv;
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+-#endif /* CONFIG_DRIVER_NL80211_QCA || CONFIG_DRIVER_NL80211_BRCM */
++#endif /* CONFIG_DRIVER_NL80211_QCA || CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_MTK */
+ 
+ #ifdef CONFIG_DRIVER_NL80211_QCA
+ 	if (drv->qca_do_acs)
+@@ -14326,6 +14360,11 @@ static int nl80211_do_acs(void *priv, st
+ 		return wpa_driver_do_broadcom_acs(drv, params);
+ #endif /* CONFIG_DRIVER_NL80211_BRCM */
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	if (drv->mtk_do_acs)
++		return nl80211_mtk_do_acs(bss, params);
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
+ 	return -1;
+ }
+ 
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -195,6 +195,7 @@ struct wpa_driver_nl80211_data {
+ 	unsigned int unsol_bcast_probe_resp:1;
+ 	unsigned int qca_do_acs:1;
+ 	unsigned int brcm_do_acs:1;
++	unsigned int mtk_do_acs:1;
+ 	unsigned int uses_6ghz:1;
+ 	unsigned int uses_s1g:1;
+ 	unsigned int secure_ranging_ctx_vendor_cmd_avail:1;
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -1149,6 +1149,18 @@ static int wiphy_info_handler(struct nl_
+ 					break;
+ 				}
+ #endif /* CONFIG_DRIVER_NL80211_BRCM */
++#ifdef CONFIG_DRIVER_NL80211_MTK
++			} else if (vinfo->vendor_id == MTK_NL80211_VENDOR_ID) {
++				switch (vinfo->subcmd) {
++				case MTK_NL80211_VENDOR_SUBCMD_OFFLOAD_ACS:
++					drv->capa.flags |=
++						WPA_DRIVER_FLAGS_ACS_OFFLOAD;
++					drv->capa.flags |=
++						WPA_DRIVER_FLAGS_SUPPORT_HW_MODE_ANY;
++					drv->mtk_do_acs = 1;
++					break;
++				}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ 			}
+ 
+ 			wpa_printf(MSG_DEBUG, "nl80211: Supported vendor command: vendor_id=0x%x subcmd=%u",
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3589,6 +3589,111 @@ static void nl80211_vendor_event_brcm(st
+ #endif /* CONFIG_DRIVER_NL80211_BRCM */
+ 
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++
++static enum hostapd_hw_mode get_mtk_hw_mode(u8 hw_mode)
++{
++	switch (hw_mode) {
++	case MTK_ACS_MODE_IEEE80211B:
++		return HOSTAPD_MODE_IEEE80211B;
++	case MTK_ACS_MODE_IEEE80211G:
++		return HOSTAPD_MODE_IEEE80211G;
++	case MTK_ACS_MODE_IEEE80211A:
++		return HOSTAPD_MODE_IEEE80211A;
++	case MTK_ACS_MODE_IEEE80211AD:
++		return HOSTAPD_MODE_IEEE80211AD;
++	case MTK_ACS_MODE_IEEE80211ANY:
++		return HOSTAPD_MODE_IEEE80211ANY;
++	default:
++		return NUM_HOSTAPD_MODES;
++	}
++}
++
++
++static void mtk_nl80211_acs_select_ch(struct i802_bss *bss,
++				      const u8 *data, size_t len)
++{
++	struct nlattr *tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_EVENT_MAX + 1];
++	union wpa_event_data event;
++
++	wpa_printf(MSG_DEBUG,
++		   "nl80211: MTK ACS channel selection vendor event received");
++
++	if (nla_parse(tb, MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_EVENT_MAX,
++		      (struct nlattr *) data, len, NULL) ||
++	    !tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_PRIMARY_FREQUENCY] ||
++	    !tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_SECONDARY_FREQUENCY])
++		return;
++
++	os_memset(&event, 0, sizeof(event));
++	event.acs_selected_channels.hw_mode = NUM_HOSTAPD_MODES;
++
++	if (tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_HW_MODE]) {
++		u8 hw_mode = nla_get_u8(
++			tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_HW_MODE]);
++
++		event.acs_selected_channels.hw_mode = get_mtk_hw_mode(hw_mode);
++		if (event.acs_selected_channels.hw_mode == NUM_HOSTAPD_MODES ||
++		    event.acs_selected_channels.hw_mode ==
++		    HOSTAPD_MODE_IEEE80211ANY) {
++			wpa_printf(MSG_DEBUG,
++				   "nl80211: Invalid MTK hw_mode %u in ACS selection event",
++				   hw_mode);
++			return;
++		}
++	}
++
++	event.acs_selected_channels.pri_freq = nla_get_u32(
++		tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_PRIMARY_FREQUENCY]);
++	event.acs_selected_channels.sec_freq = nla_get_u32(
++		tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_SECONDARY_FREQUENCY]);
++
++	if (tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_EDMG_CHANNEL])
++		event.acs_selected_channels.edmg_channel =
++			nla_get_u8(tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_EDMG_CHANNEL]);
++	if (tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_VHT_SEG0_CENTER_CHANNEL])
++		event.acs_selected_channels.vht_seg0_center_ch =
++			nla_get_u8(tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_VHT_SEG0_CENTER_CHANNEL]);
++	if (tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_VHT_SEG1_CENTER_CHANNEL])
++		event.acs_selected_channels.vht_seg1_center_ch =
++			nla_get_u8(tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_VHT_SEG1_CENTER_CHANNEL]);
++	if (tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_CHWIDTH])
++		event.acs_selected_channels.ch_width =
++			nla_get_u16(tb[MTK_NL80211_VENDOR_ATTR_EVENT_ACS_COMPLETE_CHWIDTH]);
++	event.acs_selected_channels.link_id = -1;
++
++	wpa_printf(MSG_INFO,
++		   "nl80211: MTK ACS results: PFreq: %d SFreq: %d BW: %d VHT0: %d VHT1: %d HW_MODE: %d EDMGCH: %d",
++		   event.acs_selected_channels.pri_freq,
++		   event.acs_selected_channels.sec_freq,
++		   event.acs_selected_channels.ch_width,
++		   event.acs_selected_channels.vht_seg0_center_ch,
++		   event.acs_selected_channels.vht_seg1_center_ch,
++		   event.acs_selected_channels.hw_mode,
++		   event.acs_selected_channels.edmg_channel);
++
++	wpa_supplicant_event(bss->ctx, EVENT_ACS_CHANNEL_SELECTED, &event);
++}
++
++
++static void nl80211_vendor_event_mtk(struct i802_bss *bss, u32 subcmd,
++				     u8 *data, size_t len)
++{
++	switch (subcmd) {
++	case MTK_NL80211_VENDOR_EVENT_ACS_COMPLETE_EVENT:
++		mtk_nl80211_acs_select_ch(bss, data, len);
++		break;
++	default:
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: Ignore unsupported MTK vendor event %u",
++			   subcmd);
++		break;
++	}
++}
++
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
++
+ static void nl80211_vendor_event(struct i802_bss *bss, struct nlattr **tb)
+ {
+ 	u32 vendor_id, subcmd, wiphy = 0;
+@@ -3644,6 +3749,11 @@ static void nl80211_vendor_event(struct
+ 		nl80211_vendor_event_brcm(drv, subcmd, data, len);
+ 		break;
+ #endif /* CONFIG_DRIVER_NL80211_BRCM */
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	case MTK_NL80211_VENDOR_ID:
++		nl80211_vendor_event_mtk(bss, subcmd, data, len);
++		break;
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ 	default:
+ 		wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported vendor event");
+ 		break;

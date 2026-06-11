@@ -1,0 +1,26 @@
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1539,6 +1539,9 @@ int hostapd_is_dfs_required(struct hosta
+ {
+ 	int n_chans, n_chans1, start_chan_idx, start_chan_idx1, res;
+ 
++	if (iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)
++		return 0;
++
+ 	if ((!(iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) &&
+ 	     !iface->conf->ieee80211h) ||
+ 	    !iface->current_mode ||
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1422,9 +1422,8 @@ void hostapd_event_ch_switch(struct host
+ 		hostapd_ubus_notify_csa(hapd, freq);
+ 	} else if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) {
+ 		/* Complete AP configuration for the first bring up. */
+-		if (is_dfs0 > 0 &&
+-		    hostapd_is_dfs_required(hapd->iface) <= 0 &&
+-		    hapd->iface->state != HAPD_IFACE_ENABLED) {
++		if (hapd->iface->state != HAPD_IFACE_ENABLED &&
++		    hostapd_is_dfs_required(hapd->iface) <= 0) {
+ 			/* Fake a CAC start bit to skip setting channel */
+ 			hapd->iface->cac_started = 1;
+ 			hostapd_setup_interface_complete(hapd->iface, 0);

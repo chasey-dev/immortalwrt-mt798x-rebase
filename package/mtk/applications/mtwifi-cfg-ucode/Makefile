@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=mtwifi-cfg-ucode
 PKG_LICENSE:=GPL-2.0
-PKG_VERSION:=3
+PKG_VERSION:=4
 PKG_RELEASE:=1
 
 include $(INCLUDE_DIR)/package.mk
@@ -24,7 +24,7 @@ define Package/mtwifi-cfg-ucode/Default
   SECTION:=MTK Properties
   CATEGORY:=MTK Properties
   SUBMENU:=Applications
-  TITLE:=mtwifi configure scripts for mt798x (ucode)
+  TITLE:=mtwifi configure scripts for mt799x (ucode)
   CONFLICTS:=mtwifi-cfg
 endef
 
@@ -35,7 +35,7 @@ endef
 
 define Package/mtwifi-cfg-ucode
   $(call Package/mtwifi-cfg-ucode/Default)
-  DEPENDS:=$(UCODE_DEPENDS) +wifi-scripts +iwinfo-ucode
+  DEPENDS:=$(UCODE_DEPENDS) +wifi-scripts +iwinfo-ucode +mwctl
 endef
 
 define Build/Prepare

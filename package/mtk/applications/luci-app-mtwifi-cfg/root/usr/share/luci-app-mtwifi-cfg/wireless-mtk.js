@@ -13,6 +13,22 @@
 
 var isReadonlyView = !L.hasViewPermission();
 
+var callIwinfoScan = rpc.declare({
+	object: 'iwinfo',
+	method: 'scan',
+	params: [ 'device' ],
+	nobatch: true,
+	expect: { results: [] }
+});
+
+var callMtwifiScanDevice = rpc.declare({
+	object: 'luci.mtwifi',
+	method: 'getScanName',
+	params: [ 'device' ],
+	nobatch: true,
+	expect: { device: '' }
+});
+
 function count_changes(section_id) {
 	var changes = ui.changes.changes, n = 0;
 
@@ -2198,7 +2214,13 @@ return view.extend({
 		};
 
 		s.handleScanRefresh = function(radioDev, scanCache, table, stop) {
-			return radioDev.getScanList().then(L.bind(function(results) {
+			var scan = (radioDev.get('type') == 'mtwifi')
+				? callMtwifiScanDevice(radioDev.getName()).then(function(device) {
+					return device ? callIwinfoScan(device) : [];
+				})
+				: radioDev.getScanList();
+
+			return scan.then(L.bind(function(results) {
 				var rows = [];
 
 				for (var i = 0; i < results.length; i++)

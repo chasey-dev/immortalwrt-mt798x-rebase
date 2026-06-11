@@ -1,0 +1,10 @@
+{
+	"luci-mod-network-config": {
+		"description": "Grant access to MTK wireless scan helper",
+		"write": {
+			"ubus": {
+				"luci.mtwifi": [ "getScanName" ]
+			}
+		}
+	}
+}

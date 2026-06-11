@@ -100,6 +100,8 @@ function dat_diff(dat_old, dat_new) {
 /**
  * Apply one radio's UCI projection to its DAT profile and runtime interfaces.
  *
+ * Hostapd/wpa_supplicant own AP/STA attach; this function only opens the
+ * driver anchor needed for DAT read and ApCli exposure.
  *
  * @param {Object} uci_cfg - netifd wireless payload for current radio.
  * @param {Object} all_devs - L1 device map.

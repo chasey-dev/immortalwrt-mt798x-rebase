@@ -31,6 +31,10 @@ import * as cfg from 'mtwifi.config';
 import * as driver from 'mtwifi.driver';
 import { log, with_lock } from 'mtwifi.utils';
 
+import * as hostapd from 'wifi.hostapd';
+import * as supplicant from 'wifi.supplicant';
+import { validate } from 'wifi.validate';
+
 const LOCK_FILE = "/var/lock/mtwifi.lock";
 
 log.debug(`[Setup] received cmd ${ARGV}`);
@@ -87,6 +91,257 @@ function dump_options() {
 	exit(0);
 }
 
+/**
+ * Shallow-clone a netifd config object while copying array values.
+ *
+ * wifi-scripts mutates config during validation and generation, so use a
+ * separate copy for wpad input.
+ *
+ * @param {Object} config - Source config object.
+ * @returns {Object} Cloned config object.
+ */
+function clone_config(config) {
+    let res = {};
+
+    for (let k, v in config)
+        res[k] = (type(v) == "array") ? [ ...v ] : v;
+
+    return res;
+}
+
+/**
+ * Clone one interface object for hostapd/wpa_supplicant generation.
+ *
+ * @param {Object} iface - Source interface object.
+ * @returns {Object} Cloned interface with a cloned config object.
+ */
+function clone_interface(iface) {
+    return {
+        ...iface,
+        config: clone_config(iface.config || {})
+    };
+}
+
+/**
+ * Check whether hostapd and wpa_supplicant are available.
+ *
+ * @returns {boolean|null} true when hostapd and wpa_supplicant are both
+ * available.
+ */
+function wpad_enabled() {
+    return fs.access('/etc/init.d/wpad', 'x') &&
+        fs.access('/usr/sbin/hostapd', 'x') &&
+        fs.access('/usr/sbin/wpa_supplicant', 'x');
+}
+
+/**
+ * Normalize device config for wifi-scripts validation.
+ *
+ * Strip or normalize mtwifi/private values that are valid for UCI/DAT but not
+ * for the cfg80211-style validator.
+ *
+ * @param {Object} config - wifi-device config passed to wifi-scripts.
+ */
+function normalize_device_config(config) {
+    if (config.hwmode && !(config.hwmode in [ "11a", "11b", "11g", "11ad" ]))
+        delete config.hwmode;
+    if (config.hw_mode && !(config.hw_mode in [ "11a", "11b", "11g", "11ad" ]))
+        delete config.hw_mode;
+
+    if (config.htmode == "EHT320-2")
+        config.htmode = "EHT320";
+
+    if (config.channel == "auto")
+        config.channel = 0;
+    else if (config.channel != null)
+        config.channel = +config.channel;
+
+    validate("device", config);
+}
+
+/**
+ * Build the iface shape expected by wifi-scripts.
+ *
+ * mtwifi_ifname is the real private interface selected earlier from the SDK/L1
+ * prefix rules.
+ *
+ * @param {Object} config - wifi-iface config passed to wifi-scripts.
+ * @param {string} ifname - Real mtwifi interface name.
+ */
+function normalize_iface_config(config, ifname) {
+    config.ifname = ifname;
+
+    validate("iface", config);
+}
+
+/**
+ * Prepare wifi-scripts input for hostapd/wpa_supplicant generation.
+ *
+ * Overlay keys affect only wpad config output. They are not written back to UCI
+ * or DAT.
+ *
+ * @param {Object} data - netifd wireless device payload.
+ * @param {Object[]} iface_items - Interfaces to include.
+ * @param {string} phy - cfg80211 phy name used by wifi-scripts.
+ * @returns {Object} Payload accepted by wifi-scripts.
+ */
+function prepare_wpad_data(data, iface_items, phy) {
+    let wdata = {
+        ...data,
+        config: clone_config(data.config || {}),
+        interfaces: {}
+    };
+
+    wdata.phy = phy;
+    let radio = wdata.config.radio;
+    radio = (radio == null) ? null : +radio;
+    wdata.phy_suffix = (radio != null && radio >= 0) ? ":" + radio : "";
+    wdata.vif_phy_suffix = wdata.phy_suffix;
+    wdata.ifname_prefix = "";
+
+    normalize_device_config(wdata.config);
+
+    for (let item in iface_items) {
+        let iface = item.iface;
+        let iface_key = item.key;
+
+        wdata.interfaces[iface_key] = clone_interface(iface);
+
+        let iface_config = wdata.interfaces[iface_key].config;
+        if (item.existing_netdev) {
+            iface_config.hostapd_bss_options = [
+                ...(iface_config.hostapd_bss_options || []),
+                "#existing_netdev"
+            ];
+        }
+
+        normalize_iface_config(iface_config, iface.mtwifi_ifname);
+    }
+
+    return wdata;
+}
+
+/**
+ * Register generated configs with hostapd/wpa_supplicant.
+ *
+ * cfg.setup() handles DAT and the driver-created primary/ApCli interfaces.
+ * wifi-scripts registers their per-PHY daemon state.
+ *
+ * @param {Object} data - netifd wireless device payload with mtwifi_ifname values.
+ * @param {Object} cur_dev - L1 device descriptor for current radio.
+ * @returns {boolean} true when all enabled AP/STA interfaces were registered.
+ */
+function setup_wpad(data, cur_dev) {
+    let phy = driver.phy_from_ifname(cur_dev.main_ifname);
+
+    if (!phy) {
+        netifd.setup_failed("PHY_NOT_FOUND");
+        return false;
+    }
+
+    let ap_items = [];
+    let sta_items = [];
+
+    for (let idx, iface in data.interfaces) {
+        let ifname = iface.mtwifi_ifname;
+        let config = iface.config;
+
+        if (!ifname)
+            continue;
+
+        let iface_key = iface.name || ifname;
+
+        if (config.mode == "ap")
+            push(ap_items, {
+                iface,
+                key: iface_key,
+                existing_netdev: ifname == cur_dev.main_ifname
+            });
+        else if (config.mode == "sta")
+            push(sta_items, { iface, key: iface_key });
+    }
+
+    let hostapd_data;
+    if (length(ap_items)) {
+        if (ap_items[0].iface.mtwifi_ifname != cur_dev.main_ifname) {
+            netifd.setup_failed('AP_FIRST_BSS_NOT_MAIN');
+            return false;
+        }
+
+        if (!driver.wait_for_iface(cur_dev.main_ifname)) {
+            netifd.setup_failed('AP_IFACE_NOT_FOUND');
+            return false;
+        }
+
+        hostapd_data = prepare_wpad_data(data, ap_items, phy);
+    }
+
+    let supplicant_configs = [];
+    let supplicant_data;
+    for (let item in sta_items) {
+        let iface = item.iface;
+        let ifname = iface.mtwifi_ifname;
+
+        if (!driver.wait_for_iface(ifname)) {
+            netifd.setup_failed('APCLI_IFACE_NOT_FOUND');
+            return false;
+        }
+
+        let wdata = prepare_wpad_data(data, [ item ], phy);
+        let sconf = supplicant.generate(supplicant_configs, wdata,
+            wdata.interfaces[item.key]);
+        if (type(sconf) != "object") {
+            netifd.setup_failed('SUPPLICANT_CONFIG_FAILED');
+            return false;
+        }
+
+        sconf.existing_netdev = true;
+        supplicant_data = wdata;
+    }
+
+    if (length(supplicant_configs))
+        supplicant.setup(supplicant_configs, supplicant_data);
+
+    if (hostapd_data)
+        hostapd.setup(hostapd_data);
+
+    if (length(supplicant_configs))
+        supplicant.start(supplicant_data);
+
+    for (let item in ap_items) {
+        let ifname = item.iface.mtwifi_ifname;
+
+        if (!driver.wait_for_iface(ifname)) {
+            netifd.setup_failed('AP_IFACE_NOT_FOUND');
+            return false;
+        }
+
+        driver.apply_runtime_hooks(item.iface.config, ifname);
+    }
+
+    return true;
+}
+
+/**
+ * Clear the per-PHY wpad configuration while retaining driver-created netdevs.
+ *
+ * @param {Object} dev - L1 device descriptor.
+ */
+function teardown_wpad(dev) {
+    let phy = driver.phy_from_ifname(dev.main_ifname);
+    if (!phy)
+        return;
+
+    let hostapd_request = { phy, radio: -1, config: "" };
+    let supplicant_request = { phy, radio: -1, config: [] };
+
+    if (global.ubus.list('hostapd'))
+        global.ubus.call('hostapd', 'config_set', hostapd_request);
+
+    if (global.ubus.list('wpa_supplicant'))
+        global.ubus.call('wpa_supplicant', 'config_set', supplicant_request);
+}
+
 // ==========================================
 //              SETUP
 // ==========================================
@@ -99,6 +354,7 @@ function handle_setup(data) {
         let cur_dev = all_devs[cur_devname];
 
         if (cur_dev) {
+            teardown_wpad(cur_dev);
             cfg.down(cur_devname, all_devs);
         }
 
@@ -287,7 +543,26 @@ function handle_setup(data) {
 
     /*****          SETUP VIFS        *******/
     // UCI => DAT, ifup, reload driver...
-    cfg.setup(data, all_devs);
+    if (!wpad_enabled()) {
+        netifd.setup_failed("WPAD_NOT_FOUND");
+        l1.close();
+        return;
+    }
+
+    teardown_wpad(cur_dev);
+
+    if (!cfg.setup(data, all_devs)) {
+        l1.close();
+        return;
+    }
+
+    if (!setup_wpad(data, cur_dev)) {
+        teardown_wpad(cur_dev);
+        driver.ifdown(cur_dev.main_ifname);
+        l1.close();
+        return;
+    }
+
     // notify netifd to setup
     netifd.set_up();
 
@@ -300,6 +575,12 @@ function handle_setup(data) {
 function handle_teardown() {
     let l1 = l1parser.open();
     let all_devs = l1.getall();
+    let cur_dev = cur_devname ? all_devs[cur_devname] : null;
+
+    if (cur_dev)
+        teardown_wpad(cur_dev);
+
+    // netifd removes vifs. This path only clears driver and wpad state.
     // TODO: teardown logic may still be buggy when primary band is shutdown
     cfg.down(cur_devname, all_devs);
     l1.close();

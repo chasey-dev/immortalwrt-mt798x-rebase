@@ -29,6 +29,10 @@
             "type": "string",
             "description": "MAC address of the access point"
         },
+        "macaddr": {
+            "type": "string",
+            "description": "Override interface MAC address"
+        },
         "bridge_isolate": {
             "type": "boolean",
             "description": "Enable bridge port isolation"
@@ -42,7 +46,7 @@
         },
         "macfilter": {
             "type": "string",
-            "enum": ["disable", "allow", "deny"],
+            "enum": ["allow", "deny"],
             "description": "MAC address filtering mode"
         },
         "maclist": {

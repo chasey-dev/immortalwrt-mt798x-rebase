@@ -39,6 +39,39 @@ function strict_bool(val) {
 	return "0";
 }
 
+const PMF_REQUIRED_AUTH_MODES = [ "OWE", "WPA3PSK" ];
+
+/**
+ * Calculate the DAT PMF mode from AuthMode and UCI ieee80211w.
+ *
+ * Return values match DAT MFPR/MFPC decisions: 2 required, 1 optional, 0 off.
+ *
+ * @param {string} authmode - DAT AuthMode token.
+ * @param {number} ieee80211w - Typed UCI PMF value.
+ * @returns {number} 2, 1, or 0.
+ */
+function calc_pmf_mode(authmode, ieee80211w) {
+	if (authmode in PMF_REQUIRED_AUTH_MODES)
+		return 2;
+
+	if (authmode == "WPA2PSKMIXWPA3PSK")
+		return 1;
+
+	return ieee80211w ?? 0;
+}
+
+/**
+ * Mirror the mainline WPA-PSK-SHA256 rule into the DAT profile.
+ *
+ * @param {string} authmode - DAT AuthMode token.
+ * @param {number} pmf_mode - Effective PMF mode.
+ * @returns {string} DAT boolean token.
+ */
+function calc_pmf_sha256(authmode, pmf_mode) {
+	return (pmf_mode != 0 && authmode in [ "WPA2PSK", "WPA2PSKMIXWPA3PSK" ]) ?
+		"1" : "0";
+}
+
 /**
  * Extract the numeric VIF suffix used by indexed DAT AP values.
  *
@@ -277,26 +310,34 @@ export function convert(uci_cfg) {
 				set_token("ApCliMuMimoUlEnable", strict_bool(c.mumimo_ul));
 				set_token("ApCliMuOfdmaDlEnable", strict_bool(c.ofdma_dl));
 				set_token("ApCliMuOfdmaUlEnable", strict_bool(c.ofdma_ul));
+				set_token("ApCliPweMethod", defs.SAE_PWE_2_DAT[c.sae_pwe]);
+
+				// only one sae_group for ApCli
+				let sae_group = c.sae_groups[0];
+				dat.ApCliSAEGroup = sae_group;
 
 				// uci encryption mode => DAT cfg
-				let enc_info = defs.ENC_2_DAT[c.encryption];
-				if (enc_info) {
-					dat.ApCliAuthMode = enc_info[0];
-					dat.ApCliEncrypType = enc_info[1];
-					
-					// ApCli PMF
-					if (enc_info[0] == "OWE" || enc_info[0] == "WPA3PSK") {
-						dat.ApCliPMFMFPC = "1";
-						dat.ApCliPMFMFPR = "1";
-						dat.ApCliPMFSHA256 = "0";
-					} else {
-						dat.ApCliPMFMFPC = "0";
-						dat.ApCliPMFMFPR = "0";
-					}
+				let enc_info = defs.ENC_2_COMMON_DAT[c.encryption];
+				let authmode = enc_info[0];
+				let pmf_mode = calc_pmf_mode(authmode, c.ieee80211w);
+
+				dat.ApCliAuthMode = authmode;
+				dat.ApCliEncrypType = enc_info[1];
+				dat.ApCliPMFSHA256 = calc_pmf_sha256(authmode, pmf_mode);
+
+				// ApCli PMF
+				if (pmf_mode == 2) {
+					dat.ApCliPMFMFPC = "1";
+					dat.ApCliPMFMFPR = "1";
+				} else if (pmf_mode == 1) {
+					dat.ApCliPMFMFPC = "1";
+					dat.ApCliPMFMFPR = "0";
+				} else {
+					dat.ApCliPMFMFPC = "0";
+					dat.ApCliPMFMFPR = "0";
 				}
 				break; // only ONE ApCli supported for each device
 			}
-		}
 	}
 
 	// ------------------------------------------
@@ -396,21 +437,24 @@ export function convert(uci_cfg) {
 		set_token("MuOfdmaDlEnable", strict_bool(c.ofdma_dl));
 		set_token("MuOfdmaUlEnable", strict_bool(c.ofdma_ul));
 
+		set_token("PweMethod", defs.SAE_PWE_2_DAT[c.sae_pwe]);
+
 		// AuthMode + EncrypType
-		let enc_def = defs.ENC_2_DAT[c.encryption] || ["OPEN", "NONE"];
+		let enc_def = defs.ENC_2_COMMON_DAT[c.encryption];
 		let authmode = enc_def[0];
+		let pmf_mode = calc_pmf_mode(authmode, c.ieee80211w);
+
 		set_token("AuthMode", authmode);
 		set_token("EncrypType", enc_def[1]);
+		set_token("PMFSHA256", calc_pmf_sha256(authmode, pmf_mode));
 
 		// AP PMF
-		if (authmode == "OWE" || authmode == "WPA3PSK") {
+		if (pmf_mode == 2) {
 			set_token("PMFMFPC", "1");
 			set_token("PMFMFPR", "1");
-			set_token("PMFSHA256", "0");
-		} else if (authmode == "WPA2PSKWPA3PSK") {
+		} else if (pmf_mode == 1) {
 			set_token("PMFMFPC", "1");
 			set_token("PMFMFPR", "0");
-			set_token("PMFSHA256", "0");
 		} else {
 			// NOTE:
 			// in AP_CFGS defaults, they were set to 0

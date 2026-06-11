@@ -20,6 +20,7 @@
 import * as fs from 'fs';
 
 const dat_defs = "dat-defs";
+const _wpad_overlay = "wpad-overlay";
 const device = "wireless.device";
 const iface = "wireless.iface";
 const vlan = "wireless.vlan";
@@ -28,6 +29,7 @@ const station = "wireless.station";
 const schema_path = "/usr/share/schema/mtwifi";
 
 const dat_defs_path = `${schema_path}/${dat_defs}.json`;
+const wpad_overlay_path = `${schema_path}/${_wpad_overlay}.json`;
 const device_path = `${schema_path}/${device}.json`;
 const iface_path = `${schema_path}/${iface}.json`;
 const vlan_path = `${schema_path}/${vlan}.json`;
@@ -35,6 +37,8 @@ const station_path = `${schema_path}/${station}.json`;
 
 // parse DAT config defaults
 export const defs = json(fs.readfile(dat_defs_path));
+// parse wpad config overlay
+export const wpad_overlay = json(fs.readfile(wpad_overlay_path));
 
 // parse UCI config schema
 const device_schema = json(fs.readfile(device_path));

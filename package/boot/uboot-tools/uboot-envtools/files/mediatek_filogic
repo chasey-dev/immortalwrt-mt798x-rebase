@@ -60,9 +60,16 @@ tplink,tl-7dr7250-v1|\
 tplink,tl-xdr4288|\
 tplink,tl-xdr6086|\
 tplink,tl-xdr6088|\
+<<<<<<< HEAD
 tplink,tl-xtr8488|\
 viettel,nr3053|\
 xiaomi,mi-router-ax3000t-ubootmod|\
+=======
+	tplink,tl-xtr8488|\
+	viettel,vht-32x6|\
+	viettel,nr3053|\
+	xiaomi,mi-router-ax3000t-ubootmod|\
+>>>>>>> 1bbd4610f6 (mediatek: filogic: add Viettel VHT-32X6V1 support)
 xiaomi,mi-router-wr30u-ubootmod|\
 xiaomi,redmi-router-ax6000-ubootmod|\
 zyxel,ex5601-t0-ubootmod|\

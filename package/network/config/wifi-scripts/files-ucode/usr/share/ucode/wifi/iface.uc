@@ -122,14 +122,15 @@ export function parse_encryption(config, dev_config, phy_features) {
 		config.wpa_pairwise ??= 'CCMP';
 };
 
-export function wpa_key_mgmt(config, band) {
+export function wpa_key_mgmt(config, band, use_psk_sha256_only) {
 	if (!config.wpa)
 		return;
 
 	switch(config.auth_type) {
 	case 'psk':
 	case 'psk2':
-		append_value(config, 'wpa_key_mgmt', 'WPA-PSK');
+		if (!use_psk_sha256_only)
+			append_value(config, 'wpa_key_mgmt', 'WPA-PSK');
 		if (config.wpa >= 2 && config.ieee80211r)
 			append_value(config, 'wpa_key_mgmt', 'FT-PSK');
 		if (config.ieee80211w)

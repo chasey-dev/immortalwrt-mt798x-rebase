@@ -39,3 +39,18 @@ msgstr "无线网络设置错误"
 
 msgid "At least one MBSSID needs to be reserved"
 msgstr "至少需要保留1个MBSSID"
+
+msgid "SAE PWE derivation"
+msgstr "SAE 密码元素（PWE）派生算法"
+
+msgid "Hunting-and-pecking"
+msgstr "HnP 循环（Hunting-and-Pecking）"
+
+msgid "Hash-to-element"
+msgstr "H2E（Hash-to-Element）"
+
+msgid "Both"
+msgstr "两种方式"
+
+msgid "SAE groups"
+msgstr "SAE 有限循环群组"

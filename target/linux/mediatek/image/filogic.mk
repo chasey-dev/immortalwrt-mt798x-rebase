@@ -334,7 +334,7 @@ define Device/smartrg_sdg-8733a
 $(call Device/adtran_smartrg)
   DEVICE_MODEL := SDG-8733A
   DEVICE_DTS := mt7988d-smartrg-SDG-8733A
-  DEVICE_PACKAGES += mt7988-2p5g-phy-firmware kmod-phy-aquantia
+  DEVICE_PACKAGES += kmod-mt798x-2p5g-phy kmod-phy-aquantia
 endef
 TARGET_DEVICES += smartrg_sdg-8733a
 
@@ -562,7 +562,7 @@ define Device/asus_zenwifi-bt8
   DEVICE_MODEL := ZenWiFi BT8
   DEVICE_DTS := mt7988d-asus-zenwifi-bt8
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES := kmod-usb3 mt7988-2p5g-phy-firmware automount
+  DEVICE_PACKAGES := kmod-usb3 kmod-mt798x-2p5g-phy automount
   KERNEL := kernel-bin | gzip | \
 	fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
   KERNEL_INITRAMFS := kernel-bin | lzma | \
@@ -586,7 +586,7 @@ define Device/asus_zenwifi-bt8-ubootmod
   DEVICE_DTS := mt7988d-asus-zenwifi-bt8-ubootmod
   DEVICE_DTS_DIR := ../dts
   DEVICE_DTS_LOADADDR := 0x45f00000
-  DEVICE_PACKAGES := kmod-usb3 mt7988-2p5g-phy-firmware automount
+  DEVICE_PACKAGES := kmod-usb3 kmod-mt798x-2p5g-phy automount
   ARTIFACTS := preloader.bin bl31-uboot.fip
   ARTIFACT/preloader.bin := mt7988-bl2 spim-nand-ubi-ddr4
   ARTIFACT/bl31-uboot.fip := mt7988-bl31-uboot asus_zenwifi-bt8
@@ -764,7 +764,7 @@ define Device/bananapi_bpi-r4-poe
   DEVICE_DTS := mt7988a-bananapi-bpi-r4-2g5
   DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4-poe
   $(call Device/bananapi_bpi-r4-common)
-  DEVICE_PACKAGES += mt7988-2p5g-phy-firmware
+  DEVICE_PACKAGES += kmod-mt798x-2p5g-phy
   SUPPORTED_DEVICES += bananapi,bpi-r4-2g5
 endef
 TARGET_DEVICES += bananapi_bpi-r4-poe
@@ -781,7 +781,7 @@ define Device/bananapi_bpi-r4-lite
   DEVICE_DTS_DIR := ../dts
   DEVICE_DTS_LOADADDR := 0x4ff00000
   DEVICE_PACKAGES := kmod-eeprom-at24 kmod-gpio-pca953x kmod-i2c-mux-pca954x automount \
-		     kmod-rtc-pcf8563 kmod-sfp kmod-usb3 e2fsprogs mkf2fs mt7987-2p5g-phy-firmware
+		     kmod-rtc-pcf8563 kmod-sfp kmod-usb3 e2fsprogs mkf2fs kmod-mt798x-2p5g-phy
   BLOCKSIZE := 128k
   PAGESIZE := 2048
   KERNEL_IN_UBI := 1
@@ -1820,7 +1820,7 @@ define Device/glinet_gl-mt3600be
   DEVICE_MODEL := GL-MT3600BE
   DEVICE_DTS := mt7987a-glinet-gl-mt3600be
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES := mt7987-2p5g-phy-firmware \
+  DEVICE_PACKAGES := kmod-mt798x-2p5g-phy \
 	kmod-hwmon-pwmfan kmod-usb3 automount
   KERNEL = kernel-bin | lzma | \
 	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
@@ -1939,7 +1939,7 @@ define Device/hiveton_h5000m
   DEVICE_ALT0_MODEL := H5000M
   DEVICE_DTS := mt7987a-hiveton-h5000m
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-usb3 mt7987-2p5g-phy-firmware \
+  DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-usb3 kmod-mt798x-2p5g-phy \
 	f2fsck mkf2fs automount
   KERNEL_LOADADDR := 0x40000000
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
@@ -2244,7 +2244,7 @@ TARGET_DEVICES += keenetic_kap-630
 define Device/keenetic_kn-1812-common
   DEVICE_DTS_DIR := ../dts
   DEVICE_PACKAGES := kmod-usb3 automount \
-		mt7988-2p5g-phy-firmware
+		kmod-mt798x-2p5g-phy
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k
   PAGESIZE := 2048
@@ -2540,7 +2540,7 @@ define Device/mediatek_mt7987a-rfb
   DEVICE_DTS_DIR := ../dts
   DEVICE_DTC_FLAGS := --pad 4096
   DEVICE_DTS_LOADADDR := 0x4ff00000
-  DEVICE_PACKAGES := mt7987-2p5g-phy-firmware kmod-sfp
+  DEVICE_PACKAGES := kmod-mt798x-2p5g-phy kmod-sfp
   KERNEL_LOADADDR := 0x40000000
   KERNEL := kernel-bin | gzip
   KERNEL_INITRAMFS := kernel-bin | lzma | \
@@ -2591,7 +2591,7 @@ define Device/mediatek_mt7988a-rfb
   DEVICE_DTS_DIR := $(DTS_DIR)/
   DEVICE_DTC_FLAGS := --pad 4096
   DEVICE_DTS_LOADADDR := 0x45f00000
-  DEVICE_PACKAGES := mt7988-2p5g-phy-firmware kmod-sfp kmod-phy-aquantia
+  DEVICE_PACKAGES := kmod-mt798x-2p5g-phy kmod-sfp kmod-phy-aquantia
   KERNEL_LOADADDR := 0x46000000
   KERNEL := kernel-bin | gzip
   KERNEL_INITRAMFS := kernel-bin | lzma | \
@@ -3192,7 +3192,7 @@ define Device/routerich_be7200
   IMAGE/sysupgrade.itb := append-kernel | \
 	fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-with-rootfs | \
 	pad-rootfs | append-metadata
-  DEVICE_PACKAGES := mt7987-2p5g-phy-firmware \
+  DEVICE_PACKAGES := kmod-mt798x-2p5g-phy \
 	 kmod-regulator-userspace-consumer kmod-usb3 automount
   ARTIFACTS := preloader.bin bl31-uboot.fip
   ARTIFACT/preloader.bin := mt7987-bl2 spim-nand0
@@ -3360,7 +3360,7 @@ define Device/tplink_be450
   DEVICE_DTS := mt7988d-tplink-be450
   DEVICE_DTS_DIR := ../dts
   DEVICE_PACKAGES := kmod-usb3 automount \
-	    mt7988-2p5g-phy-firmware
+	    kmod-mt798x-2p5g-phy
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k
   PAGESIZE := 2048
@@ -3439,7 +3439,7 @@ define Device/tplink_tl-7dr-common
   DEVICE_VENDOR := TP-Link
   DEVICE_DTS_DIR := ../dts
   DEVICE_DTS_LOADADDR := 0x45f00000
-  DEVICE_PACKAGES := mt7988-2p5g-phy-firmware
+  DEVICE_PACKAGES := kmod-mt798x-2p5g-phy
   KERNEL_LOADADDR := 0x46000000
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k

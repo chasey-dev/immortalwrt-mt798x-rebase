@@ -1,12 +1,13 @@
 {
 	"MAX_MBSSID": 16,
 	"MAX_ACL_ENTRY": 129,
-	"VIF_CFGS": {
+	"AP_CFGS": {
 		"AuthMode": "OPEN",
 		"EncrypType": "NONE",
 		"PMFMFPC": "0",
 		"PMFMFPR": "0",
 		"PMFSHA256": "0",
+		"PweMethod": "0",
 		"RekeyInterval": "3600",
 		"DefaultKeyID": "1",
 		"IEEE8021X": "0",
@@ -30,7 +31,6 @@
 		"RTSThreshold": "2347",
 		"HT_AMSDU": "1",
 		"HT_AutoBA": "1",
-		"HT_BAWinSize": "256",
 		"HT_GI": "1",
 		"HT_LDPC": "1",
 		"HT_OpMode": "0",
@@ -52,30 +52,45 @@
 		"TxRate": "0",
 		"DtimPeriod": "1"
 	},
-	"VIF_CFGS_IDX": {
+	"AP_CFGS_IDX": {
 		"WPAPSK": "12345678",
 		"SSID": "",
 		"RADIUS_Key": ""
 	},
-	"VIF_ACL": {
+	"AP_ACL": {
 		"AccessPolicy": "0",
 		"AccessControlList": ""
 	},
-	"CHIP_CFGS": {
-		"beacon_int": [ "BeaconPeriod", "100" ],
-        "whnat": [ "WHNAT", "1" ]
+	"APCLI_CFGS": {
+		"ApCliEnable": "0",
+		"ApCliSsid": "",
+		"ApCliBssid": "",
+		"ApCliAuthMode": "OPEN",
+		"ApCliEncrypType": "NONE",
+		"ApCliWPAPSK": "",
+		"ApCliPMFMFPC": "0",
+		"ApCliPMFMFPR": "0",
+		"ApCliPMFSHA256": "0",
+		"ApCliPweMethod": "0",
+		"ApCliSAEGroup": "19",
+		"ApCliWirelessMode": "",
+		"ApCliMuOfdmaDlEnable": "1",
+		"ApCliMuOfdmaUlEnable": "0",
+		"ApCliMuMimoDlEnable": "0",
+		"ApCliMuMimoUlEnable": "0"
 	},
-	"REINSTALL_CFGS": [
-		"BssidNum",
-		"WHNAT",
-		"E2pAccessMode",
-		"HT_RxStream",
-		"HT_TxStream",
-		"WdsEnable"
-	],
+	"DEVICE_CFGS": {
+		"beacon_int": [ "BeaconPeriod", "100" ],
+		"sta_mlo": [ "ApcliMloDisable", "1" ]
+	},
+	"REINSTALL_CFGS": {
+		"E2pAccessMode": { "preinit": true },
+		"HT_RxStream": { "preinit": false },
+		"HT_TxStream": { "preinit": false }
+	},
 	"IWPRIV_AP_CFGS": {
 		"kicklow": [ "KickStaRssiLow", "0" ],
-        "assocthres": [ "AssocReqRssiThres", "0" ]
+		"assocthres": [ "AssocReqRssiThres", "0" ]
 	},
 	"ENC_2_DAT": {
         "none": [ "OPEN", "NONE" ],

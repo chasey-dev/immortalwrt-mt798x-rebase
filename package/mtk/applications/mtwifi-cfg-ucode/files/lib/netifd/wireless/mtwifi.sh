@@ -23,17 +23,18 @@
 import * as fs from 'fs';
 import * as uci from 'uci';
 import * as l1parser from 'l1parser';
+import * as datconf from 'datconf';
 
 import { schemas } from 'mtwifi.defaults';
 import * as netifd from 'mtwifi.netifd';
 import * as cfg from 'mtwifi.config';
+import * as driver from 'mtwifi.driver';
 import { log, with_lock } from 'mtwifi.utils';
 
 const LOCK_FILE = "/var/lock/mtwifi.lock";
 
 log.debug(`[Setup] received cmd ${ARGV}`);
 
-let driver_name = ARGV[0];
 let command = ARGV[1];
 let cur_devname = ARGV[2];
 let config_json_str = ARGV[3];
@@ -56,13 +57,13 @@ function dump_option(schema, key) {
 	// handle alias types
 	let _key = (schema[key].type == 'alias') ? schema[key].default : key;
 
-    // safety check: in case schema types were defined but not found in types const enum
-    let type_code = types[schema[_key].type];
-    if (!type_code) {
-        // fallback to 3
-        // TODO: maybe log with warnings?
-        type_code = 3; 
-    }
+	// safety check: in case schema types were defined but not found in types const enum
+	let type_code = types[schema[_key].type];
+	if (!type_code) {
+		// fallback to 3
+		// TODO: maybe log with warnings?
+		type_code = 3;
+	}
 
 	return [
 		key,
@@ -77,29 +78,36 @@ function dump_options() {
 
 	for (let k, v in schemas) {
 		dump[k] = [];
-		for (let option in v){
+		for (let option in v)
 			push(dump[k], dump_option(v, option));
-        }
 	};
 
 	printf('%J\n', dump);
 
-    exit(0);
+	exit(0);
 }
 
 // ==========================================
 //              SETUP
 // ==========================================
 function handle_setup(data) {
-    // we dont need to setup when device is disabled
+    let l1 = l1parser.open();
+
     if (data.config.disabled) {
-        // disable netifd retry 
-        netifd.set_retry(false);
+        // Disabled radios still complete setup after removing stale runtime state.
+        let all_devs = l1.getall();
+        let cur_dev = all_devs[cur_devname];
+
+        if (cur_dev) {
+            cfg.down(cur_devname, all_devs);
+        }
+
+        netifd.set_up();
+        l1.close();
         return;
     }
 
-    let l1 = l1parser.open();
-    
+
     // get all devices from L1 Profile
     let all_devs = l1.getall();
     let cur_dev = all_devs[cur_devname];
@@ -109,10 +117,45 @@ function handle_setup(data) {
         l1.close();
         return;
     }
+
+    let card_profiles = {};
+    for (let devname, dev in all_devs) {
+        if (!dev.profile_path) continue;
+
+        let ctx = datconf.open(dev.profile_path);
+        if (!ctx) continue;
+
+        let profile_data = ctx.getall();
+        let card_profile = {
+            band_profiles: {}
+        };
+
+        for (let key, value in profile_data) {
+            if (match(key, /^BN\d+_profile_path$/) && value)
+                card_profile.band_profiles[key] = value;
+        }
+        ctx.close();
+
+        if (length(card_profile.band_profiles) > 0)
+            card_profiles[`${dev.INDEX}_${dev.mainidx}`] = card_profile;
+    }
+
+    for (let devname, dev in all_devs) {
+        let card_profile = card_profiles[`${dev.INDEX}_${dev.mainidx}`];
+        if (!card_profile) continue;
+
+        let bn_idx = int(dev.subidx) - 1;
+        let band_path = card_profile.band_profiles["BN" + bn_idx + "_profile_path"];
+
+        if (band_path) dev.profile_path = band_path;
+    }
+
+    cur_dev = all_devs[cur_devname];
+
     // inject cur_devname into UCI cfg data
     // UCI doesnt contain this key
     data.device = cur_devname;
-    
+
     /*****        ADD DISABLED VIFS CONFIG       *******/
 
     // read UCI cfg
@@ -151,13 +194,10 @@ function handle_setup(data) {
                     "encryption":   sec.encryption,
                     "key":          sec.key,
                     "ssid":         sec.ssid,
-                    "radios":       []
+                    "radios":       [],
+                    "disabled":     sec.disabled == "1"
                 }
             };
-
-            // if current UCI section is disabled, inject config.disabled also
-            // here if sec.disabled is null means that it is enabled in config
-            complete_ifaces[key].config.disabled = sec.disabled;
 
             log.debug(`[Setup] Restored disabled interface from UCI: ${sec['.name']}`);
         }
@@ -183,8 +223,8 @@ function handle_setup(data) {
 
 
     /*****          SET VIFS IN NETIFD        *******/
-    
-    // netifd idx may mismatch with UCI idx, should maintain it seperately
+
+    // netifd idx may mismatch with UCI idx, keep it separately.
     let netifd_idx = (() => {
         let i = 1;
         return {
@@ -210,7 +250,7 @@ function handle_setup(data) {
             } else {
                 log.warn(`[Setup] Ignored AP interface ${idx}: Max index reached.`);
             }
-        } 
+        }
         // STA(Client) mode handling
         // mtwifi_vif_sta_set_data
         else if (mode == "sta") {
@@ -249,9 +289,9 @@ function handle_setup(data) {
     // UCI => DAT, ifup, reload driver...
     cfg.setup(data, all_devs);
     // notify netifd to setup
-	netifd.set_up();
+    netifd.set_up();
 
-	l1.close();
+    l1.close();
 }
 
 // ==========================================
@@ -260,10 +300,8 @@ function handle_setup(data) {
 function handle_teardown() {
     let l1 = l1parser.open();
     let all_devs = l1.getall();
-    // we dont have to unset vifs in netifd
-    // since it is triggered by netifd, vif destroy issues may handled by netifd
-    // TODO: teardown logic may still buggy when main device in DBDC were shutdown
-	cfg.down(cur_devname, all_devs);
+    // TODO: teardown logic may still be buggy when primary band is shutdown
+    cfg.down(cur_devname, all_devs);
     l1.close();
 }
 
@@ -273,7 +311,7 @@ switch (command) {
 		break;
 	case "setup":
 		let data = json(config_json_str);
-		if(cur_devname && data) {
+		if (cur_devname && data) {
             with_lock(() => {
                 handle_setup(data);
             }, LOCK_FILE, `${command} ${cur_devname}`);

@@ -24,64 +24,118 @@ import { set_indexed_value } from 'datconf';
 // Helper Functions
 // ==========================================
 
-// UCI bool => 0 / 1
-// for null inputs that not set in UCI, return null
+/**
+ * Convert an explicitly configured UCI boolean to a DAT token.
+ *
+ * Null means the UCI option is absent and must stay absent for callers that
+ * want to preserve a DAT default.
+ *
+ * @param {any} val - UCI boolean-like value.
+ * @returns {string|null} "1", "0", or null for absent input.
+ */
 function strict_bool(val) {
 	if (val == null) return null;
 	if (val === true || val == "1" || val == 1) return "1";
 	return "0";
 }
 
-// extract idx from vif names
-// e.g. ra0 -> 0, rax1 -> 1
+/**
+ * Extract the numeric VIF suffix used by indexed DAT AP values.
+ *
+ * Examples: ra0 -> 0, rax1 -> 1.
+ *
+ * @param {string} ifname - mtwifi VIF name.
+ * @returns {number} Numeric VIF index, or 0 when absent.
+ */
 function get_vif_idx(ifname) {
 	if (!ifname) return 0;
 	let m = match(ifname, /[0-9]+$/);
 	return m ? int(m[0]) : 0;
 }
 
-// calculate WirelessMode in DAT config
-// Ref: 
-// 9  = N/AC Mixed, 
-// 15 = VHT/N Mixed,
-// 16 = AX_24G,
-// 17 = AX_5G,
-// 18 = AX_6G
+/**
+ * Calculate the DAT WirelessMode value from UCI band and htmode.
+ *
+ * Reference values:
+ *   9 = N/AC Mixed; 15 = VHT/N Mixed
+ *   16/17/18 = AX 2g/5g/6g
+ *   22/23/24 = BE 2g/5g/6g
+ *
+ * @param {string} band - UCI band: 2g, 5g, or 6g.
+ * @param {string} htmode - UCI htmode.
+ * @returns {number} DAT WirelessMode integer.
+ */
 function calc_wireless_mode(band, htmode) {
-	// check htmode key
-	let is_ax = (index(htmode, "HE") == 0); // HE20, HE40, HE80...
-	
-	if (band == "2g") {
-		return is_ax ? 16 : 9;
-	} else if (band == "5g") {
-		return is_ax ? 17 : 15;
-	} else if (band == "6g") {
-		return 18;
+	let is_ax = index(htmode, "HE") == 0;
+	let is_be = index(htmode, "EHT") == 0;
+
+	switch (band) {
+	case "2g":
+		return is_be ? 22 : (is_ax ? 16 : 9);
+	case "5g":
+		return is_be ? 23 : (is_ax ? 17 : 15);
+	case "6g":
+		return is_be ? 24 : 18;
+	default:
+		return 9; // Fallback
 	}
-	return 9; // Fallback
 }
 
-// calculate bandwidth (HT_BW, VHT_BW)
+/**
+ * Calculate DAT bandwidth fields from UCI htmode.
+ *
+ * @param {string} htmode - UCI htmode.
+ * @param {any} noscan - UCI noscan/HT coexistence value.
+ * @returns {Object} DAT bandwidth fields including HT_BW, VHT_BW, EHT_ApBw.
+ */
 function calc_bandwidth(htmode, noscan) {
+	let is_eht = index(htmode, "EHT") == 0;
 	let bw_match = match(htmode, /\d+/);
 	let width = bw_match ? bw_match[0] : "20";
-	
-	let res = { 
-		"HT_BW": "0", 
-		"VHT_BW": "0", 
-		"HT_BSSCoexistence": "1" 
-	};
 
-	if (width == "40") {
+	/*
+	 * Return shape:
+	 * - HT_BW/VHT_BW keep legacy bandwidth values.
+	 * - EHT_ApBw is raised only for EHT modes; 0 clears stale EHT width.
+	 * - HT_EXTCHA is emitted only for explicit EHT320/EHT320-2.
+	 * - HT_BSSCoexistence follows noscan for 40MHz.
+	 */
+	let res = {
+		"HT_BW": "0",
+		"VHT_BW": "0",
+		"HT_BSSCoexistence": "1",
+		"EHT_ApBw": "0"
+	};
+	switch (width) {
+	case "40":
 		res.HT_BW = "1";
+		if (is_eht) res.EHT_ApBw = "1";
 		res.HT_BSSCoexistence = noscan ? "0" : "1";
-	} else if (width == "80") {
+		break;
+	case "80":
 		res.HT_BW = "1";
 		res.VHT_BW = "1";
-	} else if (width == "160") {
+		if (is_eht) res.EHT_ApBw = "2";
+		break;
+	case "160":
 		res.HT_BW = "1";
 		res.VHT_BW = "2";
+		if (is_eht) res.EHT_ApBw = "3";
+		break;
+	case "320":
+		res.HT_BW = "1";
+		res.VHT_BW = "2";
+		if (is_eht) {
+			res.EHT_ApBw = "4";
+			if (htmode == "EHT320") {
+				res.HT_EXTCHA = "0";
+			} else if (htmode == "EHT320-2") {
+				res.HT_EXTCHA = "1";
+			}
+		}
+		break;
 	}
+
 	// for 20MHz, keep default 0, 0
 	return res;
 }
@@ -90,6 +144,15 @@ function calc_bandwidth(htmode, noscan) {
 // UCI config => DAT config
 // ==========================================
 
+/**
+ * Convert one netifd/UCI radio payload to DAT key/value updates.
+ *
+ * The result only represents the current band profile. AP values are encoded as
+ * indexed DAT tokens, while ApCli values target the single supported ApCli slot.
+ *
+ * @param {Object} uci_cfg - netifd wireless payload for one radio.
+ * @returns {Object} DAT key/value updates.
+ */
 export function convert(uci_cfg) {
 	let dat = {};
 	let conf = uci_cfg.config || {}; // uci device config
@@ -98,42 +161,42 @@ export function convert(uci_cfg) {
 	// ------------------------------------------
 	// count vifs in UCI config
 	// ------------------------------------------
-    
-    let max_ap_idx = 0; // max AP index, 0 based for uci cfg
-	let ap_count = 0;   // total AP count
+
 	let has_apcli = false; // ApCli flag, ApCli appears in per DEVICE
 
 	for (let k, iface in ifaces) {
 		let c = iface.config;
-		if (c.mode == "ap") {
-			ap_count++;
-			let idx = get_vif_idx(iface.mtwifi_ifname);
-			if (idx > max_ap_idx) max_ap_idx = idx;
-		} else if (c.mode == "sta") {
+		if (c.mode == "sta")
 			has_apcli = true;
-		}
 	}
 
-	// a little tricky here:
-	// BssidNum is how many SSIDs enabled, we assume that vifs were initialized by BssidNum
-	// so we set BssidNum = max ap index + 1
-	let bssid_count = (ap_count > 0) ? (max_ap_idx + 1) : 1;
+	// BssidNum is the MBSSID slot capacity used by cfg80211 add_virtual_intf.
+	// Keep it stable so hostapd can add/remove ext BSS without module reload.
+	let bssid_count = defs.MAX_MBSSID;
 	dat.BssidNum = bssid_count;
 
-    // ------------------------------------------
-	// global radio config in current DEVICE 
 	// ------------------------------------------
-	
+	// global radio config in current DEVICE
+	// ------------------------------------------
+
 	// WirelessMode + BandWidth
 	let bw_res = calc_bandwidth(conf.htmode, conf.noscan);
 	dat.HT_BW = bw_res.HT_BW;
 	dat.VHT_BW = bw_res.VHT_BW;
+	dat.EHT_ApBw = bw_res.EHT_ApBw;
+	if (bw_res.HT_EXTCHA != null) dat.HT_EXTCHA = bw_res.HT_EXTCHA;
 	dat.HT_BSSCoexistence = bw_res.HT_BSSCoexistence;
-	
+
 	// calculate wireless mode
 	let wmode_int = calc_wireless_mode(conf.band, conf.htmode);
 	dat.WirelessMode = wmode_int;
-	let is_ax = (wmode_int >= 16); // for TWT checking, etc.
+	let is_be = index(conf.htmode, "EHT") == 0;
+	let is_ax = index(conf.htmode, "HE") == 0;
+	// MldGroup 0 is remapped to a driver-allocated single-link MLD group
+	if (is_be) {
+		for (let i = 0; i < bssid_count; i++)
+			dat.MldGroup = set_indexed_value(dat.MldGroup || "", i, "0");
+	}
 
 	// Channel, check auto or not
 	if (conf.channel == "auto") {
@@ -177,49 +240,51 @@ export function convert(uci_cfg) {
 		dat.ITxBfEn = "0";
 	}
 
-    // TWT, ALWAYS set to 0 for NON AX devices
-	dat.TWTSupport = (is_ax && conf.twt) ? conf.twt : "0";
+	// TWT, ALWAYS set to 0 for NON AX/BE devices
+	dat.TWTSupport = ((is_ax || is_be) && conf.twt) ? conf.twt : "0";
 
-	// chip-wide cfgs
-	// for DBDC cards, only set for main DEVICE
-	// TODO: need to handle logic for non-DBDC cards
-	if (conf.dbdc_main) {
-		for (let k, v in defs.CHIP_CFGS) {
-			let uci_key = k;
-			let dat_key = v[0];
-			let def_val = v[1];
-			// priority: uci_key, default value
-			dat[dat_key] = conf[uci_key] || def_val;
-		}
+	// wifi-device cfgs stored in the current band profile
+	for (let uci_key, v in defs.DEVICE_CFGS) {
+		let dat_key = v[0];
+		let def_val = v[1];
+		dat[dat_key] = conf[uci_key] || def_val;
 	}
 
 	// ------------------------------------------
-	// APCLI (Client/STA)
+	// ApCli (Client/STA)
 	// ------------------------------------------
-	
-	// set ApCliEnable to 0 first
-	dat.ApCliEnable = "0";
 
-	// clear old ApCli settings
-	let apcli_reset_keys = ["ApCliSsid", "ApCliBssid", "ApCliAuthMode", "ApCliEncrypType", "ApCliWPAPSK"];
-	for (let k in apcli_reset_keys) dat[k] = "";
+	for (let k, v in defs.APCLI_CFGS) dat[k] = v;
 
 	if (has_apcli) {
 		for (let k, iface in ifaces) {
 			let c = ifaces[k].config;
 			if (c.mode == "sta") {
+				/* skip null tokens */
+				let set_token = function(key, val) {
+					if (val != null)
+						dat[key] = val;
+				};
+
 				dat.ApCliEnable = c.disabled ? "0" : "1";
 				dat.ApCliSsid = c.ssid;
 				dat.ApCliBssid = c.bssid;
+				dat.ApcliMacAddress = c.macaddr;
 				dat.ApCliWPAPSK = c.key;
+				dat.ApCliWirelessMode = wmode_int;
 
-				// uci encryption mode => DAT cfg 
+				set_token("ApCliMuMimoDlEnable", strict_bool(c.mumimo_dl));
+				set_token("ApCliMuMimoUlEnable", strict_bool(c.mumimo_ul));
+				set_token("ApCliMuOfdmaDlEnable", strict_bool(c.ofdma_dl));
+				set_token("ApCliMuOfdmaUlEnable", strict_bool(c.ofdma_ul));
+
+				// uci encryption mode => DAT cfg
 				let enc_info = defs.ENC_2_DAT[c.encryption];
 				if (enc_info) {
 					dat.ApCliAuthMode = enc_info[0];
 					dat.ApCliEncrypType = enc_info[1];
 					
-					// APCLI PMF
+					// ApCli PMF
 					if (enc_info[0] == "OWE" || enc_info[0] == "WPA3PSK") {
 						dat.ApCliPMFMFPC = "1";
 						dat.ApCliPMFMFPR = "1";
@@ -240,9 +305,9 @@ export function convert(uci_cfg) {
 
 	// in DAT config, driver expect setting patterns like "1;1;0" for cfgs except suffix-key cfgs
 	// we set default strings for each Bssid
-	
-	// set default vif cfgs
-	for (let k, v in defs.VIF_CFGS) {
+
+	// set default AP cfgs
+	for (let k, v in defs.AP_CFGS) {
 		let default_str = "";
 		for (let i = 0; i < bssid_count; i++) {
 			default_str = set_indexed_value(default_str, i, v);
@@ -250,8 +315,8 @@ export function convert(uci_cfg) {
 		dat[k] = default_str;
 	}
 
-	// set default ACL cfgs
-	for (let k, v in defs.VIF_ACL) {
+	// Clear driver ACL state; hostapd owns UCI macfilter/maclist.
+	for (let k, v in defs.AP_ACL) {
 		for (let i = 0; i < defs.MAX_MBSSID; i++) {
 			dat[`${k}${i}`] = v;
 		}
@@ -260,7 +325,7 @@ export function convert(uci_cfg) {
 	// clear suffix-key cfgs
 	// like SSIDx, WPAPSKx
 	// refer to schema/mtwifi/dat-defs.json
-	for (let k, v in defs.VIF_CFGS_IDX) {
+	for (let k, v in defs.AP_CFGS_IDX) {
 		for (let i = 1; i <= defs.MAX_MBSSID; i++) {
 			dat[`${k}${i}`] = "";
 		}
@@ -282,7 +347,7 @@ export function convert(uci_cfg) {
 		// ra0 (0) -> SSID1
 		// ra1 (1) -> SSID2
 		let suffix_key_idx = vif_idx + 1;
-		
+
 		// Suffix-key cfg setting helper function
 		// only set when UCI cfg exists, keep DAT default in other cases
 		// like SSIDx, WPAPSKx, they are filled with single values
@@ -305,9 +370,10 @@ export function convert(uci_cfg) {
 		// set suffix-key settings
 		set_suffix("SSID", c.ssid);
 		set_suffix("WPAPSK", c.key);
+		dat[(vif_idx == 0) ? "MacAddress" : `MacAddress${vif_idx}`] = c.macaddr;
 
 		// base cfgs
-        set_token("WirelessMode", wmode_int); // here WirelessMode is set twice, we keep it for safety
+		set_token("WirelessMode", wmode_int); // here WirelessMode is set twice, we keep it for safety
 		set_token("NoForwarding", strict_bool(c.isolate));
 		set_token("HideSSID", strict_bool(c.hidden));
 		set_token("WmmCapable", strict_bool(c.wmm));
@@ -319,13 +385,11 @@ export function convert(uci_cfg) {
 
 		// 802.11k/v/w
 		set_token("RRMEnable", strict_bool(c.ieee80211k));
-		
+
 		// HT settings
 		set_token("HT_AMSDU", strict_bool(c.amsdu));
 		set_token("HT_AutoBA", strict_bool(c.autoba));
-		// for BAWinSize: AX Mode: 256, Non-AX Mode: 64
-		set_token("HT_BAWinSize", is_ax ? "256" : "64");
-		
+
 		// MU-MIMO / OFDMA
 		set_token("MuMimoDlEnable", strict_bool(c.mumimo_dl));
 		set_token("MuMimoUlEnable", strict_bool(c.mumimo_ul));
@@ -349,11 +413,11 @@ export function convert(uci_cfg) {
 			set_token("PMFSHA256", "0");
 		} else {
 			// NOTE:
-			// in VIF_CFGS defaults, they were set to 0
+			// in AP_CFGS defaults, they were set to 0
 			// override to 0 if there are special cases
 		}
 
-        // RekeyMethod
+		// RekeyMethod
 		if (authmode != "OPEN" && authmode != "OWE") {
 			set_token("RekeyMethod", "TIME");
 		}

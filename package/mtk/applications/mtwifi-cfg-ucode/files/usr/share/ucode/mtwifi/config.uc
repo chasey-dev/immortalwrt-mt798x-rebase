@@ -23,6 +23,15 @@ import { log } from 'mtwifi.utils';
 import * as driver from 'mtwifi.driver';
 import * as converter from 'mtwifi.converter';
 
+/**
+ * Find sibling band devices that share the same chip/main index prefix.
+ *
+ * Example: MT7992_1_1 matches MT7992_1_2, but not MT7992_2_1.
+ *
+ * @param {string} my_devname - Current L1 device name.
+ * @param {string[]} all_devnames - All L1 device names.
+ * @returns {string[]} Sibling L1 device names.
+ */
 function get_sibling_devs(my_devname, all_devnames) {
     let sib_devnames = [];
 
@@ -49,47 +58,26 @@ function get_sibling_devs(my_devname, all_devnames) {
     return sib_devnames;
 }
 
-// sync chip config to sibling devs
-function sync_chip_config(src_dat, sib_devnames, all_devs) {
-	for (let idx, devname in sib_devnames) {
-		let sib_info = all_devs[devname];
-
-		if (!sib_info.profile_path) continue;
-		let sib_dat = datconf.open(sib_info.profile_path);
-		if (sib_dat) {
-			let s_updates = {};
-			for (let k, v in defs.CHIP_CFGS) {
-				// v[0] for DAT key (e.g., WHNAT, BeaconPeriod)
-				let dat_key = v[0];
-				if (exists(src_dat, dat_key)) {
-					s_updates[dat_key] = src_dat[dat_key];
-					// log.debug(`[Sync] key to sync: ${dat_key}, src_dat val: ${src_dat[dat_key]}, s_updates val: ${s_updates[dat_key]}`);
-				}
-			}
-			log.debug(`[Sync] s_updates: keys_raw: ${s_updates}, len: ${length(s_updates)}`);
-			if (length(s_updates) > 0) {
-				log.info(`[Sync] Syncing chip configs to ${devname}`);
-				sib_dat.merge(s_updates);
-				sib_dat.commit();
-			}
-			sib_dat.close();
-		}
-	}
-}
-
 function check_prerequisite() {
 	return !driver.is_kmod();
 }
 
+/**
+ * Compare old and new DAT values and classify driver reload requirements.
+ *
+ * defs.REINSTALL_CFGS is keyed by DAT key. A matching changed key requires
+ * module reload; a key marked preinit must reload even before first band init.
+ *
+ * @param {Object} dat_old - Existing DAT profile values.
+ * @param {Object} dat_new - Converted DAT profile values.
+ * @returns {Object} Diff flags: is_changed, need_driver_reload, preinit_reload.
+ */
 function dat_diff(dat_old, dat_new) {
-	// prepare hashtable for O(1) lookups
 	let res = {
 		"is_changed" : false,
-		"need_reload": false
+		"need_driver_reload": false,
+		"preinit_reload": false
 	};
-
-	let reload_lookup = {};
-	for (let k in defs.REINSTALL_CFGS) reload_lookup[k] = true;
 
 	for (let k, v in dat_new) {
 		// k: DAT config key
@@ -97,20 +85,29 @@ function dat_diff(dat_old, dat_new) {
 		if (v != dat_old[k]) {
 			res.is_changed = true;
 			// log.debug(`[dat_diff] Key changed: ${k} (${dat_old[k]} -> ${v})`);
-			if (reload_lookup[k]) {
-				res.need_reload = true;
-				log.notice(`[Reload Trigger] Key changed: ${k} (${dat_old[k]} -> ${v})`);
-				// we have collected all needed flags
-				break;
+			let reload_cfg = defs.REINSTALL_CFGS[k];
+			if (reload_cfg) {
+				res.need_driver_reload = true;
+				if (reload_cfg.preinit)
+					res.preinit_reload = true;
+				log.notice(`[Driver Reload Trigger] Key changed: ${k} (${dat_old[k]} -> ${v})`);
 			}
 		}
 	}
 	return res;
 }
 
+/**
+ * Apply one radio's UCI projection to its DAT profile and runtime interfaces.
+ *
+ *
+ * @param {Object} uci_cfg - netifd wireless payload for current radio.
+ * @param {Object} all_devs - L1 device map.
+ * @returns {boolean} true when DAT/runtime setup completed.
+ */
 export function setup(uci_cfg, all_devs) {
 	// check prerequisites for driver setup
-	if (check_prerequisite()) return;
+	if (check_prerequisite()) return true;
 
 	// get current dev name
 	let cur_devname = uci_cfg.device;
@@ -120,13 +117,13 @@ export function setup(uci_cfg, all_devs) {
 	/*****    UCI CFG => DAT CFG   *******/
 	if (!cur_dev.profile_path) {
 		log.error(`[Main] Profile not found for ${cur_devname}`);
-		return;
+		return false;
 	}
 
 	let ctx = datconf.open(cur_dev.profile_path);
 	if (!ctx) {
 		log.error(`[Main] Unable to open profile path for ${cur_devname}`);
-		return;
+		return false;
 	}
 	// get old DAT config
 	let dat_old = ctx.getall();
@@ -143,37 +140,29 @@ export function setup(uci_cfg, all_devs) {
 	let diff_res = dat_diff(dat_old, dat_new);
 	log.debug(`[Main] dat_diff: ${diff_res}`);
 
+	let all_devnames = keys(all_devs);
+	let sib_devnames = get_sibling_devs(cur_devname, all_devnames);
+	let has_siblings = length(sib_devnames) > 0;
+
+	let cur_vif_inited = driver.is_vif_inited(cur_dev.main_ifname);
+
 	// collect down devs list
 	let down_devnames = [ cur_devname ];
-	
-	let is_dbdc = (index(cur_dev.profile_path, "dbdc") >= 0);
-	// only add sibling devs when DAT has changed
-	if (is_dbdc && diff_res.is_changed) {
-		// find sibling devs for current dev
-		let all_devnames = keys(all_devs);
-		let sib_devnames = get_sibling_devs(cur_devname, all_devnames);
+
+	if (has_siblings && diff_res.need_driver_reload) {
 		log.debug(`[Main] Sibling devs of ${cur_devname} : ${sib_devnames}`);
 
-		// sync current chip config to other sibling devs
-		if (uci_cfg.config.dbdc_main) {
-			sync_chip_config(dat_new, sib_devnames, all_devs);
-		}
 		for (let devname in sib_devnames) push(down_devnames, devname);
 	}
 
-	// collect vifs needed to be restored
-	// if DAT is changed! => UP vifs of ALL sibling devs,
-	let restore_vifs = [];
 	for (let idx, devname in down_devnames) {
-		// skip current device in netifd context, vifs of which will be handled seperately
-		let need_restore = !(devname == cur_devname);
+		if (diff_res.need_driver_reload)
+			driver.unregister_hw_nat(all_devs[devname].main_ifname);
+
 		// scan UP vifs related to dev
 		let vifs = driver.scan_related_vifs(all_devs[devname]);
-		log.debug(`[Main] UP vifs related to ${devname}: ${vifs}, need restore: ${need_restore}`);
-		for (let vif in vifs) {
-			driver.ifdown(vif);
-			if (need_restore) push(restore_vifs, vif);
-		}
+		log.debug(`[Main] UP vifs related to ${devname}: ${vifs}`);
+		for (let vif in vifs) driver.ifdown(vif);
 	}
 
 	// commit converted DAT config
@@ -182,77 +171,42 @@ export function setup(uci_cfg, all_devs) {
 	ctx.close();
 	system("sync");
 
-	// reload driver if needed
-	if (diff_res.need_reload) {
-		driver.reload();
-	}
-	
-	// no matter if it is DBDC card, we assume ifup main_vif is time-costy
-	let main_vif = "";
-	if (is_dbdc) {
-		// concat main dev name: ChipName_ChipIndex_1
-		let main_devname = `${cur_dev.INDEX}_${cur_dev.mainidx}_1`;
-		main_vif = all_devs[main_devname].main_ifname;
-	} else {
-		main_vif = cur_dev.main_ifname;
-	}
-	let is_inited = driver.is_vif_inited(main_vif);
-
-	// post setup may need ~20s
-	// for DBDC cards, you need to init main dev first
-	if (is_dbdc && !is_inited) {
-		// just init main vif !
-		driver.init_dbdc_card(main_vif);
-	}
-
-	// set vifs in current cfg UP first
-	// implict trace in raw netifd parameter:
-	// DISABLED vifs are not contained in uci_cfg.interfaces
-	// uci_cfg.interfaces will be EMPTY when uci_cfg.disabled = true, that current dev is disabled
-	// current trace:
-	// we read UCI cfg and added disabled ifaces from caller script
-	for (let idx, iface in uci_cfg.interfaces) {
-		let vif = iface.mtwifi_ifname;
-		let vif_cfg = iface.config;
-		log.debug(`[UCI] idx:${idx}, vif: ${vif}, disabled: ${vif_cfg.disabled ? true : false}, iface: ${iface}, iface cfg:${vif_cfg}`);
-
-		if (vif && !vif_cfg.disabled) {
-			driver.ifup(vif);
-			driver.apply_runtime_hooks(vif_cfg, vif);
+	// Reload kernel modules only for keys that cannot be applied by reopening one band.
+	if (diff_res.need_driver_reload) {
+		// If the current band has not opened yet, non-preinit keys will be consumed by
+		// the first driver profile read. Preinit keys are earlier than that.
+		if (!cur_vif_inited && !diff_res.preinit_reload) {
+			log.notice("[Driver] Skip module reload before first band init.");
+		} else {
+			if (!driver.reload())
+				return false;
 		}
 	}
-	
-	// for non DBDC cards, all set and return!
-	if (!is_dbdc) return;
 
-	// for DBDC cards, restore sibling devs
-	if (diff_res.need_reload) {
-		// in driver reload situation, 
-		// let another process to handle sib devs setup
-		for (let idx, devname in down_devnames) {
-			if (!(devname == cur_devname)) {
-				// use `&` symbol to run in the background,
-				// netifd may handle duplicated `wifi up [dev]` calls
-				// current lock context will not pass to it
-				system(`/sbin/wifi up ${devname} &`);
-			}
-		}
-	} else {
-		// in normal situation,
-		// for DBDC cards, restore vifs of sibling devs (if they were added before)
-		// just restore them in no need for reload situation
-		for (let vif in restore_vifs) {
-			log.notice(`[Main] Restoring sibling vif: ${vif}`);
-			driver.ifup(vif);
+	if (!cur_vif_inited)
+		driver.init_main_vif(cur_dev.main_ifname);
 
-			// for apcli vifs, do apcli triggers
-			if (index(vif, "apcli") >= 0) {
-				driver.trigger_apcli(vif);
-			}
+	if (!has_siblings || !diff_res.need_driver_reload) return true;
+
+	// Module reload resets the whole card, so restore sibling devs in separate wifi up calls.
+	for (let idx, devname in down_devnames) {
+		if (!(devname == cur_devname)) {
+			// use `&` symbol to run in the background,
+			// netifd may handle duplicated `wifi up [dev]` calls
+			// current lock context will not pass to it
+			system(`/sbin/wifi up ${devname} &`);
 		}
 	}
+
+	return true;
 };
 
+/**
+ * Bring down mtwifi runtime interfaces for one radio or all radios.
+ *
+ * @param {string|null} cur_devname - L1 device name; null tears down all.
+ * @param {Object} all_devs - L1 device map.
+ */
 export function down(cur_devname, all_devs) {
 	if(cur_devname) {
 		let cur_dev = all_devs[cur_devname];

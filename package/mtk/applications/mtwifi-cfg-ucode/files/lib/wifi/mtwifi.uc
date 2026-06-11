@@ -41,14 +41,22 @@ let all_devs = l1.getall();
 // get devnames listed by order
 let all_devnames = l1.list();
 
-// helper to set default settings by band
+/**
+ * Return the first-boot UCI defaults for one band.
+ *
+ * The defaults intentionally create an open AP so users can connect first and
+ * change SSID/security from LuCI or UCI later.
+ *
+ * @param {string} band - mtwifi band name: 2g, 5g, or 6g.
+ * @returns {Object} Default htmode, htbsscoex, and ssid values.
+ */
 function get_band_defaults(band) {
     if (band == "2g") {
-        return { htmode: "HE40", htbsscoex: 1, ssid: "ImmortalWrt-2.4G" };
+        return { htmode: "EHT40", htbsscoex: 1, ssid: "ImmortalWrt-2.4G" };
     } else if (band == "5g") {
-        return { htmode: "HE160", htbsscoex: 0, ssid: "ImmortalWrt-5G" };
+        return { htmode: "EHT160", htbsscoex: 0, ssid: "ImmortalWrt-5G" };
     } else {
-        return { htmode: "HE160", htbsscoex: 0, ssid: "ImmortalWrt-6G" };
+        return { htmode: "EHT160", htbsscoex: 0, ssid: "ImmortalWrt-6G" };
     }
 }
 
@@ -65,6 +73,8 @@ let need_commit = false;
 // iter by ordered devnames, preventing vif disorder in UCI cfgs
 for (let devname in all_devnames) {
     let cur_dev = all_devs[devname];
+    let phy = driver.phy_from_ifname(cur_dev.main_ifname);
+
     // returns null if not exist
     let type = cursor.get("wireless", devname);
     
@@ -79,7 +89,6 @@ for (let devname in all_devnames) {
         band = (subidx == 1) ? "2g" : "5g";
     }
 
-    let dbdc_main = (subidx == 1) ? 1 : 0;
     let defs = get_band_defaults(band);
 
     // create wifi-device node
@@ -88,9 +97,8 @@ for (let devname in all_devnames) {
     // call helper functions to batch set properties
     set_section_options("wireless", devname, {
         "type": "mtwifi",
-        "phy": cur_dev.main_ifname,
+        "phy": phy,
         "band": band,
-        "dbdc_main": dbdc_main,
         "channel": "auto",
         "txpower": 100,
         "htmode": defs.htmode,

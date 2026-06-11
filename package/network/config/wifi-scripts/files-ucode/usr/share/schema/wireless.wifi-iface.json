@@ -1005,6 +1005,13 @@
 			"type": "number",
 			"enum": [ 0, 1, 2 ]
 		},
+		"sae_groups": {
+			"description": "SAE group list",
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		},
 		"sae_require_mfp": {
 			"description": "Require MFP for all associations using SAE",
 			"type": "boolean"

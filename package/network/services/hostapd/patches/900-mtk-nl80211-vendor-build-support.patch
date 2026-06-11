@@ -1,0 +1,48 @@
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -27,6 +27,9 @@
+ #include "common/qca-vendor.h"
+ #include "common/qca-vendor-attr.h"
+ #include "common/brcm_vendor.h"
++#ifdef CONFIG_DRIVER_NL80211_MTK
++#include "mtk_vendor_nl80211.h"
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ #include "common/ieee802_11_defs.h"
+ #include "common/ieee802_11_common.h"
+ #include "common/wpa_common.h"
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -17,6 +17,9 @@
+ #include "common/qca-vendor.h"
+ #include "common/qca-vendor-attr.h"
+ #include "common/brcm_vendor.h"
++#ifdef CONFIG_DRIVER_NL80211_MTK
++#include "mtk_vendor_nl80211.h"
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ #include "driver_nl80211.h"
+ 
+ 
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -16,6 +16,9 @@
+ #include "common/qca-vendor.h"
+ #include "common/qca-vendor-attr.h"
+ #include "common/brcm_vendor.h"
++#ifdef CONFIG_DRIVER_NL80211_MTK
++#include "mtk_vendor_nl80211.h"
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ #include "common/ieee802_11_defs.h"
+ #include "common/ieee802_11_common.h"
+ #include "driver_nl80211.h"
+--- a/src/drivers/drivers.mak
++++ b/src/drivers/drivers.mak
+@@ -50,6 +50,9 @@ DRV_OBJS += ../src/drivers/driver_nl8021
+ ifdef CONFIG_DRIVER_NL80211_QCA
+ DRV_CFLAGS += -DCONFIG_DRIVER_NL80211_QCA
+ endif
++ifdef CONFIG_DRIVER_NL80211_MTK
++DRV_CFLAGS += -DCONFIG_DRIVER_NL80211_MTK
++endif
+ NEED_SME=y
+ NEED_AP_MLME=y
+ NEED_NETLINK=y

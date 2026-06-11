@@ -421,23 +421,6 @@ export function convert(uci_cfg) {
 		if (authmode != "OPEN" && authmode != "OWE") {
 			set_token("RekeyMethod", "TIME");
 		}
-
-		// ACL (MAC Filter)
-		// ap_idx -> AccessPolicyx
-		// e.g. AccessPolicy0, AccessPolicy1...
-		if (c.macfilter == "allow") {
-			dat[`AccessPolicy${vif_idx}`] = "1";
-		} else if (c.macfilter == "deny") {
-			dat[`AccessPolicy${vif_idx}`] = "2";
-		} else {
-			dat[`AccessPolicy${vif_idx}`] = "0";
-		}
-
-		if (c.maclist && length(c.maclist) > 0) {
-			// MAC addrs should be like "MAC1;MAC2;MAC3"
-			// TODO: maybe we should handle distinct logic here?
-			dat[`AccessControlList${vif_idx}`] = join(";", c.maclist);
-		}
 	}
 
 	return dat;

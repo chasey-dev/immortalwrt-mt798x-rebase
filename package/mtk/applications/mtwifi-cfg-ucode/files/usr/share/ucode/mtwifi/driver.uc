@@ -25,10 +25,38 @@ import * as fs from 'fs';
 // iface Operations
 // ==========================================
 
-// timeout waiting for iface
+/**
+ * Resolve the cfg80211 phy name from an existing netdev.
+ *
+ * Hostapd/wpad need the phy owner even when mtwifi creates the actual private
+ * interface names.
+ *
+ * @param {string} ifname - Existing netdev name.
+ * @returns {string|null} cfg80211 phy name, or null when no phy is attached.
+ */
+export function phy_from_ifname(ifname) {
+	let phy_path = fs.readlink(`/sys/class/net/${ifname}/phy80211`);
+
+	if (!phy_path)
+		return null;
+
+	let parts = split(phy_path, "/");
+
+	return parts[length(parts) - 1];
+};
+
+/**
+ * Wait until a kernel interface appears under /sys/class/net.
+ *
+ * This is used after driver or wpad operations that create private mtwifi
+ * interfaces asynchronously.
+ *
+ * @param {string} ifname - Interface name to wait for.
+ * @returns {boolean} true when the interface appears before timeout.
+ */
 export function wait_for_iface(ifname) {
 	if (!ifname) return false;
-	let max_retries = 20;
+	let max_retries = 300;
 
 	let sys_path = `/sys/class/net/${ifname}`;
 
@@ -42,7 +70,11 @@ export function wait_for_iface(ifname) {
 	return false;
 };
 
-// set vif up
+/**
+ * Bring an interface up after confirming that it exists.
+ *
+ * @param {string} ifname - Interface name to bring up.
+ */
 export function ifup(ifname) {
 	if (wait_for_iface(ifname)) {
 		system(`ifconfig ${ifname} up`);
@@ -50,7 +82,11 @@ export function ifup(ifname) {
 	}
 };
 
-// set vif down
+/**
+ * Bring an interface down after confirming that it exists.
+ *
+ * @param {string} ifname - Interface name to bring down.
+ */
 export function ifdown(ifname) {
 	if (wait_for_iface(ifname)) {
 		system(`ifconfig ${ifname} down`);
@@ -58,14 +94,43 @@ export function ifdown(ifname) {
 	}
 };
 
-// get port status
+/**
+ * Initialize the main VIF once so the driver consumes DAT and exposes ApCli.
+ *
+ * The caller decides whether initialization is needed; this helper only performs
+ * the private-driver UP/DOWN sequence.
+ *
+ * @param {string} ifname - Main interface name.
+ */
+export function init_main_vif(ifname) {
+	log.notice(`[Driver] Init main vif: ${ifname}`);
+	ifup(ifname);
+	sleep(1000);
+	ifdown(ifname);
+	log.notice(`[Driver] Init main vif done: ${ifname}`);
+};
+
+/**
+ * Read IFF_UP from /sys/class/net/<ifname>/flags.
+ *
+ * @param {string} ifname - Interface name to inspect.
+ * @returns {number} 1 when the interface is UP, otherwise 0.
+ */
 export function get_vif_status(ifname) {
 	let flags = fs.readfile(`/sys/class/net/${ifname}/flags`);
 	// return 1:UP, 0:DOWN / not exist
 	return (flags & 0x1);
 };
 
-// check if vif is inited
+/**
+ * Check whether a VIF has been initialized with a non-zero MAC address.
+ *
+ * A missing interface returns true to stop later setup from treating an absent
+ * VIF as a still-initializing one.
+ *
+ * @param {string} ifname - Interface name to inspect.
+ * @returns {boolean} true when the VIF should be treated as initialized.
+ */
 export function is_vif_inited(ifname){
 	let vif_path = `/sys/class/net/${ifname}/address`;
 	if (!fs.access(vif_path)) {
@@ -81,38 +146,51 @@ export function is_vif_inited(ifname){
 	return is_inited;
 };
 
-// scan all active vifs belongs to current device
-// use to find vifs needed to be DOWN
+/**
+ * Classify an interface name for one L1 device.
+ *
+ * Match main_ifname before the indexed AP prefix because a name such as ra0
+ * matches both main_ifname=ra0 and ext_ifname=ra.
+ *
+ * @param {Object} dev - L1 device descriptor.
+ * @param {string} ifname - Kernel interface name.
+ * @returns {string|null} main, ap, sta, or null when unrelated.
+ */
+function related_ifname_role(dev, ifname) {
+	if (dev.main_ifname && ifname == dev.main_ifname)
+		return "main";
+
+	if (dev.ext_ifname && match(ifname, regexp(`^${dev.ext_ifname}[0-9]+$`)))
+		return "ap";
+
+	if (dev.apcli_ifname && match(ifname, regexp(`^${dev.apcli_ifname}[0-9]+$`)))
+		return "sta";
+
+	return null;
+}
+
+/**
+ * Scan only active VIFs that belong to current device:
+ *
+ *   main_ifname + ext_ifnameN + apcli_ifnameN, filtered by IFF_UP.
+ *
+ * Driver cleanup uses this list. Wpad configuration is cleared per PHY.
+ *
+ * @param {Object} dev - L1 device descriptor:
+ *   main_ifname - Main vif name.
+ *   ext_ifname - AP vif prefix.
+ *   apcli_ifname - ApCli vif prefix.
+ * @returns {string[]} Active related ifnames.
+ */
 export function scan_related_vifs(dev) {
-	let sys_ifs = fs.lsdir("/sys/class/net");
+	let sys_ifs = fs.lsdir("/sys/class/net") || [];
 	let targets = [];
 
-	// regex expressions:
-	// main_ifname (ra0) -> ^ra0$
-	// ext_ifname (ra)   -> ^ra[0-9]+$
-	// apcli_ifname (apcli) -> ^apcli[0-9]+$
-
-	let patterns = [];
-
-	if (dev.main_ifname)
-		push(patterns, regexp(`^${dev.main_ifname}$`));
-
-	if (dev.ext_ifname)
-		push(patterns, regexp(`^${dev.ext_ifname}[0-9]+$`));
-
-	if (dev.apcli_ifname) 
-		push(patterns, regexp(`^${dev.apcli_ifname}[0-9]+$`));
-
 	for (let ifname in sys_ifs) {
-		if (get_vif_status(ifname)) {
-			for (let pat in patterns) {
-				if (match(ifname, pat)) {
-					push(targets, ifname);
-					break;
-				}
-			}
-		}
+		if (related_ifname_role(dev, ifname) && get_vif_status(ifname))
+			push(targets, ifname);
 	}
+
 	return targets;
 };
 

@@ -22,6 +22,7 @@
 
 import * as uci from 'uci';
 import * as l1parser from 'l1parser';
+import * as fs from 'fs';
 
 import * as driver from 'mtwifi.driver';
 
@@ -69,11 +70,20 @@ function set_section_options(config, section, values) {
 }
 
 let need_commit = false;
+let mtwifi_phys = {};
+let mtwifi_paths = {};
+let board = json(fs.readfile("/etc/board.json") || "{}");
 
 // iter by ordered devnames, preventing vif disorder in UCI cfgs
 for (let devname in all_devnames) {
     let cur_dev = all_devs[devname];
     let phy = driver.phy_from_ifname(cur_dev.main_ifname);
+
+    if (phy) {
+        mtwifi_phys[phy] = true;
+        if (board.wlan?.[phy]?.path)
+            mtwifi_paths[board.wlan[phy].path] = true;
+    }
 
     // returns null if not exist
     let type = cursor.get("wireless", devname);
@@ -121,6 +131,35 @@ for (let devname in all_devnames) {
         "encryption": "none"
     });
 
+    need_commit = true;
+}
+
+let mac80211_devs = {};
+cursor.foreach("wireless", "wifi-device", function(sec) {
+    if (sec.type != "mac80211")
+        return;
+
+    if (!mtwifi_phys[sec.phy] && !mtwifi_paths[sec.path])
+        return;
+
+    mac80211_devs[sec[".name"]] = true;
+});
+
+let mac80211_ifaces = [];
+cursor.foreach("wireless", "wifi-iface", function(sec) {
+    if (!mac80211_devs[sec.device])
+        return;
+
+    push(mac80211_ifaces, sec[".name"]);
+});
+
+for (let iface in mac80211_ifaces) {
+    cursor.delete("wireless", iface);
+    need_commit = true;
+}
+
+for (let devname in mac80211_devs) {
+    cursor.delete("wireless", devname);
     need_commit = true;
 }
 

@@ -326,7 +326,7 @@ define Device/smartrg_sdg-8733
 $(call Device/adtran_smartrg)
   DEVICE_MODEL := SDG-8733
   DEVICE_DTS := mt7988a-smartrg-SDG-8733
-  DEVICE_PACKAGES += kmod-mt7996-firmware kmod-phy-aquantia kmod-usb3 mt7988-wo-firmware automount
+  DEVICE_PACKAGES +=  kmod-phy-aquantia kmod-usb3  automount
 endef
 TARGET_DEVICES += smartrg_sdg-8733
 
@@ -334,7 +334,7 @@ define Device/smartrg_sdg-8733a
 $(call Device/adtran_smartrg)
   DEVICE_MODEL := SDG-8733A
   DEVICE_DTS := mt7988d-smartrg-SDG-8733A
-  DEVICE_PACKAGES += mt7988-2p5g-phy-firmware kmod-mt7996-233-firmware kmod-phy-aquantia mt7988-wo-firmware
+  DEVICE_PACKAGES += mt7988-2p5g-phy-firmware  kmod-phy-aquantia 
 endef
 TARGET_DEVICES += smartrg_sdg-8733a
 
@@ -342,7 +342,7 @@ define Device/smartrg_sdg-8734
 $(call Device/adtran_smartrg)
   DEVICE_MODEL := SDG-8734
   DEVICE_DTS := mt7988a-smartrg-SDG-8734
-  DEVICE_PACKAGES += kmod-mt7996-firmware kmod-phy-aquantia kmod-sfp kmod-usb3 mt7988-wo-firmware automount
+  DEVICE_PACKAGES +=  kmod-phy-aquantia kmod-sfp kmod-usb3  automount
 endef
 TARGET_DEVICES += smartrg_sdg-8734
 
@@ -396,7 +396,7 @@ define Device/arcadyan_mozart
   DEVICE_DTS_DIR := ../dts
   DEVICE_DTC_FLAGS := --pad 4096
   DEVICE_DTS_LOADADDR := 0x45f00000
-  DEVICE_PACKAGES := kmod-hwmon-pwmfan e2fsprogs f2fsck mkf2fs kmod-mt7996-firmware
+  DEVICE_PACKAGES := kmod-hwmon-pwmfan e2fsprogs f2fsck mkf2fs 
   KERNEL_LOADADDR := 0x46000000
   KERNEL := kernel-bin | gzip
   KERNEL_INITRAMFS := kernel-bin | lzma | \
@@ -545,7 +545,7 @@ define Device/asus_zenwifi-bt8
   DEVICE_MODEL := ZenWiFi BT8
   DEVICE_DTS := mt7988d-asus-zenwifi-bt8
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES := kmod-usb3 mt7988-2p5g-phy-firmware kmod-mt7996-firmware mt7988-wo-firmware automount
+  DEVICE_PACKAGES := kmod-usb3 mt7988-2p5g-phy-firmware   automount
   KERNEL := kernel-bin | gzip | \
 	fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
   KERNEL_INITRAMFS := kernel-bin | lzma | \
@@ -569,7 +569,7 @@ define Device/asus_zenwifi-bt8-ubootmod
   DEVICE_DTS := mt7988d-asus-zenwifi-bt8-ubootmod
   DEVICE_DTS_DIR := ../dts
   DEVICE_DTS_LOADADDR := 0x45f00000
-  DEVICE_PACKAGES := kmod-usb3 mt7988-2p5g-phy-firmware kmod-mt7996-firmware mt7988-wo-firmware automount
+  DEVICE_PACKAGES := kmod-usb3 mt7988-2p5g-phy-firmware   automount
   ARTIFACTS := preloader.bin bl31-uboot.fip
   ARTIFACT/preloader.bin := mt7988-bl2 spim-nand-ubi-ddr4
   ARTIFACT/bl31-uboot.fip := mt7988-bl31-uboot asus_zenwifi-bt8
@@ -696,8 +696,8 @@ define Device/bananapi_bpi-r4-common
   DEVICE_DTS_LOADADDR := 0x45f00000
   DEVICE_DTS_OVERLAY:= mt7988a-bananapi-bpi-r4-emmc mt7988a-bananapi-bpi-r4-rtc mt7988a-bananapi-bpi-r4-sd mt7988a-bananapi-bpi-r4-wifi-be14
   DEVICE_DTC_FLAGS := --pad 4096
-  DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-i2c-mux-pca954x kmod-eeprom-at24 kmod-mt7996-firmware kmod-mt7996-233-firmware \
-		     kmod-rtc-pcf8563 kmod-sfp kmod-phy-aquantia kmod-usb3 e2fsprogs f2fsck mkf2fs mt7988-wo-firmware automount
+  DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-i2c-mux-pca954x kmod-eeprom-at24 \
+		     kmod-rtc-pcf8563 kmod-sfp kmod-phy-aquantia kmod-usb3 e2fsprogs f2fsck mkf2fs automount
   DEVICE_COMPAT_VERSION := 1.1
   DEVICE_COMPAT_MESSAGE := The non-switch ports were renamed to match the board/case labels
   IMAGES := sysupgrade.itb
@@ -1786,7 +1786,7 @@ define Device/glinet_gl-mt3600be
   DEVICE_MODEL := GL-MT3600BE
   DEVICE_DTS := mt7987a-glinet-gl-mt3600be
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES := mt7987-2p5g-phy-firmware kmod-mt7990-firmware \
+  DEVICE_PACKAGES := mt7987-2p5g-phy-firmware  \
 	kmod-hwmon-pwmfan kmod-usb3 automount
   KERNEL = kernel-bin | lzma | \
 	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
@@ -2186,8 +2186,8 @@ TARGET_DEVICES += keenetic_kap-630
 
 define Device/keenetic_kn-1812-common
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES := kmod-mt7992-firmware kmod-usb3 automount \
-		mt7988-2p5g-phy-firmware mt7988-wo-firmware
+  DEVICE_PACKAGES :=  kmod-usb3 automount \
+		mt7988-2p5g-phy-firmware 
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k
   PAGESIZE := 2048
@@ -3109,7 +3109,7 @@ define Device/routerich_be7200
   IMAGE/sysupgrade.itb := append-kernel | \
 	fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-with-rootfs | \
 	pad-rootfs | append-metadata
-  DEVICE_PACKAGES := mt7987-2p5g-phy-firmware kmod-mt7992-firmware \
+  DEVICE_PACKAGES := mt7987-2p5g-phy-firmware  \
 	 kmod-regulator-userspace-consumer kmod-usb3 automount
   ARTIFACTS := preloader.bin bl31-uboot.fip
   ARTIFACT/preloader.bin := mt7987-bl2 spim-nand0
@@ -3250,8 +3250,8 @@ define Device/tplink_be450
   DEVICE_MODEL := BE450
   DEVICE_DTS := mt7988d-tplink-be450
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES := kmod-mt7992-firmware kmod-usb3 automount \
-	    mt7988-2p5g-phy-firmware mt7988-wo-firmware
+  DEVICE_PACKAGES :=  kmod-usb3 automount \
+	    mt7988-2p5g-phy-firmware 
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k
   PAGESIZE := 2048
@@ -3330,7 +3330,7 @@ define Device/tplink_tl-7dr-common
   DEVICE_VENDOR := TP-Link
   DEVICE_DTS_DIR := ../dts
   DEVICE_DTS_LOADADDR := 0x45f00000
-  DEVICE_PACKAGES := mt7988-2p5g-phy-firmware kmod-mt7992-firmware mt7988-wo-firmware
+  DEVICE_PACKAGES := mt7988-2p5g-phy-firmware  
   KERNEL_LOADADDR := 0x46000000
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k

@@ -42,6 +42,17 @@ define Device/h3c_magic-nx30-pro-mtkuboot
 endef
 TARGET_DEVICES += h3c_magic-nx30-pro-mtkuboot
 
+define Device/livinet_li320
+  DEVICE_VENDOR := Livinet
+  DEVICE_MODEL := Li320
+  DEVICE_DTS := mt7981b-livinet-li320
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_PACKAGES := kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  SUPPORTED_DEVICES += mediatek,mt7981-spim-snand-gsw-rfb
+endef
+TARGET_DEVICES += livinet_li320
+
 define Device/netcore_n60-pro-mtkuboot
   DEVICE_VENDOR := Netcore
   DEVICE_MODEL := N60 Pro

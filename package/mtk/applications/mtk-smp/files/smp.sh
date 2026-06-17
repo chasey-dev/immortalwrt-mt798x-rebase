@@ -24,6 +24,86 @@ CPU_RPS_ADD()
 	dbg2 "CPU${1}_RPS=\"\$CPU${1}_RPS $2\""
 }
 
+MT7990_whnat()
+{
+	num_of_wifi=$1
+	storage=$2
+	DEFAULT_RPS=0
+
+	#Physical IRQ# setting
+	PCIe0=
+	eth_tx=229
+	case "$(tr '\0' '\n' < /proc/device-tree/compatible)" in
+	*mediatek,mt7987*) usb=204 ;;
+	*mediatek,mt7988*) usb="204 205" ;;
+	*) usb= ;;
+	esac
+
+	#Ethernet RSS feature enables 4 Rx rings
+	eth_rx0=221
+	eth_rx1=222
+	eth_rx2=223
+	eth_rx3=224
+
+	if [ -d "/proc/warp_ctrl/warp0" ]; then
+		wifi1_irq=237
+		wifi2_irq=238
+		wifi3_irq=
+	else
+        	wifi1_irq=237
+        	wifi2_irq=238
+        	wifi3_irq=
+	fi
+
+	# Please update the CPU binding in each cases.
+	# CPU#_AFFINITY="add binding irq number here"
+	# CPU#_RPS="add binding interface name here"
+	dbg "[MT7990_whnat]"
+	if [ "$num_of_wifi" = "0" ]; then
+		CPU0_AFFINITY="$wifi1_irq $eth_rx0"
+		CPU1_AFFINITY="$wifi2_irq $eth_rx1"
+		CPU2_AFFINITY="$eth_tx $eth_rx2 $usb"
+		CPU3_AFFINITY="$eth_rx3"
+
+		CPU0_RPS=""
+		CPU1_RPS="$ethif1 $ethif2 $ethif3"
+		CPU2_RPS="$ethif1 $ethif2 $ethif3"
+		CPU3_RPS="$ethif1 $ethif2 $ethif3"
+	elif [ "$num_of_wifi" = "1" ]; then
+		CPU0_AFFINITY="$wifi1_irq $eth_rx0"
+		CPU1_AFFINITY="$wifi2_irq $eth_rx1"
+		CPU2_AFFINITY="$eth_tx $eth_rx2 $usb"
+		CPU3_AFFINITY="$eth_rx3"
+
+		CPU0_RPS="                $wifi1 $wifi1_apcli0"
+		CPU1_RPS="$ethif1 $ethif2 $ethif3 $wifi1 $wifi1_apcli0"
+		CPU2_RPS="$ethif1 $ethif2 $ethif3 $wifi1 $wifi1_apcli0"
+		CPU3_RPS="$ethif1 $ethif2 $ethif3 "
+	elif [ "$num_of_wifi" = "2" ]; then
+		CPU0_AFFINITY="$wifi1_irq $eth_rx0"
+		CPU1_AFFINITY="$wifi2_irq $eth_rx1"
+		CPU2_AFFINITY="$eth_tx $eth_rx2 $usb"
+		CPU3_AFFINITY="$eth_rx3"
+
+		CPU0_RPS="                $wifi1 $wifi2 $wifi1_apcli0 $wifi2_apcli0"
+		CPU1_RPS="$ethif1 $ethif2 $ethif3 $wifi1 $wifi2 $wifi1_apcli0 $wifi2_apcli0"
+		CPU2_RPS="$ethif1 $ethif2 $ethif3 $wifi1 $wifi2 $wifi1_apcli0 $wifi2_apcli0"
+		CPU3_RPS="$ethif1 $ethif2 $ethif3"
+	elif [ "$num_of_wifi" = "3" ]; then
+		CPU0_AFFINITY="$wifi1_irq $eth_rx0"
+		CPU1_AFFINITY="$wifi2_irq $eth_rx1"
+		CPU2_AFFINITY="$PCIe0 $wifi3_irq $eth_rx2 $usb"
+		CPU3_AFFINITY="$eth_tx $eth_rx3"
+
+		CPU0_RPS=""
+		CPU1_RPS="$ethif1 $ethif2 $ethif3                                           $wifi3 $wifi3_apcli0"
+		CPU2_RPS="$ethif1 $ethif2 $ethif3 $wifi1 $wifi2 $wifi1_apcli0 $wifi2_apcli0"
+		CPU3_RPS="$ethif1 $ethif2 $ethif3 $wifi1 $wifi2 $wifi3 $wifi1_apcli0 $wifi2_apcli0 $wifi3_apcli0"
+	else
+		dbg "MT7990_whnat with $NUM_OF_WIFI Wi-Fi bands is not support"
+	fi
+}
+
 MT7986_whnat()
 {
 	num_of_wifi=$1
@@ -570,6 +650,7 @@ get_eth_if_name()
 
 	ethif1=""
 	ethif2=""
+	ethif3=""
 	# GMAC interfaces may have board-specific names.
 	for dev in /sys/class/net/*; do
 		grep -q "mediatek,eth-mac" "$dev/of_node/compatible" 2>/dev/null || continue
@@ -577,11 +658,13 @@ get_eth_if_name()
 			ethif1="${dev##*/}"
 		elif [ -z "$ethif2" ]; then
 			ethif2="${dev##*/}"
+		elif [ -z "$ethif3" ]; then
+			ethif3="${dev##*/}"
 		fi
 	done
 	dbg2 "# Ethernet interface list"
-	dbg2 "\$ethif1=$ethif1\n\$ethif2=$ethif2"
-	RPS_IF_LIST="$RPS_IF_LIST $ethif1 $ethif2"
+	dbg2 "\$ethif1=$ethif1\n\$ethif2=$ethif2\n\$ethif3=$ethif3"
+	RPS_IF_LIST="$RPS_IF_LIST $ethif1 $ethif2 $ethif3"
 }
 
 # Try to get Wi-Fi interface name from l1profile
@@ -612,10 +695,18 @@ get_wifi_if_name()
 		#wifi_if1s=`l1dat idx2if 1`
 		#wifi_if2s=`l1dat idx2if 2`
 		#wifi_if3s=`l1dat idx2if 3`
-		wifi_if1s=`l1dat zone2if dev1`
-		wifi_if2s=`l1dat zone2if dev2`
-		wifi_if3s=`l1dat zone2if dev3`
-	
+		local try_dev00=`l1dat zone2if dev00`
+
+		if [ -z "$try_dev00" ]; then
+			wifi_if1s=`l1dat zone2if dev1`
+			wifi_if2s=`l1dat zone2if dev2`
+			wifi_if3s=`l1dat zone2if dev3`
+		else
+			wifi_if1s=`l1dat zone2if dev00`
+			wifi_if2s=`l1dat zone2if dev01`
+			wifi_if3s=`l1dat zone2if dev02`
+		fi
+
 		wifi1=`echo $wifi_if1s | awk '{print $1}'`
 		wifi1_prefix=`echo $wifi_if1s | awk '{print $2}'`
 		wifi1_apcli=`echo $wifi_if1s | awk '{print $3}'`
@@ -754,6 +845,9 @@ setup_model()
 	logger -t "mtk_smp" "compatible=[${compatible}], wifi_num=${num_of_wifi}, cpu_num=${NUM_OF_CPU}, usbnet=${usbnet}"
 
 	case "$compatible" in
+	*mediatek,mt7987*|*mediatek,mt7988*)
+		MT7990_whnat $num_of_wifi
+		;;
 	*mediatek,mt7986*)
 		MT7986_whnat $num_of_wifi $usbnet
 		;;

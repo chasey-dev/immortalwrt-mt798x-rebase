@@ -1,4 +1,11 @@
 {
+	"device": {
+		"config": {
+			"hostapd_options": [
+				"use_driver_iface_addr=1"
+			]
+		}
+	},
 	"iface": {
 		"config": {
 			"bss_load_update_period": 0,

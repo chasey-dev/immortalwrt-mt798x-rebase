@@ -1,0 +1,136 @@
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -1158,6 +1158,21 @@ static int sae_assign_vlan(struct hostap
+ 
+ void sae_accept_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ {
++	const u8 *pmksa_addr = sta->addr;
++	const u8 *pmksa_link_addr = sta->addr;
++	bool is_ml = ap_sta_has_ml_rsn(hapd, sta);
++
++	if (is_ml) {
++		u8 link_id = sta->mld_assoc_link_id;
++
++		/*
++		 * PMKSA uses the MLD address, while the driver also needs the
++		 * link address.
++		 */
++		pmksa_addr = sta->mld_info.common_info.mld_addr;
++		pmksa_link_addr = sta->mld_info.links[link_id].peer_addr;
++	}
++
+ 	if (sta->sae->tmp &&
+ 	    sae_assign_vlan(hapd, sta, sta->sae->tmp->vlan_id) < 0)
+ 		return;
+@@ -1170,10 +1185,10 @@ void sae_accept_sta(struct hostapd_data
+ 	crypto_bignum_deinit(sta->sae->peer_commit_scalar_accepted, 0);
+ 	sta->sae->peer_commit_scalar_accepted = sta->sae->peer_commit_scalar;
+ 	sta->sae->peer_commit_scalar = NULL;
+-	wpa_auth_pmksa_add_sae(hapd->wpa_auth, sta->addr,
++	wpa_auth_pmksa_add_sae(hapd->wpa_auth, pmksa_addr, pmksa_link_addr,
+ 			       sta->sae->pmk, sta->sae->pmk_len,
+ 			       sta->sae->pmkid, sta->sae->akmp,
+-			       ap_sta_is_mld(hapd, sta), sta->vlan_id);
++			       is_ml, sta->vlan_id);
+ 	sae_sme_send_external_auth_status(hapd, sta, WLAN_STATUS_SUCCESS);
+ }
+ 
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -1733,7 +1733,7 @@ static int hostapd_wpa_auth_remove_pmkid
+ 	struct hostapd_data *hapd = ctx;
+ 
+ #ifdef CONFIG_DRIVER_NL80211_MTK
+-	if (os_memcmp(aa, link_addr, ETH_ALEN) == 0)
++	if (aa && sta_addr && link_addr)
+ 		return hostapd_remove_mtk_pmkid(hapd, aa, sta_addr, link_addr,
+ 						pmkid, akmp);
+ #else /* CONFIG_DRIVER_NL80211_MTK */
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -7028,8 +7028,9 @@ int wpa_auth_pmksa_add_preauth(struct wp
+ 
+ 
+ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
+-			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+-			   int akmp, bool is_ml, int vlan_id)
++			   const u8 *link_addr, const u8 *pmk,
++			   size_t pmk_len, const u8 *pmkid, int akmp,
++			   bool is_ml, int vlan_id)
+ {
+ 	struct rsn_pmksa_cache *pmksa = wpa_auth->pmksa;
+ 	struct rsn_pmksa_cache_entry *entry;
+@@ -7055,8 +7056,8 @@ int wpa_auth_pmksa_add_sae(struct wpa_au
+ 		return -1;
+ 
+ 	entry->sae_vlan_id = vlan_id;
+-	if (!is_ml && wpa_auth->cb->add_pmkid)
+-		wpa_auth->cb->add_pmkid(wpa_auth->cb_ctx, aa, addr, addr,
++	if (wpa_auth->cb->add_pmkid)
++		wpa_auth->cb->add_pmkid(wpa_auth->cb_ctx, aa, addr, link_addr,
+ 					entry->pmk, entry->pmk_len,
+ 					entry->pmkid, entry->akmp);
+ 
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -520,8 +520,9 @@ int wpa_auth_pmksa_add_preauth(struct wp
+ 			       int session_timeout,
+ 			       struct eapol_state_machine *eapol);
+ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
+-			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+-			   int akmp, bool is_ml, int vlan_id);
++			   const u8 *link_addr, const u8 *pmk,
++			   size_t pmk_len, const u8 *pmkid, int akmp,
++			   bool is_ml, int vlan_id);
+ void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid);
+ int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
+ 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -2265,6 +2265,7 @@ static void p2p_go_configured(void *ctx,
+ 
+ 		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
+ 				       params->peer_device_addr,
++				       params->peer_device_addr,
+ 				       params->pmk, params->pmk_len,
+ 				       params->pmkid, WPA_KEY_MGMT_SAE,
+ 				       false, 0);
+@@ -2922,6 +2923,7 @@ static void wpas_set_go_security_config(
+ 			   MAC2STR(params->peer_device_addr));
+ 		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
+ 				       params->peer_device_addr,
++				       params->peer_device_addr,
+ 				       params->pmk, params->pmk_len,
+ 				       params->pmkid, WPA_KEY_MGMT_SAE,
+ 				       false, 0);
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -1217,14 +1217,17 @@ wpa_validate_wpa_ie(struct wpa_authentic
+ 	sm->pmksa = NULL;
+ 	for (i = 0; i < data.num_pmkid; i++) {
+ 		struct rsn_pmksa_cache *pmksa = wpa_auth->pmksa;
++		const u8 *pmksa_spa = sm->addr;
+ 
+ 		wpa_hexdump(MSG_DEBUG, "RSN IE: STA PMKID",
+ 			    &data.pmkid[i * PMKID_LEN], PMKID_LEN);
+ #ifdef CONFIG_IEEE80211BE
+-		if (is_ml)
++		if (is_ml) {
+ 			pmksa = wpa_auth->ml_pmksa;
++			pmksa_spa = sm->peer_mld_addr;
++		}
+ #endif /* CONFIG_IEEE80211BE */
+-		sm->pmksa = pmksa_cache_auth_get(pmksa, sm->addr,
++		sm->pmksa = pmksa_cache_auth_get(pmksa, pmksa_spa,
+ 						 &data.pmkid[i * PMKID_LEN]);
+ #ifdef CONFIG_IEEE80211BE
+ 		if (!sm->pmksa && !is_ml && wpa_auth->is_ml)
+@@ -1236,7 +1239,7 @@ wpa_validate_wpa_ie(struct wpa_authentic
+ 
+ 			idata.wpa_auth = wpa_auth;
+ 			idata.pmksa = NULL;
+-			idata.spa = sm->addr;
++			idata.spa = pmksa_spa;
+ 			idata.pmkid = &data.pmkid[i * PMKID_LEN];
+ 			wpa_auth_for_each_auth(wpa_auth,
+ 					       wpa_auth_pmksa_iter,

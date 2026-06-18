@@ -607,6 +607,15 @@ endef
 define Build/Compile/mt7992
 #Copy Kite FW header for differnet SKUs
 ifeq ($(CONFIG_MTK_WIFI7_CHIP_MT7992),y)
+	[ -x $(PKG_BUILD_DIR)/mt_wifi/tools/bin2h ] || $(MAKE) -C $(PKG_BUILD_DIR)/mt_wifi/tools
+	TOP_DIR="$(PKG_BUILD_DIR)/mt_wifi" \
+	TOP_BIN_DIR="$(PKG_BUILD_DIR)" \
+	CHIPSET=mt7992 \
+	SKU=$(CONFIG_MTK_WIFI7_SKU_TYPE) \
+	WIFI_MODE=AP \
+	FW_LOG_TYPE=$(CONFIG_MTK_WIFI7_FW_LOG_TYPE) \
+	$(if $(filter y,$(CONFIG_MTK_WIFI7_CCN34_SPLIT_MAC_SUPPORT)),PROJECT=CCN34,) \
+	$(PKG_BUILD_DIR)/mt_wifi/tools/bin2h
 ifeq ($(CONFIG_MTK_WIFI7_SKU_TYPE),"BE7200")
 	cp -rf $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_MT7992_PATCH_MCU_1_1_hdr_.h $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_MT7992_PATCH_MCU_1_1_hdr.h
 ifeq ($(CONFIG_MTK_WIFI7_FW_LOG_TYPE),"idx_log")

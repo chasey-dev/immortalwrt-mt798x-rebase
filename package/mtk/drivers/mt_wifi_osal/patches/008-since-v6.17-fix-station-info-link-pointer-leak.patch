@@ -1,0 +1,34 @@
+--- a/mt_osal_cfg80211.c
++++ b/mt_osal_cfg80211.c
+@@ -2411,7 +2411,15 @@ static int mt_cfg80211_ops_sta_get(
+ 		MT_DEBUG_TRACE("80211> ==> %s\n", netdev->name);
+ 
+ 	/* init */
++	/*
++	 * Since upstream v6.17, cfg80211 preallocates station_info.links[]
++	 * before get_station/dump_station and releases it after the callback.
++	 * Only clear caller-owned station_info on older cfg80211 APIs.
++	 */
++#if (KERNEL_VERSION(6, 17, 0) > LINUX_VERSION_CODE) && \
++	(!defined(CFG_CFG80211_VERSION) || (KERNEL_VERSION(6, 17, 0) > CFG_CFG80211_VERSION))
+ 	memset(pSinfo, 0, sizeof(*pSinfo));
++#endif
+ 	memset(&mtk_sta_info, 0, sizeof(mtk_sta_info));
+ 	memcpy(mtk_sta_info.MAC, mac_addr, 6);
+ 
+@@ -2453,7 +2461,15 @@ static int mt_cfg80211_ops_sta_dump(
+ 
+ 	/*init data*/
+ 	memset(pMac, 0, MT_MAC_ADDR_LEN);
++	/*
++	 * Since upstream v6.17, cfg80211 preallocates station_info.links[]
++	 * before get_station/dump_station and releases it after the callback.
++	 * Only clear caller-owned station_info on older cfg80211 APIs.
++	 */
++#if (KERNEL_VERSION(6, 17, 0) > LINUX_VERSION_CODE) && \
++	(!defined(CFG_CFG80211_VERSION) || (KERNEL_VERSION(6, 17, 0) > CFG_CFG80211_VERSION))
+ 	memset(pSinfo, 0, sizeof(*pSinfo));
++#endif
+ 	memset(&mtk_sta_info, 0, sizeof(mtk_sta_info));
+ 
+ 	ctrl_data_ptr->data = &mtk_sta_info;

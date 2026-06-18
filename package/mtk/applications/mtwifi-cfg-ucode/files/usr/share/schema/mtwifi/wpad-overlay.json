@@ -1,2 +1,8 @@
 {
+	"iface": {
+		"config": {
+			"bss_load_update_period": 0,
+			"chan_util_avg_period": 0
+		}
+	}
 }

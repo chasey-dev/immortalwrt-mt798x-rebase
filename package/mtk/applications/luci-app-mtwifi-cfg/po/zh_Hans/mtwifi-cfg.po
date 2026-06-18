@@ -54,3 +54,42 @@ msgstr "两种方式"
 
 msgid "SAE groups"
 msgstr "SAE 有限循环群组"
+
+msgid "MLO AP"
+msgstr "MLO AP"
+
+msgid "AP MLO"
+msgstr "AP MLO"
+
+msgid "Add MLO AP"
+msgstr "添加 MLO AP"
+
+msgid "Edit MLO AP"
+msgstr "编辑 MLO AP"
+
+msgid "Member radios"
+msgstr "无线成员"
+
+msgid "Select at least two member radios."
+msgstr "请选择至少两个无线成员。"
+
+msgid "Member radio %s is not an mtwifi radio."
+msgstr "无线成员 %s 不是 mtwifi。"
+
+msgid "Member radio %s is disabled. Enable the radio first."
+msgstr "无线成员 %s 已禁用，请先启用该成员。"
+
+msgid "Member radio %s is not configured for BE/EHT. Configure the radio operating frequency first."
+msgstr "无线成员 %s 未配置为 BE/EHT，请先配置该无线的工作频率。"
+
+msgid "The number of MBSSID on %s has reached the maximum."
+msgstr "%s 上的 MBSSID 数量已达到上限。"
+
+msgid "6 GHz MLO APs only support SAE or OWE encryption."
+msgstr "6 GHz MLO AP 仅支持 SAE 或 OWE 加密。"
+
+msgid "At least two enabled mtwifi radios are required to create an MLO AP."
+msgstr "创建 MLO AP 至少需要两个已启用的 mtwifi 射频。"
+
+msgid "At least one MBSSID needs to be reserved on %s."
+msgstr "%s 上至少需要保留一个 MBSSID。"

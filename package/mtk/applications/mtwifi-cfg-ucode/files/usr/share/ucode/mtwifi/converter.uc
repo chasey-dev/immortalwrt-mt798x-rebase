@@ -379,6 +379,7 @@ export function convert(uci_cfg) {
 	for (let k, iface in ifaces) {
 		let c = ifaces[k].config;
 		if (c.mode != "ap") continue;
+		if (!iface.mtwifi_ifname) continue;
 
 		// get vif index from name
 		let vif_idx = get_vif_idx(iface.mtwifi_ifname);
@@ -431,6 +432,12 @@ export function convert(uci_cfg) {
 		set_token("HT_AMSDU", strict_bool(c.amsdu));
 		set_token("HT_AutoBA", strict_bool(c.autoba));
 
+		if (is_be && c.mlo && !c.disabled) {
+			// Mainline wifi-scripts names AP MLD intent ap-mldN; DAT uses 1-based groups.
+			let m = match(c.ifname || "", /^ap-mld([0-9]+)$/);
+			set_token("MldGroup", m ? int(m[1]) + 1 : 1);
+		}
+
 		// MU-MIMO / OFDMA
 		set_token("MuMimoDlEnable", strict_bool(c.mumimo_dl));
 		set_token("MuMimoUlEnable", strict_bool(c.mumimo_ul));
@@ -440,7 +447,8 @@ export function convert(uci_cfg) {
 		set_token("PweMethod", defs.SAE_PWE_2_DAT[c.sae_pwe]);
 
 		// AuthMode + EncrypType
-		let enc_def = defs.ENC_2_COMMON_DAT[c.encryption];
+		let enc_def = (c.mlo && defs.ENC_2_MLO_AP_DAT[c.encryption]) ||
+			defs.ENC_2_COMMON_DAT[c.encryption];
 		let authmode = enc_def[0];
 		let pmf_mode = calc_pmf_mode(authmode, c.ieee80211w);
 

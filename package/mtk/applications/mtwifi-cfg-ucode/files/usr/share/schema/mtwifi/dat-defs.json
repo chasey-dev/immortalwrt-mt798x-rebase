@@ -143,6 +143,9 @@
 		"wpa-mixed+tkip+ccmp": [ "WPA1WPA2", "TKIPAES" ],
 		"wpa3-mixed": [ "WPA3WPA2", "AES" ]
 	},
+	"ENC_2_MLO_AP_DAT": {
+		"sae": [ "WPA3PSK", "CCMP128,GCMP256" ]
+	},
 	"COUNTRY_REGIONS": {
         "DB": [ 5, 13 ], "AE": [ 1, 0 ], "AL": [ 1, 0 ], "AR": [ 1, 3 ],
         "AT": [ 1, 1 ], "AM": [ 1, 2 ], "AU": [ 1, 0 ], "AZ": [ 1, 2 ],

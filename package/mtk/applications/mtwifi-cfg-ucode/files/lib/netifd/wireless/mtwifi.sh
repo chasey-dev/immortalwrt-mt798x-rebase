@@ -36,6 +36,9 @@ import * as supplicant from 'wifi.supplicant';
 import { validate } from 'wifi.validate';
 
 const LOCK_FILE = "/var/lock/mtwifi.lock";
+// MTWIFI_MAX_* interface index limits.
+const MAX_AP_IDX = 15;
+const MAX_APCLI_IDX = 0;
 
 log.debug(`[Setup] received cmd ${ARGV}`);
 
@@ -221,6 +224,22 @@ function prepare_wpad_data(data, iface_items, phy) {
             ...iface_config
         };
 
+        if (iface_config.mlo && iface_config.mode == "ap") {
+            /*
+             * MTK MLO AP DAT advertises GCMP-256 and SAE-EXT-KEY for SAE.
+             * Set the corresponding wifi-scripts options for wpad.
+             */
+            if (iface_config.encryption == "sae") {
+                iface_config.gcmp256 = true;
+                iface_config.sae_ext_key = true;
+            }
+
+            iface_config.hostapd_bss_options = [
+                ...(iface_config.hostapd_bss_options || []),
+                "mtk_private_mld=1"
+            ];
+        }
+
         if (item.existing_netdev) {
             iface_config.hostapd_bss_options = [
                 ...(iface_config.hostapd_bss_options || []),
@@ -228,6 +247,8 @@ function prepare_wpad_data(data, iface_items, phy) {
             ];
         }
 
+        delete iface_config.mlo;
+        delete iface_config.mld_addr;
         normalize_iface_config(iface_config, iface.mtwifi_ifname);
     }
 
@@ -435,7 +456,8 @@ function handle_setup(data) {
     // ifname -> object
     let netifd_ifaces = {};
     for (let k, v in data.interfaces) {
-        if (v.name) netifd_ifaces[v.name] = v;
+        let name = v.name || v.section;
+        if (name) netifd_ifaces[name] = v;
     }
 
     // rebuild ifaces object from read UCI cfg
@@ -444,7 +466,11 @@ function handle_setup(data) {
 
     cursor.foreach("wireless", "wifi-iface", function(sec) {
         // skip iface that doesnt belong to cur dev
-        if (sec.device != cur_devname) return;
+        if (type(sec.device) == "array") {
+            if (index(sec.device, cur_devname) < 0) return;
+        } else if (sec.device != cur_devname) {
+            return;
+        }
 
         // generate ordered keys (01, 02, 03...)
         let key = sprintf("%02d", sort_idx++);
@@ -460,6 +486,7 @@ function handle_setup(data) {
                     "network":      split(sec.network, " "),
                     "device":       sec.device,
                     "mode":         sec.mode,
+                    "mlo":          sec.mlo == "1",
                     "encryption":   sec.encryption,
                     "key":          sec.key,
                     "ssid":         sec.ssid,
@@ -481,11 +508,6 @@ function handle_setup(data) {
     // MTWIFI_APCLI_IF_PREFIX <= apcli_ifname
     let ap_prefix = cur_dev.ext_ifname || "ra";         // default to ra
     let apcli_prefix = cur_dev.apcli_ifname || "apcli"; // default to apcli
-
-    // MTWIFI_MAX_AP_IDX=15
-    // MTWIFI_MAX_APCLI_IDX=0
-    const MAX_AP_IDX = 15;
-    const MAX_APCLI_IDX = 0; // e.g. apcli0 ONLY
 
     let ap_idx = 0;
     let apcli_idx = 0;
@@ -515,12 +537,13 @@ function handle_setup(data) {
         if (mode == "ap") {
             config.dtim_period ??= int(defs.AP_CFGS.DtimPeriod);
 
-            if (ap_idx <= MAX_AP_IDX) {
-                calc_ifname = ap_prefix + ap_idx;
-                ap_idx++;
-            } else {
-                log.warn(`[Setup] Ignored AP interface ${idx}: Max index reached.`);
+            if (ap_idx > MAX_AP_IDX) {
+                let kind = config.mlo ? "MLO AP" : "AP";
+                log.warn(`[Setup] Drop ${kind} interface ${iface_data.name || idx}: max AP index ${MAX_AP_IDX} reached`);
+                continue;
             }
+
+            calc_ifname = ap_prefix + ap_idx++;
         }
         // STA(Client) mode handling
         // mtwifi_vif_sta_set_data

@@ -1,0 +1,441 @@
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -50,6 +50,15 @@ static int nl80211_mtk_set_ftie(struct i
+ 				struct wpa_driver_ap_params *params);
+ #endif /* CONFIG_DRIVER_NL80211_MTK && CONFIG_IEEE80211R_AP */
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++static int nl80211_mtk_get_bss_mlo_info(struct i802_bss *bss,
++					u8 *mld_addr, u8 *link_id,
++					u8 *mld_grp_idx);
++static int nl80211_mtk_set_auth_mlo_ie(struct i802_bss *bss,
++				       const u8 *mld_addr,
++				       const u8 *link_addr);
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
+ 
+ #ifndef NETLINK_CAP_ACK
+ #define NETLINK_CAP_ACK 10
+@@ -14455,6 +14464,190 @@ fail:
+ 
+ 
+ #ifdef CONFIG_DRIVER_NL80211_MTK
++struct mtk_bss_mlo_info_ctx {
++	struct bss_mlo_info info;
++	bool has_info;
++};
++
++static int nl80211_mtk_bss_mlo_info_handler(struct nl_msg *msg, void *arg)
++{
++	struct nlattr *tb[NL80211_ATTR_MAX + 1];
++	struct nlattr *sub_tb[MTK_NL80211_VENDOR_ATTR_BSS_MLO_INFO_ATTR_MAX + 1];
++	struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
++	struct mtk_bss_mlo_info_ctx *ctx = arg;
++	struct nlattr *info;
++
++	if (gnlh->cmd != NL80211_CMD_VENDOR)
++		return NL_SKIP;
++
++	if (nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
++		      genlmsg_attrlen(gnlh, 0), NULL) ||
++	    !tb[NL80211_ATTR_VENDOR_DATA])
++		return NL_SKIP;
++
++	if (nla_parse_nested(sub_tb,
++			     MTK_NL80211_VENDOR_ATTR_BSS_MLO_INFO_ATTR_MAX,
++			     tb[NL80211_ATTR_VENDOR_DATA], NULL))
++		return NL_SKIP;
++
++	info = sub_tb[MTK_NL80211_VENDOR_ATTR_BSS_MLO_INFO];
++	if (!info)
++		return NL_SKIP;
++
++	if ((size_t) nla_len(info) != sizeof(ctx->info)) {
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: MTK BSS MLO info length mismatch: len=%d expected=%zu",
++			   nla_len(info), sizeof(ctx->info));
++		return NL_SKIP;
++	}
++
++	os_memcpy(&ctx->info, nla_data(info), sizeof(ctx->info));
++	ctx->has_info = true;
++
++	return NL_SKIP;
++}
++
++static int nl80211_mtk_get_bss_mlo_info(struct i802_bss *bss,
++					u8 *mld_addr, u8 *link_id,
++					u8 *mld_grp_idx)
++{
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	struct mtk_bss_mlo_info_ctx ctx = {};
++	struct nl_msg *msg;
++	struct nlattr *data;
++	int ret;
++
++	wpa_printf(MSG_DEBUG, "nl80211: Query MTK BSS MLO info: ifname=%s",
++		   bss->ifname);
++
++	msg = nl80211_bss_msg(bss, 0, NL80211_CMD_VENDOR);
++	if (!msg ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, MTK_NL80211_VENDOR_ID) ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
++			MTK_NL80211_VENDOR_SUBCMD_GET_BSS_MLO_INFO) ||
++	    !(data = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)) ||
++	    nla_put_flag(msg, MTK_NL80211_VENDOR_ATTR_BSS_MLO_INFO))
++		goto fail;
++
++	nla_nest_end(msg, data);
++
++	ret = send_and_recv_resp(drv, msg, nl80211_mtk_bss_mlo_info_handler,
++				 &ctx);
++	if (ret) {
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: MTK get BSS MLO info failed: ifname=%s ret=%d (%s)",
++			   bss->ifname, ret, strerror(-ret));
++		return ret;
++	}
++
++	if (!ctx.has_info || !ctx.info.mld_grp_idx ||
++	    is_zero_ether_addr(ctx.info.addr)) {
++		bss->has_mtk_mlo_info = 0;
++		wpa_printf(MSG_DEBUG, "nl80211: No MTK BSS MLO info: ifname=%s",
++			   bss->ifname);
++		return 0;
++	}
++
++	if (ctx.info.link_id >= MAX_NUM_MLD_LINKS) {
++		bss->has_mtk_mlo_info = 0;
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: Invalid MTK BSS MLO link ID: ifname=%s link_id=%u",
++			   bss->ifname, ctx.info.link_id);
++		return -EINVAL;
++	}
++
++	bss->has_mtk_mlo_info = 1;
++	bss->mtk_mlo_group_idx = ctx.info.mld_grp_idx;
++	bss->mtk_mlo_link_id = ctx.info.link_id;
++	os_memcpy(bss->mtk_mlo_addr, ctx.info.addr, ETH_ALEN);
++	if (mld_addr)
++		os_memcpy(mld_addr, ctx.info.addr, ETH_ALEN);
++	if (link_id)
++		*link_id = ctx.info.link_id;
++	if (mld_grp_idx)
++		*mld_grp_idx = ctx.info.mld_grp_idx;
++
++	wpa_printf(MSG_DEBUG,
++		   "nl80211: MTK BSS MLO info: ifname=%s links=%u group=%u "
++		   "link_id=%u mld_addr=" MACSTR,
++		   bss->ifname, ctx.info.link_cnt, bss->mtk_mlo_group_idx,
++		   bss->mtk_mlo_link_id, MAC2STR(bss->mtk_mlo_addr));
++
++	return 0;
++
++fail:
++	nlmsg_free(msg);
++	return -ENOBUFS;
++}
++
++static int wpa_driver_nl80211_get_bss_mlo_info(void *priv, u8 *mld_addr,
++					       u8 *link_id,
++					       u8 *mld_grp_idx)
++{
++	struct i802_bss *bss = priv;
++
++	return nl80211_mtk_get_bss_mlo_info(bss, mld_addr, link_id,
++					    mld_grp_idx);
++}
++
++static int nl80211_mtk_set_auth_mlo_ie(struct i802_bss *bss,
++				       const u8 *mld_addr,
++				       const u8 *link_addr)
++{
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	struct wpa_mlo_ie_parse peer_mlo;
++	struct nl_msg *msg;
++	struct nlattr *data;
++	int ret;
++
++	if (!mld_addr || !link_addr || !bss->has_mtk_mlo_info)
++		return -EINVAL;
++
++	os_memset(&peer_mlo, 0, sizeof(peer_mlo));
++	peer_mlo.type = MULTI_LINK_CONTROL_TYPE_BASIC;
++	os_memcpy(peer_mlo.ml_addr, mld_addr, ETH_ALEN);
++	peer_mlo.common_info_len = 1 + ETH_ALEN;
++	peer_mlo.ml_link_num = 1;
++	peer_mlo.valid = 1;
++	peer_mlo.profiles[0].link_id = bss->mtk_mlo_link_id;
++	os_memcpy(peer_mlo.profiles[0].addr, link_addr, ETH_ALEN);
++	peer_mlo.profiles[0].mac_addr_present = 1;
++
++	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR)) ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, MTK_NL80211_VENDOR_ID) ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
++			MTK_NL80211_VENDOR_SUBCMD_SET_MLO_IE) ||
++	    !(data = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)) ||
++	    nla_put(msg, MTK_NL80211_VENDOR_ATTR_SET_AUTH_MLO_IE,
++		    sizeof(peer_mlo), &peer_mlo)) {
++		nlmsg_free(msg);
++		return -ENOBUFS;
++	}
++	nla_nest_end(msg, data);
++
++	wpa_printf(MSG_DEBUG,
++		   "nl80211: MTK set auth MLO IE: ifname=%s mld_addr=" MACSTR
++		   " link_addr=" MACSTR,
++		   bss->ifname, MAC2STR(mld_addr),
++		   MAC2STR(link_addr));
++
++	ret = send_and_recv_cmd(drv, msg);
++	if (ret)
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: MTK failed to set auth MLO IE: ifname=%s ret=%d (%s)",
++			   bss->ifname, ret, strerror(-ret));
++	return ret;
++}
++
++static int wpa_driver_nl80211_set_auth_mlo_ie(void *priv,
++					      const u8 *mld_addr,
++					      const u8 *link_addr)
++{
++	struct i802_bss *bss = priv;
++
++	return nl80211_mtk_set_auth_mlo_ie(bss, mld_addr, link_addr);
++}
++
+ static int nl80211_mtk_do_acs(struct i802_bss *bss,
+ 			      struct drv_acs_params *params)
+ {
+@@ -15435,4 +15628,8 @@ const struct wpa_driver_ops wpa_driver_n
+ 	.radio_disable = testing_nl80211_radio_disable,
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	.get_multi_hw_info = wpa_driver_get_multi_hw_info,
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	.get_bss_mlo_info = wpa_driver_nl80211_get_bss_mlo_info,
++	.set_auth_mlo_ie = wpa_driver_nl80211_set_auth_mlo_ie,
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ };
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -91,6 +91,13 @@ struct i802_bss {
+ 
+ 	int if_dynamic;
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	unsigned int has_mtk_mlo_info:1;
++	u8 mtk_mlo_group_idx;
++	u8 mtk_mlo_link_id;
++	u8 mtk_mlo_addr[ETH_ALEN];
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
+ 	void *ctx;
+ 	struct nl_sock *nl_preq, *nl_mgmt, *nl_connect;
+ 	struct nl_cb *nl_cb;
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3591,6 +3591,13 @@ static void nl80211_vendor_event_brcm(st
+ 
+ #ifdef CONFIG_DRIVER_NL80211_MTK
+ 
++struct mtk_bss_mlo_info_event {
++	u8 event_id;
++	u8 mld_grp_idx;
++	u8 link_id;
++	u8 addr[ETH_ALEN];
++};
++
+ static enum hostapd_hw_mode get_mtk_hw_mode(u8 hw_mode)
+ {
+ 	switch (hw_mode) {
+@@ -3675,6 +3682,86 @@ static void mtk_nl80211_acs_select_ch(st
+ 	wpa_supplicant_event(bss->ctx, EVENT_ACS_CHANNEL_SELECTED, &event);
+ }
+ 
++static void nl80211_mtk_bss_mlo_info_event(struct i802_bss *bss,
++					  u8 *data, size_t len)
++{
++	const struct mtk_bss_mlo_info_event *event;
++	struct nlattr *attr;
++	union wpa_event_data ev;
++	int rem;
++
++	if (!data || len < sizeof(*attr))
++		return;
++
++	rem = len;
++	attr = (struct nlattr *) data;
++	if (!nla_ok(attr, rem) ||
++	    nla_type(attr) != MTK_NL80211_VENDOR_EVENT_SEND_ML_INFO ||
++	    (size_t) nla_len(attr) < sizeof(*event)) {
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: Ignore invalid MTK BSS MLO event: ifname=%s",
++			   bss->ifname);
++		return;
++	}
++
++	event = nla_data(attr);
++	if (event->link_id >= MAX_NUM_MLD_LINKS) {
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: Ignore MTK BSS MLO event with invalid link ID: "
++			   "ifname=%s link_id=%u",
++			   bss->ifname, event->link_id);
++		return;
++	}
++
++	os_memset(&ev, 0, sizeof(ev));
++	ev.mtk_bss_mlo_info.event_id = event->event_id;
++	ev.mtk_bss_mlo_info.mld_grp_idx = event->mld_grp_idx;
++	ev.mtk_bss_mlo_info.link_id = event->link_id;
++	os_memcpy(ev.mtk_bss_mlo_info.mld_addr, event->addr, ETH_ALEN);
++
++	switch (event->event_id) {
++	case MTK_BSS_MLO_EVENT_ADD_LINK:
++		if (!event->mld_grp_idx || is_zero_ether_addr(event->addr)) {
++			wpa_printf(MSG_DEBUG,
++				   "nl80211: Ignore empty MTK BSS MLO add event: ifname=%s",
++				   bss->ifname);
++			return;
++		}
++
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: MTK BSS MLO add event: ifname=%s group=%u link_id=%u "
++			   "mld_addr=" MACSTR,
++			   bss->ifname, event->mld_grp_idx,
++			   event->link_id, MAC2STR(event->addr));
++		break;
++	case MTK_BSS_MLO_EVENT_DEL_LINK:
++		if (!bss->has_mtk_mlo_info ||
++		    bss->mtk_mlo_group_idx != event->mld_grp_idx ||
++		    bss->mtk_mlo_link_id != event->link_id ||
++		    !ether_addr_equal(bss->mtk_mlo_addr, event->addr)) {
++			wpa_printf(MSG_DEBUG,
++				   "nl80211: Ignore MTK BSS MLO delete event for another BSS: "
++				   "ifname=%s event_group=%u event_link_id=%u",
++				   bss->ifname, event->mld_grp_idx,
++				   event->link_id);
++			return;
++		}
++
++		bss->has_mtk_mlo_info = 0;
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: MTK BSS MLO delete event: ifname=%s group=%u link_id=%u",
++			   bss->ifname, event->mld_grp_idx, event->link_id);
++		break;
++	default:
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: Ignore unknown MTK BSS MLO event: ifname=%s event_id=%u",
++			   bss->ifname, event->event_id);
++		return;
++	}
++
++	wpa_supplicant_event(bss->ctx, EVENT_MTK_BSS_MLO_INFO, &ev);
++}
++
+ 
+ static void nl80211_vendor_event_mtk(struct i802_bss *bss, u32 subcmd,
+ 				     u8 *data, size_t len)
+@@ -3683,6 +3770,9 @@ static void nl80211_vendor_event_mtk(str
+ 	case MTK_NL80211_VENDOR_EVENT_ACS_COMPLETE_EVENT:
+ 		mtk_nl80211_acs_select_ch(bss, data, len);
+ 		break;
++	case MTK_NL80211_VENDOR_EVENT_SEND_ML_INFO:
++		nl80211_mtk_bss_mlo_info_event(bss, data, len);
++		break;
+ 	default:
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: Ignore unsupported MTK vendor event %u",
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5559,8 +5559,39 @@ struct wpa_driver_ops {
+ 	 */
+ 	struct hostapd_multi_hw_info *
+ 	(*get_multi_hw_info)(void *priv, unsigned int *num_multi_hws);
++
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	/**
++	 * get_bss_mlo_info - Query MTK BSS MLO information
++	 * @priv: Private driver interface data
++	 * @mld_addr: Driver-owned BSS MLD address
++	 * @link_id: Driver-owned BSS MLO link ID
++	 * @mld_grp_idx: Driver-owned MLD group index
++	 *
++	 * This optional callback queries driver-owned MLO state for a BSS.
++	 */
++	int (*get_bss_mlo_info)(void *priv, u8 *mld_addr, u8 *link_id,
++				u8 *mld_grp_idx);
++
++	/**
++	 * set_auth_mlo_ie - Pass peer MLD/link address for MTK SAE auth
++	 * @priv: Private driver interface data
++	 * @mld_addr: Peer MLD address
++	 * @link_addr: Peer setup-link address
++	 *
++	 * MTK BSS MLDs keep auth address translation in the driver. This
++	 * optional callback provides the peer MLD and setup-link addresses
++	 * before hostapd transmits the SAE authentication response.
++	 */
++	int (*set_auth_mlo_ie)(void *priv, const u8 *mld_addr, const u8 *link_addr);
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ };
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++#define MTK_BSS_MLO_EVENT_ADD_LINK 0
++#define MTK_BSS_MLO_EVENT_DEL_LINK 1
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
+ /**
+  * enum wpa_event_type - Event type for wpa_supplicant_event() calls
+  */
+@@ -6196,6 +6227,16 @@ enum wpa_event_type {
+ 	 * EVENT_SETUP_LINK_RECONFIG - Notification that new AP links added
+ 	 */
+ 	EVENT_SETUP_LINK_RECONFIG,
++
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	/**
++	 * EVENT_MTK_BSS_MLO_INFO - MTK BSS MLO state update
++	 *
++	 * This event reports driver-owned MLO group and link information for a
++	 * BSS.
++	 */
++	EVENT_MTK_BSS_MLO_INFO,
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ };
+ 
+ 
+@@ -7196,6 +7237,22 @@ union wpa_event_data {
+ 		const u8 *resp_ie; /* Starting from Group Key Data */
+ 		size_t resp_ie_len;
+ 	} reconfig_info;
++
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	/**
++	 * struct mtk_bss_mlo_info - Data for EVENT_MTK_BSS_MLO_INFO
++	 * @event_id: MTK MLO event ID from the driver
++	 * @mld_grp_idx: MTK MLD group index
++	 * @link_id: Link ID in the MLD group
++	 * @mld_addr: Driver-owned MLD address
++	 */
++	struct mtk_bss_mlo_info {
++		u8 event_id;
++		u8 mld_grp_idx;
++		u8 link_id;
++		u8 mld_addr[ETH_ALEN];
++	} mtk_bss_mlo_info;
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ };
+ 
+ /**
+--- a/src/drivers/driver_common.c
++++ b/src/drivers/driver_common.c
+@@ -102,6 +102,9 @@ const char * event_to_string(enum wpa_ev
+ 	E2S(LINK_RECONFIG);
+ 	E2S(MLD_INTERFACE_FREED);
+ 	E2S(SETUP_LINK_RECONFIG);
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	E2S(MTK_BSS_MLO_INFO);
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ 	}
+ 
+ 	return "UNKNOWN";

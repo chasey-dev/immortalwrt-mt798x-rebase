@@ -10,7 +10,7 @@ const NOTIFY_CMD_PROCESS_ADD = 2;
 const NOTIFY_CMD_SET_RETRY = 4;
 
 const DEFAULT_RETRY = 3;
-const DEFAULT_SCRIPT_TIMEOUT = 30 * 1000;
+const DEFAULT_SCRIPT_TIMEOUT = 120 * 1000;
 
 let wdev_cur;
 let wdev_handler = {};

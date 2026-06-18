@@ -186,6 +186,10 @@ function normalize_iface_config(config, ifname) {
  * Overlay keys affect only wpad config output. They are not written back to UCI
  * or DAT.
  *
+ * wpad_overlay shape:
+ * - device.config: hostapd-wide options.
+ * - iface.config: per-BSS defaults applied before UCI/netifd values.
+ *
  * @param {Object} data - netifd wireless device payload.
  * @param {Object[]} iface_items - Interfaces to include.
  * @param {string} phy - cfg80211 phy name used by wifi-scripts.
@@ -197,7 +201,21 @@ function prepare_wpad_data(data, iface_items, phy) {
         config: clone_config(data.config || {}),
         interfaces: {}
     };
+    let device_overlay = wpad_overlay.device;
     let iface_overlay = wpad_overlay.iface;
+
+    /*
+     * Device overlay is wpad-only. Scalar keys override this clone.
+     * Raw hostapd_options are additive so UCI/netifd options stay visible.
+     */
+    wdata.config = {
+        ...wdata.config,
+        ...(device_overlay?.config || {}),
+        hostapd_options: [
+            ...(wdata.config.hostapd_options || []),
+            ...(device_overlay?.config?.hostapd_options || [])
+        ]
+    };
 
     wdata.phy = phy;
     let radio = wdata.config.radio;

@@ -54,3 +54,42 @@ msgstr "两种方式"
 
 msgid "SAE groups"
 msgstr "SAE 有限循环群组"
+
+msgid "Add MLO Access Point"
+msgstr "添加 MLO 接入点"
+
+msgid "MLO Access Point"
+msgstr "MLO 接入点 (AP)"
+
+msgid "Click \"Switch mode\" to open the MLO AP configuration."
+msgstr "请点击“切换模式”打开 MLO 接入点配置。"
+
+msgid "Really switch mode?"
+msgstr "确定切换模式？"
+
+msgid "Switch mode"
+msgstr "切换模式"
+
+msgid "Member radios"
+msgstr "无线成员"
+
+msgid "Select at least two member radios."
+msgstr "请选择至少两个无线成员。"
+
+msgid "Member radio %s is not an mtwifi radio."
+msgstr "无线成员 %s 不是 mtwifi。"
+
+msgid "Member radio %s is disabled. Enable the radio first."
+msgstr "无线成员 %s 已禁用，请先启用该成员。"
+
+msgid "Member radio %s is not configured for 802.11be (BE). Configure the radio operating frequency first."
+msgstr "无线成员 %s 未配置为 802.11be (BE)，请先配置该无线的工作频率。"
+
+msgid "The maximum number of AP interfaces on %s has been reached."
+msgstr "%s 上的 AP 接口数量已达到上限。"
+
+msgid "This MLO AP configuration only supports WPA3-SAE or OWE encryption when a 6 GHz radio is included."
+msgstr "此 MLO 接入点配置包含 6 GHz 无线时，仅支持 WPA3-SAE 或 OWE 加密。"
+
+msgid "At least one AP interface must remain on %s."
+msgstr "%s 上必须至少保留一个 AP 接口。"

@@ -1,0 +1,46 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] mt_wifi_osal: Preserve allocated station link information
+
+cfg80211 v6.17 allocates station_info link entries before invoking driver
+callbacks. Clearing station_info in those callbacks loses the allocated
+pointers before cfg80211 can release them.
+
+Skip the driver memset for this API version, including backported
+cfg80211. Older versions retain the driver initialization.
+
+Link: https://lore.kernel.org/all/20250528054420.3050133-1-quic_sarishar@quicinc.com/
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/mt_osal_cfg80211.c
++++ b/mt_osal_cfg80211.c
+@@ -2411,7 +2411,15 @@ static int mt_cfg80211_ops_sta_get(
+ 		MT_DEBUG_TRACE("80211> ==> %s\n", netdev->name);
+ 
+ 	/* init */
++	/*
++	 * Since upstream v6.17, cfg80211 preallocates station_info.links[]
++	 * before get_station/dump_station and releases it after the callback.
++	 * Only clear caller-owned station_info on older cfg80211 APIs.
++	 */
++#if (KERNEL_VERSION(6, 17, 0) > LINUX_VERSION_CODE) && \
++	(!defined(CFG_CFG80211_VERSION) || (KERNEL_VERSION(6, 17, 0) > CFG_CFG80211_VERSION))
+ 	memset(pSinfo, 0, sizeof(*pSinfo));
++#endif
+ 	memset(&mtk_sta_info, 0, sizeof(mtk_sta_info));
+ 	memcpy(mtk_sta_info.MAC, mac_addr, 6);
+ 
+@@ -2453,7 +2461,15 @@ static int mt_cfg80211_ops_sta_dump(
+ 
+ 	/*init data*/
+ 	memset(pMac, 0, MT_MAC_ADDR_LEN);
++	/*
++	 * Since upstream v6.17, cfg80211 preallocates station_info.links[]
++	 * before get_station/dump_station and releases it after the callback.
++	 * Only clear caller-owned station_info on older cfg80211 APIs.
++	 */
++#if (KERNEL_VERSION(6, 17, 0) > LINUX_VERSION_CODE) && \
++	(!defined(CFG_CFG80211_VERSION) || (KERNEL_VERSION(6, 17, 0) > CFG_CFG80211_VERSION))
+ 	memset(pSinfo, 0, sizeof(*pSinfo));
++#endif
+ 	memset(&mtk_sta_info, 0, sizeof(mtk_sta_info));
+ 
+ 	ctrl_data_ptr->data = &mtk_sta_info;

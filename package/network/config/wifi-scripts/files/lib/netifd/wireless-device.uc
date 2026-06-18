@@ -584,6 +584,8 @@ function get_status_stations(wdev, vif)
 function status()
 {
 	let interfaces = [];
+	let disabled = !!this.data.config.disabled;
+
 	for (let vif in this.data.vif) {
 		let vlans = get_status_vlans(this, vif);
 		let stations = get_status_stations(this, vif);
@@ -594,11 +596,11 @@ function status()
 		});
 	}
 	return {
-		up: this.state == "up",
-		pending: this.state == "setup" || this.state == "teardown",
+		up: !disabled && this.state == "up",
+		pending: !disabled && (this.state == "setup" || this.state == "teardown"),
 		autostart: this.autostart,
-		disabled: !!this.data.config.disabled,
-		retry_setup_failed: !!this.retry_setup_failed,
+		disabled,
+		retry_setup_failed: !disabled && !!this.retry_setup_failed,
 		config: this.data.config,
 		interfaces
 	};

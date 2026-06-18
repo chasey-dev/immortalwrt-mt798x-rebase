@@ -1,0 +1,24 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] mt_wifi: Use a flexible array member for QoS action frames
+
+receive_qos_action_frame() forwards received QoS action frames through a
+WAPP event. Although frame length is checked against event capacity,
+FORTIFY treats frm[0] as a zero-size field and reports a field-spanning
+write when frame data is copied.
+
+A flexible array member describes variable-length frame storage to the
+compiler. Copies remain bounded by the existing event capacity check.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/include/qos.h
++++ b/mt_wifi/include/qos.h
+@@ -205,7 +205,7 @@ struct GNU_PACKED wapp_qos_action_frame
+ 	u32 frmid;
+ 	u32 chan;
+ 	u32 frm_len;
+-	u8 frm[0];
++	u8 frm[];
+ };
+ 
+ struct GNU_PACKED classifier_header {

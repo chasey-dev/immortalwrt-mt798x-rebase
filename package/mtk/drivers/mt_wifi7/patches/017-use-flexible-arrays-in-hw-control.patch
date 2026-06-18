@@ -1,0 +1,34 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] mt_wifi: Use flexible array members in hardware control
+
+Beacon command and physical-device work queue structures use zero-length
+trailing arrays. Copies into these fields trigger FORTIFY_SOURCE
+field-spanning write warnings.
+
+Flexible array members describe variable-length trailing storage to the
+compiler so FORTIFY can check writes against the enclosing allocation.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/include/hw_ctrl/cmm_fw_uni_cmd.h
++++ b/mt_wifi/include/hw_ctrl/cmm_fw_uni_cmd.h
+@@ -603,7 +603,7 @@ typedef struct GNU_PACKED _UNI_CMD_BSSIN
+     UINT8  ucAction;
+     UINT8  aucPktContentType;
+     UINT16 u2PktLength;
+-    UINT8  aucPktContent[0];
++    UINT8  aucPktContent[];
+ } UNI_CMD_BSSINFO_BCN_CONTENT_T, *P_UNI_CMD_BSSINFO_BCN_CONTENT_T;
+ 
+ typedef enum _BCN_CONTENT_ACTION_T {
+--- a/mt_wifi/include/hw_ctrl/physical_device_workq.h
++++ b/mt_wifi/include/hw_ctrl/physical_device_workq.h
+@@ -27,7 +27,7 @@ struct physical_device_workq_item {
+ 	struct wifi_dev *wdev;
+ 	u32 tag_id;
+ 	u16 data_len;
+-	u8 data[0];
++	u8 data[];
+ };
+ 
+ enum physical_device_workq_tag {

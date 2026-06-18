@@ -25,6 +25,9 @@ function wpad_update_mlo(service, mode)
 		if (data.mode != mode)
 			continue;
 
+		if (data.mld_setup == "driver")
+			continue;
+
 		data.phy = find_phy(data.radio_config[0], true);
 		if (!data.phy)
 			continue;
@@ -50,13 +53,15 @@ function supplicant_update_mlo()
 	wpad_update_mlo("wpa_supplicant", "sta");
 }
 
-function mlo_vif_create(config, radio_config, vif_idx, mlo_vifs)
+function mlo_vif_create(config, radio_config, vif_idx, mlo_vifs, mld_setup)
 {
 	let mlo_config = { ...config };
 
 	if (config.wds)
 		mlo_config['4addr'] = config.wds;
 	mlo_config.radio_config = radio_config;
+	if (mld_setup)
+		mlo_config.mld_setup = mld_setup;
 
 	let ifname = config.ifname;
 	if (!ifname) {
@@ -80,6 +85,25 @@ function mlo_vif_macaddr(config, dev_names, dev_name)
 	let macaddr = idx >= 0 ? config.radio_macaddr[idx] : null;
 	if (macaddr)
 		config.macaddr = macaddr;
+}
+
+function resolve_mlo_handler(devices, dev_names)
+{
+	if (!length(dev_names))
+		return;
+
+	let handler_name = devices[dev_names[0]]?.config.type;
+	let handler = wireless.handlers[handler_name];
+	if (!handler?.mlo)
+		return;
+
+	for (let dev_name in dev_names) {
+		let dev = devices[dev_name];
+		if (!dev || dev.config.type != handler_name)
+			return;
+	}
+
+	return handler;
 }
 
 function update_config(new_devices, mlo_vifs)
@@ -166,6 +190,7 @@ function config_init(uci)
 		let radios = map(dev_names, (v) => radio_idx[v]);
 		radios = filter(radios, (v) => v != null);
 		let radio_config = map(dev_names, (v) => devices[v]?.config);
+		let mlo_handler = mlo_vif && resolve_mlo_handler(devices, dev_names);
 		let ifname;
 		let mlo_created = false;
 
@@ -182,7 +207,8 @@ function config_init(uci)
 			config.radios = radios;
 
 			if (mlo_vif && !mlo_created) {
-				ifname = mlo_vif_create(config, radio_config, vif_idx, mlo_vifs);
+				ifname = mlo_vif_create(config, radio_config, vif_idx,
+					mlo_vifs, mlo_handler?.mlo.mld_setup);
 				mlo_created = true;
 			}
 
@@ -315,10 +341,12 @@ function config_init(uci)
 						radios = filter(radios, (v) => v != null);
 						let radio_config = map(devs, (v) => devices[v]?.config);
 						radio_config = filter(radio_config, (v) => v != null);
+						let mlo_handler = mlo_vif && resolve_mlo_handler(devices, devs);
 						let ifname;
 
 						if (mlo_vif) {
-							ifname = mlo_vif_create(config, radio_config, vif_idx, mlo_vifs);
+							ifname = mlo_vif_create(config, radio_config,
+								vif_idx, mlo_vifs, mlo_handler?.mlo.mld_setup);
 							mlo_vifs[ifname].radios = radios;
 						}
 
@@ -562,7 +590,9 @@ handler_load(wireless.path, (script, data) => {
 		return;
 
 	let handler = wireless.handlers[data.name] = {
+		name: data.name,
 		script,
+		mlo: data.mlo,
 	};
 	for (let kind, attr in default_config_attr) {
 		let validate = handler[kind + "_validate"] = {};

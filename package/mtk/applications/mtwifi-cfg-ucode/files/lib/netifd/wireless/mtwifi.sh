@@ -78,6 +78,9 @@ function dump_option(schema, key) {
 function dump_options() {
 	let dump = {
 		"name": "mtwifi", // driver name
+		"mlo": {
+			"mld_setup": "driver"
+		}
 	};
 
 	for (let k, v in schemas) {

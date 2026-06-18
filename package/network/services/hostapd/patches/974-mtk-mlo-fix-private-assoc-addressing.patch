@@ -1,0 +1,154 @@
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -2354,9 +2354,21 @@ static void nl80211_new_station_event(st
+ 		if (!bss->valid_links &&
+ 		    (tb[NL80211_ATTR_MLO_LINK_ID] ||
+ 		     tb[NL80211_ATTR_MLD_ADDR])) {
+-			wpa_printf(MSG_ERROR,
+-				   "nl80211: MLO info not expected for new station event for non-MLD AP");
+-			return;
++#ifdef CONFIG_DRIVER_NL80211_MTK
++			if (bss->has_mtk_mlo_info) {
++				/* MTK BSS MLDs report MLO attributes on link APs. */
++				wpa_printf(MSG_DEBUG,
++					   "nl80211: accept MTK BSS MLD station event: "
++					   "ifname=%s group=%u link_id=%u",
++					   bss->ifname, bss->mtk_mlo_group_idx,
++					   bss->mtk_mlo_link_id);
++			} else
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++			{
++				wpa_printf(MSG_ERROR,
++					   "nl80211: MLO info not expected for new station event for non-MLD AP");
++				return;
++			}
+ 		}
+ 
+ 		if (tb[NL80211_ATTR_MLO_LINK_ID]) {
+@@ -2365,11 +2377,30 @@ static void nl80211_new_station_event(st
+ 			wpa_printf(MSG_DEBUG, "nl80211: STA assoc link ID %d",
+ 				   assoc_link_id);
+ 			if (tb[NL80211_ATTR_MLD_ADDR]) {
+-				peer_addr = nla_data(tb[NL80211_ATTR_MLD_ADDR]);
+-				link_addr = nla_data(tb[NL80211_ATTR_MAC]);
+-				wpa_printf(MSG_DEBUG,
+-					   "nl80211: STA MLD address " MACSTR,
+-					   MAC2STR(peer_addr));
++#ifdef CONFIG_DRIVER_NL80211_MTK
++				if (bss->has_mtk_mlo_info) {
++					/*
++					 * MTK BSS MLDs report the setup-link
++					 * STA in NL80211_ATTR_MAC and the STA MLD
++					 * in NL80211_ATTR_MLD_ADDR. Keep peer_addr
++					 * as the setup-link STA and pass the STA
++					 * MLD through link_addr for the AP callback.
++					 */
++					link_addr = nla_data(tb[NL80211_ATTR_MLD_ADDR]);
++					wpa_printf(MSG_DEBUG,
++						   "nl80211: MTK BSS MLD STA tuple: "
++						   "setup_link_sta=" MACSTR " sta_mld=" MACSTR,
++						   MAC2STR(peer_addr),
++						   MAC2STR(link_addr));
++				} else
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++				{
++					peer_addr = nla_data(tb[NL80211_ATTR_MLD_ADDR]);
++					link_addr = nla_data(tb[NL80211_ATTR_MAC]);
++					wpa_printf(MSG_DEBUG,
++						   "nl80211: STA MLD address " MACSTR,
++						   MAC2STR(peer_addr));
++				}
+ 			}
+ 		}
+ 
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -421,14 +421,29 @@ int hostapd_notif_assoc(struct hostapd_d
+ #ifdef CONFIG_IEEE80211BE
+ 	if (link_addr) {
+ 		struct mld_info *info = &sta->mld_info;
++		const u8 *sta_mld_addr = addr;
++		const u8 *sta_link_addr = link_addr;
+ 		int i, num_valid_links = 0;
+ 		u8 link_id = hapd->mld_link_id;
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++		if (hostapd_has_mtk_bss_mlo_info(hapd)) {
++			sta_mld_addr = link_addr;
++			sta_link_addr = addr;
++			wpa_printf(MSG_DEBUG,
++				   "MLD: MTK BSS assoc: ap_group=%u link_id=%u "
++				   "setup_link_sta=" MACSTR " sta_mld=" MACSTR,
++				   hapd->mtk_mld_group_idx, link_id,
++				   MAC2STR(sta_link_addr),
++				   MAC2STR(sta_mld_addr));
++		}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
+ 		ap_sta_set_mld(sta, true);
+ 		sta->mld_assoc_link_id = link_id;
+-		os_memcpy(info->common_info.mld_addr, addr, ETH_ALEN);
++		os_memcpy(info->common_info.mld_addr, sta_mld_addr, ETH_ALEN);
+ 		info->links[link_id].valid = true;
+-		os_memcpy(info->links[link_id].peer_addr, link_addr, ETH_ALEN);
++		os_memcpy(info->links[link_id].peer_addr, sta_link_addr, ETH_ALEN);
+ 		os_memcpy(info->links[link_id].local_addr, hapd->own_addr,
+ 			  ETH_ALEN);
+ 
+@@ -441,11 +456,28 @@ int hostapd_notif_assoc(struct hostapd_d
+ 			goto fail;
+ 		}
+ 
++		if (hostapd_is_mtk_private_mld(hapd)) {
++			struct hostapd_data *bss;
++
++			for_each_mtk_private_mld_link(bss, hapd) {
++				u8 bss_link_id;
++
++				if (!bss->drv_priv || bss->mld_link_id >= MAX_NUM_MLD_LINKS)
++					continue;
++
++				bss_link_id = bss->mld_link_id;
++				if (info->links[bss_link_id].valid)
++					os_memcpy(info->links[bss_link_id].local_addr,
++						  bss->own_addr, ETH_ALEN);
++			}
++		}
++
+ 		for (i = 0 ; i < MAX_NUM_MLD_LINKS; i++) {
+ 			if (info->links[i].valid)
+ 				num_valid_links++;
+ 		}
+ 		if (num_valid_links > 1 &&
++		    !hostapd_has_mtk_bss_mlo_info(hapd) &&
+ 		    hostapd_update_sta_links_status(hapd, sta, resp_ies,
+ 						    resp_ies_len)) {
+ 			wpa_printf(MSG_DEBUG,
+@@ -2699,7 +2731,8 @@ void hostapd_wpa_event(void *ctx, enum w
+ 		if (!data)
+ 			return;
+ #ifdef CONFIG_IEEE80211BE
+-		if (data->assoc_info.assoc_link_id != -1) {
++		if (data->assoc_info.assoc_link_id != -1 &&
++		    !hostapd_has_mtk_bss_mlo_info(hapd)) {
+ 			hapd = hostapd_mld_get_link_bss(
+ 				hapd, data->assoc_info.assoc_link_id);
+ 			if (!hapd) {
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1204,11 +1204,14 @@ struct sta_info * hostapd_ml_get_assoc_s
+ 	struct hostapd_data *other_hapd = NULL;
+ 	struct sta_info *tmp_sta;
+ 
+-	if (!ap_sta_is_mld(hapd, sta))
++	if (!ap_sta_has_ml_rsn(hapd, sta))
+ 		return NULL;
+ 
+ 	*assoc_hapd = hapd;
+ 
++	if (hostapd_has_mtk_bss_mlo_info(hapd))
++		return sta;
++
+ 	/* The station is the one on which the association was performed */
+ 	if (sta->mld_assoc_link_id == hapd->mld_link_id)
+ 		return sta;

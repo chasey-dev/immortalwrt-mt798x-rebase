@@ -1,0 +1,238 @@
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -355,7 +355,7 @@ static int send_auth_reply(struct hostap
+ 	struct wpabuf *ml_resp = NULL;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (ap_sta_is_mld(hapd, sta)) {
++	if (ap_sta_has_ml_rsn(hapd, sta)) {
+ 		ml_resp = hostapd_ml_auth_resp(hapd);
+ 		if (!ml_resp)
+ 			return -1;
+@@ -784,10 +784,23 @@ static struct wpabuf * auth_build_sae_co
+ 	struct sae_pt *pt = NULL;
+ 	const struct sae_pk *pk = NULL;
+ 	const u8 *own_addr = hapd->own_addr;
++	const u8 *peer_addr = sta->addr;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (ap_sta_is_mld(hapd, sta))
+-		own_addr = hapd->mld->mld_addr;
++	if (ap_sta_has_ml_rsn(hapd, sta)) {
++		/* SAE commit for ML RSN is keyed by MLD addresses. */
++		if (hostapd_has_mtk_bss_mlo_info(hapd))
++			own_addr = hapd->conf->mld_addr;
++		else if (hapd->mld)
++			own_addr = hapd->mld->mld_addr;
++		else
++			return NULL;
++
++		if (is_zero_ether_addr(own_addr))
++			return NULL;
++
++		peer_addr = sta->mld_info.common_info.mld_addr;
++	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 	if (sta->sae->tmp) {
+@@ -796,7 +809,7 @@ static struct wpabuf * auth_build_sae_co
+ 		use_pt = sta->sae->h2e;
+ #ifdef CONFIG_SAE_PK
+ 		os_memcpy(sta->sae->tmp->own_addr, own_addr, ETH_ALEN);
+-		os_memcpy(sta->sae->tmp->peer_addr, sta->addr, ETH_ALEN);
++		os_memcpy(sta->sae->tmp->peer_addr, peer_addr, ETH_ALEN);
+ #endif /* CONFIG_SAE_PK */
+ 	}
+ 
+@@ -815,12 +828,12 @@ static struct wpabuf * auth_build_sae_co
+ 	}
+ 
+ 	if (update && use_pt &&
+-	    sae_prepare_commit_pt(sta->sae, pt, own_addr, sta->addr,
++	    sae_prepare_commit_pt(sta->sae, pt, own_addr, peer_addr,
+ 				  NULL, pk) < 0)
+ 		return NULL;
+ 
+ 	if (update && !use_pt &&
+-	    sae_prepare_commit(own_addr, sta->addr,
++	    sae_prepare_commit(own_addr, peer_addr,
+ 			       (u8 *) password, os_strlen(password),
+ 			       sta->sae) < 0) {
+ 		wpa_printf(MSG_DEBUG, "SAE: Could not pick PWE");
+@@ -1785,6 +1798,29 @@ static void handle_auth_sae(struct hosta
+ 			goto reply;
+ 		}
+ 
++#if defined(CONFIG_IEEE80211BE) && defined(CONFIG_DRIVER_NL80211_MTK)
++		if (hostapd_has_mtk_bss_mlo_info(hapd) &&
++		    sta->mld_info.mld_sta) {
++			const u8 link_id = hapd->mld_link_id;
++			struct mld_link_info *link;
++
++			if (!hapd->driver || !hapd->driver->set_auth_mlo_ie ||
++			    link_id >= MAX_NUM_MLD_LINKS) {
++				resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
++				goto reply;
++			}
++
++			link = &sta->mld_info.links[link_id];
++			if (hapd->driver->set_auth_mlo_ie(
++				    hapd->drv_priv,
++				    sta->mld_info.common_info.mld_addr,
++				    link->peer_addr)) {
++				resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
++				goto reply;
++			}
++		}
++#endif /* CONFIG_IEEE80211BE && CONFIG_DRIVER_NL80211_MTK */
++
+ 		resp = sae_sm_step(hapd, sta, auth_transaction,
+ 				   status_code, allow_reuse, &sta_removed);
+ 	} else if (auth_transaction == 2) {
+@@ -3170,6 +3206,7 @@ static void handle_auth(struct hostapd_d
+ 	const u8 *dst, *sa;
+ #ifdef CONFIG_IEEE80211BE
+ 	bool mld_sta = false;
++	const u8 *mld_addr = NULL;
+ #endif /* CONFIG_IEEE80211BE */
+ 	struct hostapd_ubus_request req = {
+ 		.type = HOSTAPD_UBUS_AUTH_REQ,
+@@ -3197,14 +3234,15 @@ static void handle_auth(struct hostapd_d
+ #ifdef CONFIG_IEEE80211BE
+ 	/*
+ 	 * Handle MLO authentication before the station is added to hostapd and
+-	 * the driver so that the station MLD MAC address would be used in both
+-	 * hostapd and the driver.
++	 * the driver. Standard AP MLDs use the station MLD address as the entry
++	 * key, while MTK BSS MLDs keep the setup-link address as the entry key.
+ 	 */
+-	sa = hostapd_process_ml_auth(hapd, mgmt, len);
+-	if (sa)
++	mld_addr = hostapd_process_ml_auth(hapd, mgmt, len);
++	if (mld_addr) {
+ 		mld_sta = true;
+-	else
+-		sa = mgmt->sa;
++		if (!hostapd_has_mtk_bss_mlo_info(hapd))
++			sa = mld_addr;
++	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 	auth_alg = le_to_host16(mgmt->u.auth.auth_alg);
+@@ -3299,7 +3337,7 @@ static void handle_auth(struct hostapd_d
+ #ifdef CONFIG_IEEE80211BE
+ 	if (mld_sta &&
+ 	    (ether_addr_equal(sa, hapd->own_addr) ||
+-	     ether_addr_equal(sa, hapd->mld->mld_addr))) {
++	     (hapd->mld && ether_addr_equal(sa, hapd->mld->mld_addr)))) {
+ 		wpa_printf(MSG_INFO,
+ 			   "Station " MACSTR " not allowed to authenticate",
+ 			   MAC2STR(sa));
+@@ -3492,7 +3530,7 @@ static void handle_auth(struct hostapd_d
+ 			 * Set the MLD address as the station address and the
+ 			 * station addresses.
+ 			 */
+-			os_memcpy(sta->mld_info.common_info.mld_addr, sa,
++			os_memcpy(sta->mld_info.common_info.mld_addr, mld_addr,
+ 				  ETH_ALEN);
+ 			os_memcpy(sta->mld_info.links[link_id].peer_addr,
+ 				  mgmt->sa, ETH_ALEN);
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -467,6 +467,17 @@ u8 * hostapd_eid_eht_basic_ml_common(str
+ 	u8 common_info_len;
+ 	u16 mld_cap;
+ 	u8 max_simul_links, active_links;
++	const u8 *mld_addr;
++
++	if (hostapd_has_mtk_bss_mlo_info(hapd))
++		mld_addr = hapd->conf->mld_addr;
++	else if (hapd->mld)
++		mld_addr = hapd->mld->mld_addr;
++	else
++		return pos;
++
++	if (is_zero_ether_addr(mld_addr))
++		return pos;
+ 
+ 	/*
+ 	 * As the Multi-Link element can exceed the size of 255 bytes need to
+@@ -503,7 +514,7 @@ u8 * hostapd_eid_eht_basic_ml_common(str
+ 	wpabuf_put_u8(buf, common_info_len);
+ 
+ 	/* Own MLD MAC Address */
+-	wpabuf_put_data(buf, hapd->mld->mld_addr, ETH_ALEN);
++	wpabuf_put_data(buf, mld_addr, ETH_ALEN);
+ 
+ 	/* Own Link ID */
+ 	wpabuf_put_u8(buf, hapd->mld_link_id);
+@@ -694,7 +705,7 @@ size_t hostapd_eid_eht_basic_ml_len(stru
+ 	int link_id;
+ 	size_t len, num_frags;
+ 
+-	if (!hapd->conf->mld_ap)
++	if (!hostapd_has_mtk_bss_mlo_info(hapd) && !hapd->conf->mld_ap)
+ 		return 0;
+ 
+ 	/* Include WLAN_EID_EXT_MULTI_LINK (1) */
+@@ -889,7 +900,10 @@ u8 * hostapd_eid_eht_ml_beacon(struct ho
+ u8 * hostapd_eid_eht_ml_assoc(struct hostapd_data *hapd, struct sta_info *info,
+ 			      u8 *eid)
+ {
+-	if (!ap_sta_is_mld(hapd, info))
++	if (!ap_sta_has_ml_rsn(hapd, info))
++		return eid;
++
++	if (!hostapd_has_mtk_bss_mlo_info(hapd) && !hapd->mld)
+ 		return eid;
+ 
+ 	eid = hostapd_eid_eht_basic_ml_common(hapd, eid, &info->mld_info,
+@@ -909,8 +923,20 @@ size_t hostapd_eid_eht_ml_beacon_len(str
+ 
+ struct wpabuf * hostapd_ml_auth_resp(struct hostapd_data *hapd)
+ {
+-	struct wpabuf *buf = wpabuf_alloc(12);
++	struct wpabuf *buf;
++	const u8 *mld_addr;
++
++	if (hostapd_has_mtk_bss_mlo_info(hapd))
++		mld_addr = hapd->conf->mld_addr;
++	else if (hapd->mld)
++		mld_addr = hapd->mld->mld_addr;
++	else
++		return NULL;
++
++	if (is_zero_ether_addr(mld_addr))
++		return NULL;
+ 
++	buf = wpabuf_alloc(12);
+ 	if (!buf)
+ 		return NULL;
+ 
+@@ -919,7 +945,7 @@ struct wpabuf * hostapd_ml_auth_resp(str
+ 	wpabuf_put_u8(buf, WLAN_EID_EXT_MULTI_LINK);
+ 	wpabuf_put_le16(buf, MULTI_LINK_CONTROL_TYPE_BASIC);
+ 	wpabuf_put_u8(buf, ETH_ALEN + 1);
+-	wpabuf_put_data(buf, hapd->mld->mld_addr, ETH_ALEN);
++	wpabuf_put_data(buf, mld_addr, ETH_ALEN);
+ 
+ 	return buf;
+ }
+@@ -1127,7 +1153,7 @@ const u8 * hostapd_process_ml_auth(struc
+ 	struct ieee802_11_elems elems;
+ 	const u8 *pos;
+ 
+-	if (!hapd->conf->mld_ap)
++	if (!hapd->conf->mld_ap && !hostapd_has_mtk_bss_mlo_info(hapd))
+ 		return NULL;
+ 
+ 	len -= offsetof(struct ieee80211_mgmt, u.auth.variable);
+@@ -1156,7 +1182,7 @@ static int hostapd_mld_validate_assoc_in
+ 	u8 link_id;
+ 	struct mld_info *info = &sta->mld_info;
+ 
+-	if (!ap_sta_is_mld(hapd, sta)) {
++	if (!ap_sta_has_ml_rsn(hapd, sta)) {
+ 		wpa_printf(MSG_DEBUG, "MLD: Not a non-AP MLD");
+ 		return 0;
+ 	}

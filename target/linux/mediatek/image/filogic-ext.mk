@@ -144,8 +144,7 @@ define Device/viettel_nr3053
   IMAGE/sysupgrade.itb := append-kernel | \
 	fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-static-with-rootfs | \
 	append-metadata
-  DEVICE_PACKAGES := default-settings-vn luci-app-argon-config \
-	-kmod-usb3 -kmod-usb-ledtrig-usbport -automount -autosamba
+
   ARTIFACTS := preloader.bin bl31-uboot.fip
   ARTIFACT/preloader.bin := mt7981-bl2 spim-nand-ddr3
   ARTIFACT/bl31-uboot.fip := mt7981-bl31-uboot viettel_nr3053

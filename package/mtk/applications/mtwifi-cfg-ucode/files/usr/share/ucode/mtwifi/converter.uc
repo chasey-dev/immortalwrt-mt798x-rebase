@@ -313,8 +313,7 @@ export function convert(uci_cfg) {
 				set_token("ApCliPweMethod", defs.SAE_PWE_2_DAT[c.sae_pwe]);
 
 				// only one sae_group for ApCli
-				let sae_group = c.sae_groups[0];
-				dat.ApCliSAEGroup = sae_group;
+				set_token("ApCliSAEGroup", c.sae_groups?.[0]);
 
 				// uci encryption mode => DAT cfg
 				let enc_info = defs.ENC_2_COMMON_DAT[c.encryption];

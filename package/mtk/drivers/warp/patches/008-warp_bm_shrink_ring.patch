@@ -1,0 +1,104 @@
+--- a/Makefile
++++ b/Makefile
+@@ -12,6 +12,14 @@ ifeq ($(CONFIG_WARP_MEMORY_LEAK_DBG), y)
+ ccflags-y += -DMEM_LEAK_DBG
+ endif
+ 
++ifeq ($(CONFIG_WARP_BM_SHRINK_RING), y)
++ccflags-y += -DWARP_BM_SHRINK_RING
++endif
++
++ifneq ($(CONFIG_WARP_RX_PAGE_BM_NUM),)
++ccflags-y += -DWARP_RX_PAGE_BM_NUM=$(CONFIG_WARP_RX_PAGE_BM_NUM)
++endif
++
+ ifeq ($(CONFIG_ARCH_DMA_ADDR_T_64BIT), y)
+ ccflags-y += -DCONFIG_WARP_64BIT_SUPPORT
+ endif
+--- a/warp_bm.h
++++ b/warp_bm.h
+@@ -20,6 +20,18 @@
+ #include "warp_wifi.h"
+ #include <linux/interrupt.h>
+ 
++#define WARP_BM_ALIGN 128
++
++static inline u32 warp_bm_ring_len(u32 n)
++{
++#ifdef WARP_BM_SHRINK_RING
++	u32 len = ALIGN(n, WARP_BM_ALIGN);
++	return len > 65536 ? 65536 : len;
++#else
++	return 65536;
++#endif
++}
++
+ #define PARTIAL_TXDMAD_SDP0_L_MASK		0xFFFFFFFF
+ #define PARTIAL_TXDMAD_SDP0_L_SHIFT		0
+ #define PARTIAL_TXDMAD_SDP0_H_MASK		0x0000FFFF
+--- a/warp_rx_bm.c
++++ b/warp_rx_bm.c
+@@ -892,15 +892,18 @@ wed_rx_bm_init(struct wed_entry *wed, st
+ 
+ 	if (hw) {
+ 		res->ring_num = 1;
+-		res->ring_len = 65536;
+ 		res->rxd_len = sizeof(struct warp_bm_rxdmad);
+ 		extra_res->rxd_len = sizeof(struct warp_bm_rxdmad);
+ 		res->pkt_num = hw->hw_rx_token_num;
++		res->ring_len = warp_bm_ring_len(res->pkt_num);
+ 		res->pkt_len = hw->rx_pkt_size;
+ 		res->hif_dev = hw->hif_dev;
+ 		extra_res->hif_dev = hw->hif_dev;
+ 		extra_res->pkt_len = hw->rx_pkt_size;
+ 
++		pr_info("%s: pkt_num=%u ring_len=%u pkt_len=%u\n",
++			__func__, res->pkt_num, res->ring_len, res->pkt_len);
++
+ #if defined(WED_DYNAMIC_RXBM_SUPPORT)
+ 		if (sw_conf->vld_group) {
+ 			if (sw_conf->vld_group*128 <= hw->hw_rx_token_num) {
+--- a/warp_rx_page_bm.c
++++ b/warp_rx_page_bm.c
+@@ -279,12 +279,21 @@ wed_rx_page_bm_init(struct wed_entry *we
+ 	struct wed_rx_ctrl *rx_ctrl = &res_ctrl->rx_ctrl;
+ 	struct wed_rx_page_bm *bm = &rx_ctrl->page_bm;
+ 
+-	bm->ring_len = 65536;
+ 	bm->rxd_len = sizeof(struct warp_bm_rxdmad);
++
++#ifdef WARP_RX_PAGE_BM_NUM
++	bm->page_num = WARP_RX_PAGE_BM_NUM;
++#else
+ 	bm->page_num = 8192;
++#endif
++
++	bm->ring_len = warp_bm_ring_len(bm->page_num);
+ 	bm->rx_page_size = 0x80; // 128 bytes
+ 	bm->hif_dev = hw->hif_dev;
+ 
++	pr_info("%s: page_num=%u ring_len=%u\n",
++		__func__, bm->page_num, bm->ring_len);
++
+ 	warp_os_alloc_mem((unsigned char **)&bm->desc,
+ 		sizeof(struct warp_dma_buf), GFP_ATOMIC);
+ 
+--- a/warp_tx_bm_v2.c
++++ b/warp_tx_bm_v2.c
+@@ -241,12 +241,15 @@ wed_txbm_init(struct wed_entry *wed, str
+ 	res->token_start = 0;
+ 	res->token_end = (res->token_start + res->token_num - 1);
+ 
+-	bm->ring_len = 65536;
+ 	bm->txd_len = sizeof(struct warp_bm_txdmad);
+ 	bm->pkt_num = hw->tx_buf_nums;
++	bm->ring_len = warp_bm_ring_len(bm->pkt_num);
+ 	bm->pkt_size = hw->tx_pkt_size;
+ 	bm->hif_dev = hw->hif_dev;
+ 
++	pr_info("%s: pkt_num=%u ring_len=%u pkt_size=%u\n",
++		__func__, bm->pkt_num, bm->ring_len, bm->pkt_size);
++
+ 	idr_init(&bm->id);
+ 
+ 	warp_os_alloc_mem((unsigned char **)&bm->desc,

@@ -1,0 +1,92 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
+@@ -767,11 +767,64 @@ static void fix_skb_packet_type(struct s
+ 	}
+ }
+ 
++static int hnat_ppd_xmit(struct sk_buff *skb, struct net_device *dev)
++{
++	struct sk_buff *orig_skb = skb;
++	struct netdev_queue *txq;
++	bool again = false;
++	u16 queue;
++	int ret;
++
++	if (unlikely(!dev || !netif_running(dev) || !dev->real_num_tx_queues)) {
++		kfree_skb(skb);
++		return -ENETDOWN;
++	}
++
++	queue = min_t(u16, MTK_QDMA_NUM_QUEUES - 1,
++		      dev->real_num_tx_queues - 1);
++	skb->dev = dev;
++	skb_set_queue_mapping(skb, queue);
++
++	skb = validate_xmit_skb_list(skb, dev, &again);
++	if (unlikely(skb != orig_skb || again)) {
++		kfree_skb_list(skb);
++		return -ENOMEM;
++	}
++
++	if (unlikely(dev_xmit_recursion())) {
++		kfree_skb(skb);
++		return -ENETDOWN;
++	}
++
++	txq = netdev_get_tx_queue(dev, queue);
++
++	local_bh_disable();
++	dev_xmit_recursion_inc();
++	HARD_TX_LOCK(dev, txq, smp_processor_id());
++	if (unlikely(netif_xmit_frozen_or_drv_stopped(txq))) {
++		ret = NETDEV_TX_BUSY;
++	} else {
++		ret = netdev_start_xmit(skb, dev, txq, false);
++	}
++	HARD_TX_UNLOCK(dev, txq);
++	dev_xmit_recursion_dec();
++	local_bh_enable();
++
++	if (unlikely(!dev_xmit_complete(ret))) {
++		kfree_skb(skb);
++		return -ENETDOWN;
++	}
++
++	return 0;
++}
++
+ static unsigned int do_hnat_ext_to_ge(struct sk_buff *skb, const struct net_device *in,
+ 				      const char *func)
+ {
+ 	if (hnat_priv->g_ppdev && hnat_priv->g_ppdev->flags & IFF_UP) {
++		u16 vlan_proto;
+ 		u16 vlan_id = 0;
++		u16 vlan_tci;
+ 
+ 		skb_set_network_header(skb, 0);
+ 		skb_push(skb, ETH_HLEN);
+@@ -788,11 +841,12 @@ static unsigned int do_hnat_ext_to_ge(st
+ 		skb->vlan_proto = htons(ETH_P_8021Q);
+ 		skb->vlan_tci =
+ 			(VLAN_CFI_MASK | (in->ifindex & VLAN_VID_MASK));
+-		skb->dev = hnat_priv->g_ppdev;
+-		dev_queue_xmit(skb);
++		vlan_proto = ntohs(skb->vlan_proto);
++		vlan_tci = skb->vlan_tci;
++		hnat_ppd_xmit(skb, hnat_priv->g_ppdev);
+ 		if (debug_level >= 7) {
+ 			trace_printk("%s: vlan_prot=0x%x, vlan_tci=%x, in->name=%s, skb->dev->name=%s\n",
+-				     __func__, ntohs(skb->vlan_proto), skb->vlan_tci,
++				     __func__, vlan_proto, vlan_tci,
+ 				     in->name, hnat_priv->g_ppdev->name);
+ 			trace_printk("%s: called from %s successfully\n", __func__, func);
+ 		}
+@@ -1086,7 +1140,7 @@ static unsigned int do_hnat_mape_w2l_fas
+ 		skb->dev = hnat_priv->g_ppdev;
+ 		skb->protocol = htons(ETH_P_IP);
+ 
+-		dev_queue_xmit(skb);
++		hnat_ppd_xmit(skb, hnat_priv->g_ppdev);
+ 
+ 		return 0;
+ 	}

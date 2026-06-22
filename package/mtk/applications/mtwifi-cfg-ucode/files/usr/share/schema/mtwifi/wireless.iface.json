@@ -123,7 +123,106 @@
         },
         "ieee80211k": {
             "type": "boolean",
-            "description": "Enable 802.11k support"
+            "description": "Enables Radio Resource Measurement (802.11k) support"
+        },
+        "rrm_neighbor_report": {
+            "type": "boolean",
+            "description": "Enable neighbor report via radio measurements"
+        },
+        "rrm_beacon_report": {
+            "type": "boolean",
+            "description": "Enable beacon report via radio measurements"
+        },
+        "bss_transition": {
+            "type": "boolean",
+            "description": "BSS Transition Management"
+        },
+        "time_advertisement": {
+            "type": "number",
+            "description": "Time advertisement",
+            "enum": [
+                0,
+                2
+            ]
+        },
+        "time_zone": {
+            "type": "string",
+            "description": "Local time zone as specified in 8.3 of IEEE Std 1003.1-2004"
+        },
+        "wnm_sleep_mode": {
+            "type": "boolean",
+            "description": "WNM-Sleep Mode (extended sleep mode for stations)"
+        },
+        "wnm_sleep_mode_no_keys": {
+            "type": "boolean",
+            "description": "WNM-Sleep Mode GTK/IGTK workaround"
+        },
+        "proxy_arp": {
+            "type": "boolean",
+            "description": "Proxy ARP"
+        },
+        "ieee80211r": {
+            "type": "boolean",
+            "description": "Enables fast BSS transition (802.11r) support."
+        },
+        "nas_identifier": {
+            "type": "string",
+            "description": "NAS-Identifier string for RADIUS messages"
+        },
+        "nasid": {
+            "type": "alias",
+            "default": "nas_identifier"
+        },
+        "mobility_domain": {
+            "type": "string",
+            "description": "DID is used to indicate a group of APs between which a STA can use Fast BSS Transition."
+        },
+        "ft_iface": {
+            "type": "string",
+            "description": "Inter-AP communication interface for 802.11r"
+        },
+        "ft_over_ds": {
+            "type": "boolean",
+            "description": "Whether to enable FT-over-DS",
+            "default": false
+        },
+        "ft_psk_generate_local": {
+            "type": "boolean",
+            "description": "Whether to generate FT response locally for PSK networks. This avoids use of PMK-R1 push/pull from other APs with FT-PSK networks as the required information (PSK and other session data) is already locally available."
+        },
+        "reassociation_deadline": {
+            "type": "number",
+            "description": "Reassociation deadline in time units",
+            "minimum": 1000,
+            "maximum": 65535,
+            "default": 20000
+        },
+        "r0_key_lifetime": {
+            "type": "number",
+            "description": "Default lifetime of the PMK-R0 in seconds"
+        },
+        "r1_key_holder": {
+            "type": "string",
+            "description": "PMK-R1 Key Holder identifier"
+        },
+        "pmk_r1_push": {
+            "type": "boolean",
+            "description": "Whether PMK-R1 push is enabled at R0KH",
+            "default": false
+        },
+        "r0kh": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "List of R0KHs in the same Mobility Domain"
+        },
+        "r1kh": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "List of R1KHs in the same Mobility Domain"
         },
         "mumimo_dl": {
             "type": "boolean",

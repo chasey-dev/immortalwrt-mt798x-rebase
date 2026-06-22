@@ -965,7 +965,8 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			uci.changes(),
-			uci.load('wireless')
+			uci.load('wireless'),
+			uci.load('system')
 		]);
 	},
 
@@ -1306,6 +1307,7 @@ return view.extend({
 				ss.tab('encryption', _('Wireless Security'));
 				ss.tab('macfilter', _('MAC-Filter'));
 				ss.tab('advanced', _('Advanced Settings'));
+				ss.tab('roaming', _('WLAN roaming'), _('Settings for assisting wireless clients in roaming between multiple APs: 802.11r, 802.11k and 802.11v'));
 
 				o = ss.taboption('general', form.ListValue, 'mode', _('Mode'));
 				if (hwtype == 'mtwifi') {
@@ -1559,9 +1561,50 @@ return view.extend({
 					o = ss.taboption('advanced', form.Flag, 'isolate', _('Isolate Clients'), _('Prevents client-to-client communication'));
 					o.depends('mode', 'ap');
 
-					o = ss.taboption('advanced', form.Flag, 'ieee80211k', _('802.11k RRM'), _('Radio Resource Measurement - Sends beacons to assist roaming. Not all clients support this.'));
+					o = ss.taboption('roaming', form.Flag, 'ieee80211k', _('802.11k RRM'), _('Radio Resource Measurement - Sends beacons to assist roaming. Not all clients support this.'));
 					o.default = o.enabled;
 					o.depends('mode', 'ap');
+
+					o = ss.taboption('roaming', form.Flag, 'rrm_neighbor_report', _('Neighbour Report'), _('802.11k: Enable neighbor report via radio measurements.'));
+					o.default = o.enabled;
+					o.depends({ mode: 'ap', ieee80211k: '1' });
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Flag, 'rrm_beacon_report', _('Beacon Report'), _('802.11k: Enable beacon report via radio measurements.'));
+					o.default = o.enabled;
+					o.depends({ mode: 'ap', ieee80211k: '1' });
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.ListValue, 'time_advertisement', _('Time advertisement'), _('802.11v: Time Advertisement in management frames.'));
+					o.value('0', _('Disabled'));
+					o.value('2', _('Enabled'));
+					o.depends('mode', 'ap');
+					o.write = function (section_id, value) {
+						return this.super('write', [section_id, (value == 2) ? value : null]);
+					};
+
+					var tz = uci.get('system', '@system[0]', 'timezone');
+					o = ss.taboption('roaming', form.Value, 'time_zone', _('Time zone'), _('802.11v: Local Time Zone Advertisement in management frames.'));
+					if (tz != null)
+						o.value(tz);
+					o.depends({ mode: 'ap', time_advertisement: '2' });
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Flag, 'wnm_sleep_mode', _('WNM Sleep Mode'), _('802.11v: Wireless Network Management (WNM) Sleep Mode (extended sleep mode for stations).'));
+					o.depends('mode', 'ap');
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Flag, 'wnm_sleep_mode_no_keys', _('WNM Sleep Mode Fixes'), _('802.11v: Wireless Network Management (WNM) Sleep Mode Fixes: Prevents reinstallation attacks.'));
+					o.depends({ mode: 'ap', wnm_sleep_mode: '1' });
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Flag, 'bss_transition', _('BSS Transition'), _('802.11v: Basic Service Set (BSS) transition management.'));
+					o.depends('mode', 'ap');
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Flag, 'proxy_arp', _('ProxyARP'), _('802.11v: Proxy ARP enables non-AP STA to remain in power-save for longer.'));
+					o.depends('mode', 'ap');
+					o.rmempty = true;
 
 					o = ss.taboption('advanced', form.Value, 'wpa_group_rekey', _('Time interval for rekeying GTK'), _('sec'));
 					o.optional    = true;
@@ -2296,6 +2339,64 @@ return view.extend({
 				}
 
 				if (hwtype == 'mtwifi') {
+					var mtwifi_ft_ap_encryptions = ['psk2', 'psk+psk2', 'psk-mixed', 'sae', 'sae-mixed'];
+
+					o = ss.taboption('roaming', form.Flag, 'ieee80211r', _('802.11r Fast Transition'), _('Enables fast roaming among access points that belong to the same Mobility Domain'));
+					add_dependency_permutations(o, { mode: ['ap'], encryption: mtwifi_ft_ap_encryptions });
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Value, 'nasid', _('NAS ID'), _('Used for two different purposes: RADIUS NAS ID and 802.11r R0KH-ID. Not needed with normal WPA(2)-PSK.'));
+					o.depends({ mode: 'ap', ieee80211r: '1' });
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Value, 'mobility_domain', _('Mobility Domain'), _('4-character hexadecimal ID'));
+					o.depends({ mode: 'ap', ieee80211r: '1' });
+					o.placeholder = _('automatically derived from SSID');
+					o.datatype = 'and(hexstring,length(4))';
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Value, 'reassociation_deadline', _('Reassociation Deadline'), _('time units (TUs / 1.024 ms) [1000-65535]'));
+					o.depends({ mode: 'ap', ieee80211r: '1' });
+					o.placeholder = '20000';
+					o.datatype = 'range(1000,65535)';
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.ListValue, 'ft_over_ds', _('FT protocol'));
+					o.depends({ mode: 'ap', ieee80211r: '1' });
+					o.value('0', _('FT over the Air'));
+					o.value('1', _('FT over DS'));
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Flag, 'ft_psk_generate_local', _('Generate PMK locally'), _('When using a PSK, the PMK can be automatically generated. When enabled, the R0/R1 key options below are not applied. Disable this to use the R0 and R1 key options.'));
+					o.depends({ mode: 'ap', ieee80211r: '1' });
+					o.default = o.enabled;
+					o.rmempty = false;
+
+					o = ss.taboption('roaming', form.Value, 'r0_key_lifetime', _('R0 Key Lifetime'), _('minutes'));
+					o.depends({ mode: 'ap', ieee80211r: '1' });
+					o.placeholder = '10000';
+					o.datatype = 'uinteger';
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Value, 'r1_key_holder', _('R1 Key Holder'), _('6-octet identifier as a hex string - no colons'));
+					o.depends({ mode: 'ap', ieee80211r: '1' });
+					o.placeholder = _('automatically derived from Mobility Domain and PSK');
+					o.datatype = 'and(hexstring,length(12))';
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.Flag, 'pmk_r1_push', _('PMK R1 Push'));
+					o.depends({ mode: 'ap', ieee80211r: '1' });
+					o.placeholder = '0';
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.DynamicList, 'r0kh', _('External R0 Key Holder List'), _('List of R0KHs in the same Mobility Domain. <br />Format: MAC-address,NAS-Identifier,256-bit key as hex string. <br />This list is used to map R0KH-ID (NAS Identifier) to a destination MAC address when requesting PMK-R1 key from the R0KH that the STA used during the Initial Mobility Domain Association.'));
+					o.depends({ mode: 'ap', ieee80211r: '1' });
+					o.rmempty = true;
+
+					o = ss.taboption('roaming', form.DynamicList, 'r1kh', _('External R1 Key Holder List'), _('List of R1KHs in the same Mobility Domain. <br />Format: MAC-address,R1KH-ID as 6 octets with colons,256-bit key as hex string. <br />This list is used to map R1KH-ID to a destination MAC address when sending PMK-R1 key from the R0KH. This is also the list of authorized R1KHs in the MD that can request PMK-R1 keys.'));
+					o.depends({ mode: 'ap', ieee80211r: '1' });
+					o.rmempty = true;
+
 					o = ss.taboption('encryption', form.ListValue, 'ieee80211w', _('802.11w Management Frame Protection'), _("Note: Some wireless drivers do not fully support 802.11w. E.g. mwlwifi may have problems"));
 					o.value('0', _('Disabled'));
 					o.value('1', _('Optional'));

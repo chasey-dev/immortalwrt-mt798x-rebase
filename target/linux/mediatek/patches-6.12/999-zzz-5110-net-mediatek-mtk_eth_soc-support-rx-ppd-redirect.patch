@@ -10,7 +10,7 @@
  void mtk_w32(struct mtk_eth *eth, u32 val, unsigned reg)
  {
  	__raw_writel(val, eth->base + reg);
-@@ -2820,15 +2823,19 @@ static int mtk_poll_rx(struct napi_struc
+@@ -2820,15 +2823,20 @@ static int mtk_poll_rx(struct napi_struc
  	dma_addr_t dma_addr = DMA_MAPPING_ERROR;
  	int ppe_idx = 0;
  	u8 tops_crsn = 0;
@@ -25,33 +25,48 @@
  		unsigned int pktlen, *rxdcsum;
  		struct net_device *netdev = NULL;
  		u32 hash, reason;
++		u32 sport = 0;
  		int mac = 0;
 +		bool to_ppd = false;
  
  		idx = NEXT_DESP_IDX(ring->calc_idx, ring->dma_size);
  		rxd = ring->dma + RX_DESC_OFS(eth, idx);
-@@ -2854,7 +2861,19 @@ static int mtk_poll_rx(struct napi_struc
+@@ -2839,12 +2847,12 @@ static int mtk_poll_rx(struct napi_struc
+ 
+ 		/* find out which mac the packet come from. values start at 1 */
+ 		if (mtk_is_netsys_v3_or_greater(eth)) {
+-			u32 val = RX_DMA_GET_SPORT_V2(trxd.rxd5);
++			sport = RX_DMA_GET_SPORT_V2(trxd.rxd5);
+ 
+-			switch (val) {
++			switch (sport) {
+ 			case PSE_GDM1_PORT:
+ 			case PSE_GDM2_PORT:
+-				mac = val - 1;
++				mac = sport - 1;
+ 				break;
+ 			case PSE_GDM3_PORT:
+ 				mac = MTK_GMAC3_ID;
+@@ -2854,7 +2862,17 @@ static int mtk_poll_rx(struct napi_struc
  			}
  		} else if (!MTK_HAS_CAPS(eth->soc->caps, MTK_SOC_MT7628) &&
  			   !(trxd.rxd4 & RX_DMA_SPECIAL_TAG)) {
 -			mac = RX_DMA_GET_SPORT(trxd.rxd4) - 1;
-+			u32 sport = RX_DMA_GET_SPORT(trxd.rxd4);
-+
-+			/* if it is a from-QDMA packet, set from GMAC1 */
-+			if (unlikely(sport == PSE_QDMA_TX_PORT)) {
-+				/* sanity check */
-+				if (unlikely(!rx_ppdev))
-+					goto release_desc;
-+
-+				sport = PSE_GDM1_PORT;
-+				to_ppd = true;
-+			}
-+
++			sport = RX_DMA_GET_SPORT(trxd.rxd4);
 +			mac = sport - 1;
++		}
++
++		if (unlikely(sport == PSE_QDMA_TX_PORT)) {
++			/* sanity check */
++			if (unlikely(!rx_ppdev))
++				goto release_desc;
++
++			mac = PSE_GDM1_PORT - 1;
++			to_ppd = true;
  		}
  
  		if (unlikely(mac < 0 || mac >= MTK_MAX_DEVS ||
-@@ -2973,6 +2992,12 @@ static int mtk_poll_rx(struct napi_struc
+@@ -2973,6 +2991,12 @@ static int mtk_poll_rx(struct napi_struc
  				trace_printk("[%s] reason=0x%x(force to CPU) from WAN to Ext\n",
  					     __func__, skb_hnat_reason(skb));
  				skb->pkt_type = PACKET_HOST;
@@ -64,7 +79,7 @@
  			}
  
  			trace_printk("[%s] rxd:(entry=%x,sport=%x,reason=%x,alg=%x\n",
-@@ -3032,6 +3057,12 @@ static int mtk_poll_rx(struct napi_struc
+@@ -3032,6 +3056,12 @@ static int mtk_poll_rx(struct napi_struc
  			mtk_eth_debugfs_hwlro_flush_stats_update(eth, ring->ring_no, &trxd);
  		}
  

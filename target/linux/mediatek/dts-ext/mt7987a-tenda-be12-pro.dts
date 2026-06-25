@@ -383,6 +383,10 @@
 	};
 };
 
+&pciephy {
+	mediatek,1port-2lane;
+};
+
 &uart0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart0_pins>;

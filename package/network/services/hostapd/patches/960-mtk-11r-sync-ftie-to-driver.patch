@@ -1,0 +1,143 @@
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -2626,6 +2626,26 @@ int ieee802_11_build_ap_params(struct ho
+ 	params->multicast_to_unicast = hapd->conf->multicast_to_unicast;
+ 	params->pbss = hapd->conf->pbss;
+ 
++#if defined(CONFIG_DRIVER_NL80211_MTK) && defined(CONFIG_IEEE80211R_AP)
++	if (wpa_key_mgmt_ft(hapd->conf->wpa_key_mgmt) &&
++	    hapd->conf->nas_identifier) {
++		params->mtk_ft_nas_identifier_len =
++			os_strlen(hapd->conf->nas_identifier);
++		if (params->mtk_ft_nas_identifier_len <=
++		    sizeof(params->mtk_ft_nas_identifier)) {
++			os_memcpy(params->mtk_ft_nas_identifier,
++				  hapd->conf->nas_identifier,
++				  params->mtk_ft_nas_identifier_len);
++			os_memcpy(params->mtk_ft_r1_key_holder,
++				  hapd->conf->r1_key_holder, ETH_ALEN);
++			os_memcpy(params->mtk_ft_own_mac, hapd->own_addr,
++				  ETH_ALEN);
++			params->mtk_ft_reassociation_deadline =
++				hapd->conf->reassociation_deadline;
++		}
++	}
++#endif /* CONFIG_DRIVER_NL80211_MTK && CONFIG_IEEE80211R_AP */
++
+ 	if (hapd->conf->ftm_responder) {
+ 		if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_FTM_RESPONDER) {
+ 			params->ftm_responder = 1;
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -1756,6 +1756,17 @@ struct wpa_driver_ap_params {
+ 	 */
+ 	int pbss;
+ 
++#if defined(CONFIG_DRIVER_NL80211_MTK) && defined(CONFIG_IEEE80211R_AP)
++	/**
++	 * mtk_ft_* - MTK driver FT parameters for AP-side SME 802.11r IEs
++	 */
++	u8 mtk_ft_nas_identifier[64];
++	size_t mtk_ft_nas_identifier_len;
++	u8 mtk_ft_r1_key_holder[ETH_ALEN];
++	u8 mtk_ft_own_mac[ETH_ALEN];
++	u32 mtk_ft_reassociation_deadline;
++#endif /* CONFIG_DRIVER_NL80211_MTK && CONFIG_IEEE80211R_AP */
++
+ 	/**
+ 	 * multicast_to_unicast - Whether to use multicast_to_unicast
+ 	 *
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -45,6 +45,11 @@
+ #include "rfkill.h"
+ #include "driver_nl80211.h"
+ 
++#if defined(CONFIG_DRIVER_NL80211_MTK) && defined(CONFIG_IEEE80211R_AP)
++static int nl80211_mtk_set_ftie(struct i802_bss *bss,
++				struct wpa_driver_ap_params *params);
++#endif /* CONFIG_DRIVER_NL80211_MTK && CONFIG_IEEE80211R_AP */
++
+ 
+ #ifndef NETLINK_CAP_ACK
+ #define NETLINK_CAP_ACK 10
+@@ -5305,6 +5310,12 @@ static int wpa_driver_nl80211_set_ap(voi
+ 		return -EINVAL;
+ 	}
+ 
++#if defined(CONFIG_DRIVER_NL80211_MTK) && defined(CONFIG_IEEE80211R_AP)
++	ret = nl80211_mtk_set_ftie(bss, params);
++	if (ret)
++		return ret;
++#endif /* CONFIG_DRIVER_NL80211_MTK && CONFIG_IEEE80211R_AP */
++
+ 	beacon_set = params->reenable ? 0 : link->beacon_set;
+ 
+ 	wpa_printf(MSG_DEBUG, "nl80211: Set beacon (beacon_set=%d)",
+@@ -10498,6 +10509,66 @@ fail:
+ 	nlmsg_free(msg);
+ 	return -ENOBUFS;
+ }
++
++#ifdef CONFIG_IEEE80211R_AP
++static int nl80211_mtk_set_ftie(struct i802_bss *bss,
++				struct wpa_driver_ap_params *params)
++{
++	struct ap_11r_params ft_params;
++	struct nl_msg *msg;
++	struct nlattr *data;
++	int ret;
++
++	if (!params->mtk_ft_nas_identifier_len)
++		return 0;
++
++	if (params->mtk_ft_nas_identifier_len >
++	    sizeof(ft_params.nas_identifier))
++		return -EINVAL;
++
++	os_memset(&ft_params, 0, sizeof(ft_params));
++	ft_params.nas_id_len = params->mtk_ft_nas_identifier_len;
++	os_memcpy(ft_params.nas_identifier, params->mtk_ft_nas_identifier,
++		  params->mtk_ft_nas_identifier_len);
++	os_memcpy(ft_params.r1_key_holder, params->mtk_ft_r1_key_holder,
++		  ETH_ALEN);
++	os_memcpy(ft_params.own_mac, params->mtk_ft_own_mac, ETH_ALEN);
++	ft_params.reassociation_deadline =
++		params->mtk_ft_reassociation_deadline;
++
++	wpa_printf(MSG_INFO,
++		   "nl80211: MTK set FTIE ifname=%s nas_id_len=%d r1kh="
++		   MACSTR " own=" MACSTR " reassoc_deadline=%u",
++		   bss->ifname, ft_params.nas_id_len,
++		   MAC2STR(ft_params.r1_key_holder),
++		   MAC2STR(ft_params.own_mac),
++		   ft_params.reassociation_deadline);
++
++	msg = nl80211_bss_msg(bss, 0, NL80211_CMD_VENDOR);
++	if (!msg ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, MTK_NL80211_VENDOR_ID) ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
++			MTK_NL80211_VENDOR_SUBCMD_SET_FT) ||
++	    !(data = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)) ||
++	    nla_put(msg, MTK_NL80211_VENDOR_ATTR_SET_FTIE,
++		    sizeof(ft_params), &ft_params))
++		goto fail;
++
++	nla_nest_end(msg, data);
++
++	ret = send_and_recv_cmd(bss->drv, msg);
++	if (ret)
++		wpa_printf(MSG_INFO,
++			   "nl80211: MTK failed to set FTIE ifname=%s ret=%d (%s)",
++			   bss->ifname, ret, strerror(-ret));
++
++	return ret;
++
++fail:
++	nlmsg_free(msg);
++	return -ENOBUFS;
++}
++#endif /* CONFIG_IEEE80211R_AP */
+ #endif /* CONFIG_DRIVER_NL80211_MTK */
+ 
+ 

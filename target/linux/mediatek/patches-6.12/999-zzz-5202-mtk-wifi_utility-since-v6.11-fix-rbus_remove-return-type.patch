@@ -1,6 +1,6 @@
 --- a/drivers/net/wireless/wifi_utility/pci_mediatek_rbus.c
 +++ b/drivers/net/wireless/wifi_utility/pci_mediatek_rbus.c
-@@ -325,11 +325,10 @@ static int rbus_probe(struct platform_device *pdev)
+@@ -325,11 +325,10 @@ static int rbus_probe(struct platform_de
  /*
  *
  */

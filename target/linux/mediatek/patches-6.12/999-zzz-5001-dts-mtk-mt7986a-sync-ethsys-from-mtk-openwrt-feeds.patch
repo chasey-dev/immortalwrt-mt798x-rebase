@@ -9,7 +9,7 @@
  / {
  	compatible = "mediatek,mt7986a";
  	interrupt-parent = <&gic>;
-@@ -506,12 +507,20 @@ u2port1: usb-phy@1000 {
+@@ -513,12 +515,20 @@
  		};
  
  		ethsys: syscon@15000000 {

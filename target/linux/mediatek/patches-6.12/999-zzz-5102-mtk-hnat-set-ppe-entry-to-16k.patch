@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
-@@ -894,9 +894,9 @@ struct foe_entry {
+@@ -229,9 +229,9 @@
  /* If user wants to change default FOE entry number, both DEF_ETRY_NUM and
   * DEF_ETRY_NUM_CFG need to be modified.
   */

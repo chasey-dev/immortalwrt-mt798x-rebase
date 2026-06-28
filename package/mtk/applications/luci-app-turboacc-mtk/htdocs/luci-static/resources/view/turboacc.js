@@ -56,20 +56,6 @@ function renderStatusItem(stat) {
 		return E('em', { 'style': 'color:red; font-weight:bold' }, _('Disabled'));
 	}
 
-	if (stat.type.includes(' / ')) {
-		let parts = stat.type.split(' / ');
-		let elems = [];
-
-		elems.push(E('span', { 'style': 'color:green; font-weight:bold' }, parts[0]));
-
-		for (let i = 1; i < parts.length; i++) {
-			elems.push(document.createTextNode(' / '));
-			elems.push(E('span', { 'style': 'color:red; font-weight:bold' }, parts[i]));
-		}
-
-		return E('em', {}, elems);
-	}
-
 	return E('em', { 'style': 'color:green; font-weight:bold' }, stat.type);
 }
 

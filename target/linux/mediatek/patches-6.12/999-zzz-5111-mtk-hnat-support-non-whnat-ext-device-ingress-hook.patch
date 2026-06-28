@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
-@@ -33,11 +33,11 @@
+@@ -34,11 +34,11 @@
  #include "../mtk_eth_soc.h"
  
  #define do_ge2ext_fast(dev, skb)                                               \
@@ -14,7 +14,7 @@
  	 (skb_hnat_sport(skb) == NR_PDMA_PORT ||                           \
  	  skb_hnat_sport(skb) == NR_QDMA_PORT) &&                       \
  	  ((get_dev_from_index(skb->vlan_tci & VLAN_VID_MASK)) ||   \
-@@ -901,7 +901,7 @@ static inline void hnat_set_iif(const st
+@@ -902,7 +902,7 @@ static inline void hnat_set_iif(const st
  		skb_hnat_iface(skb) = FOE_MAGIC_GE_LAN;
  	} else if (IS_LAN2(state->in)) {
  		skb_hnat_iface(skb) = FOE_MAGIC_GE_LAN2;
@@ -23,7 +23,7 @@
  		skb_hnat_iface(skb) = FOE_MAGIC_GE_PPD;
  	} else if (IS_EXT(state->in)) {
  		skb_hnat_iface(skb) = FOE_MAGIC_EXT;
-@@ -1152,6 +1152,25 @@ mtk_hnat_ipv6_nf_pre_routing(void *priv,
+@@ -1207,6 +1207,25 @@ mtk_hnat_ipv6_nf_pre_routing(void *priv,
  	if (!skb)
  		goto drop;
  
@@ -49,7 +49,7 @@
  	if (!is_magic_tag_valid(skb))
  		return NF_ACCEPT;
  
-@@ -1231,6 +1250,25 @@ mtk_hnat_ipv4_nf_pre_routing(void *priv,
+@@ -1291,6 +1310,25 @@ mtk_hnat_ipv4_nf_pre_routing(void *priv,
  	if (!skb)
  		goto drop;
  
@@ -75,7 +75,7 @@
  	if (!is_magic_tag_valid(skb))
  		return NF_ACCEPT;
  
-@@ -1307,6 +1345,25 @@ mtk_hnat_br_nf_local_in(void *priv, stru
+@@ -1420,6 +1458,25 @@ mtk_hnat_br_nf_local_in(void *priv, stru
  	if (!skb)
  		goto drop;
  
@@ -101,7 +101,7 @@
  	if (!is_magic_tag_valid(skb))
  		return NF_ACCEPT;
  
-@@ -2596,7 +2653,7 @@ hnat_entry_bind:
+@@ -2716,7 +2773,7 @@ hnat_entry_bind:
  			entry.ipv4_hnapt.act_dp |= dev->ifindex & UDF_PINGPONG_IFIDX;
  		}
  	} else if (IS_EXT(dev) && (FROM_GE_PPD(skb) || FROM_GE_LAN_GRP(skb) ||
@@ -110,7 +110,7 @@
  		if (!hnat_priv->data->whnat && IS_GMAC1_MODE) {
  			entry.bfib1.vpm = 1;
  			entry.bfib1.vlan_layer = 1;
-@@ -3766,6 +3823,10 @@ static unsigned int mtk_hnat_nf_post_rou
+@@ -3886,6 +3943,10 @@ static unsigned int mtk_hnat_nf_post_rou
  		 && (hw_path.flags & BIT(DEV_PATH_TNL))))
  		return 0;
  

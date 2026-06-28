@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
-@@ -2487,7 +2487,7 @@ static ssize_t hnat_ppd_if_write(struct
+@@ -2579,7 +2579,7 @@ static ssize_t hnat_ppd_if_write(struct
  				 size_t count, loff_t *data)
  {
  	char buf[IFNAMSIZ];
@@ -9,7 +9,7 @@
  	char *p, *tmp;
  
  	if (count >= IFNAMSIZ)
-@@ -2499,32 +2499,44 @@ static ssize_t hnat_ppd_if_write(struct
+@@ -2591,32 +2591,44 @@ static ssize_t hnat_ppd_if_write(struct
  
  	tmp = buf;
  	p = strsep(&tmp, "\n\r ");

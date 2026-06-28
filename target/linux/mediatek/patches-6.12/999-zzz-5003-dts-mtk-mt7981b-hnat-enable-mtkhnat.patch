@@ -1,6 +1,6 @@
 --- a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
 +++ b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
-@@ -546,7 +546,12 @@
+@@ -551,7 +551,12 @@
  			reg = <0 0x15100000 0 0x80000>;
  			resets = <&ethsys 0>;
  			reset-names = "mtketh";

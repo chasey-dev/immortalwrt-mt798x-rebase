@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
-@@ -402,6 +402,11 @@ int nf_hnat_netdevice_event(struct notif
+@@ -403,6 +403,11 @@ int nf_hnat_netdevice_event(struct notif
  			dev_put(dev);
  		}
  
@@ -12,7 +12,7 @@
  		break;
  	case NETDEV_REGISTER:
  		if (IS_PPD(dev) && !hnat_priv->g_ppdev)
-@@ -409,6 +414,9 @@ int nf_hnat_netdevice_event(struct notif
+@@ -410,6 +415,9 @@ int nf_hnat_netdevice_event(struct notif
  		if (IS_WAN(dev) && !hnat_priv->g_wandev)
  			hnat_priv->g_wandev = dev_get_by_name(&init_net, hnat_priv->wan);
  
@@ -24,7 +24,7 @@
  		break;
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
-@@ -980,6 +980,7 @@ struct mtk_hnat {
+@@ -1051,6 +1051,7 @@ struct mtk_hnat {
  	char lan[IFNAMSIZ];
  	char lan2[IFNAMSIZ];
  	char ppd[IFNAMSIZ];
@@ -32,7 +32,7 @@
  	u16 lvid;
  	u16 wvid;
  
-@@ -1261,6 +1262,7 @@ enum FoeIpAct {
+@@ -1333,6 +1334,7 @@ enum FoeIpAct {
  	 (get_wifi_hook_if_index_from_dev(dev) != 0)) ? 1 : 0)
  #define IS_EXT(dev) ((get_index_from_dev(dev) != 0) ? 1 : 0)
  #define IS_PPD(dev) (!strcmp(dev->name, hnat_priv->ppd))
@@ -40,7 +40,7 @@
  #define IS_L2_BRIDGE(x) (((x)->bfib1.pkt_type == L2_BRIDGE) ? 1 : 0)
  #define IS_IPV4_HNAPT(x) (((x)->bfib1.pkt_type == IPV4_HNAPT) ? 1 : 0)
  #define IS_IPV4_HNAT(x) (((x)->bfib1.pkt_type == IPV4_HNAT) ? 1 : 0)
-@@ -1357,6 +1359,8 @@ enum FoeIpAct {
+@@ -1429,6 +1431,8 @@ enum FoeIpAct {
  extern const struct of_device_id of_hnat_match[];
  extern struct mtk_hnat *hnat_priv;
  

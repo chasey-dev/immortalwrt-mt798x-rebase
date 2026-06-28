@@ -1,6 +1,6 @@
 --- a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
 +++ b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
-@@ -93,18 +93,23 @@
+@@ -99,18 +99,23 @@
  		};
  
  		wmcpu_emi: wmcpu-reserved@47c80000 {
@@ -24,7 +24,7 @@
  		};
  	};
  
-@@ -451,18 +456,15 @@
+@@ -456,18 +461,15 @@
          };
  
  		wed: wed@15010000 {
@@ -51,7 +51,7 @@
  		};
  
  		eth: ethernet@15100000 {
-@@ -573,27 +575,24 @@
+@@ -579,27 +581,24 @@
  		};
  
  		wo_dlm0: syscon@151e8000 {
@@ -87,7 +87,7 @@
  		sgmiisys0: syscon@10060000 {
  			compatible = "mediatek,mt7981-sgmiisys_0", "mediatek,mt7986-sgmiisys_0", "syscon";
  			reg = <0 0x10060000 0 0x1000>;
-@@ -657,6 +656,10 @@
+@@ -663,6 +662,10 @@
  			compatible = "mediatek,mt7981-consys";
  			reg = <0 0x10000000 0 0x8600000>;
  			memory-region = <&wmcpu_emi>;
@@ -98,7 +98,7 @@
  		};
  
  		xhci: usb@11200000 {
-@@ -743,7 +746,8 @@
+@@ -749,7 +752,8 @@
  		};
  
  		wifi: wifi@18000000 {
@@ -108,7 +108,7 @@
  			pinctrl-0 = <&wifi_dbdc_pins>;
  			pinctrl-names = "dbdc";
  			reg = <0 0x18000000 0 0x1000000>,
-@@ -758,6 +762,7 @@
+@@ -764,6 +768,7 @@
  			clock-names = "mcu", "ap2conn";
  			resets = <&watchdog MT7986_TOPRGU_CONSYS_SW_RST>;
  			reset-names = "consys";

@@ -61,14 +61,6 @@ msgstr "阈值越小，连接越容易被加速。"
 msgid "Update HNAT counter to nf_conntrack. May impact performance."
 msgstr "HNAT 加速的连接计数将自动更新到 nf_conntrack。可能会轻微影响性能。"
 
-#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:178
-msgid "Enable hardware offloading for wireless connections."
-msgstr "为无线连接启用硬件加速。"
-
-#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:177
-msgid "Enable wireless HNAT"
-msgstr "启用无线 HNAT"
-
 #: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js:124
 msgid "Fast classifier"
 msgstr "Fast classifier"

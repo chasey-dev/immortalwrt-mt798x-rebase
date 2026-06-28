@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -1070,7 +1070,8 @@
+@@ -1098,7 +1098,8 @@ static void mtk_set_queue_speed(struct m
  		eth->qdma_shaper.speed[idx] = speed;
  
  out:
@@ -10,7 +10,7 @@
  	mtk_w32(eth, val, soc->reg_map->qdma.qtx_sch + ofs);
  }
  
-@@ -3316,6 +3317,8 @@
+@@ -3404,6 +3405,8 @@ static int mtk_tx_alloc(struct mtk_eth *
  		mtk_w32(eth, ring->last_free_ptr, soc->reg_map->qdma.drx_ptr);
  
  		for (i = 0, ofs = 0; i < MTK_QDMA_NUM_QUEUES; i++) {
@@ -19,7 +19,7 @@
  			val = (QDMA_RES_THRES << 8) | QDMA_RES_THRES;
  			mtk_w32(eth, val, soc->reg_map->qdma.qtx_cfg + ofs);
  
-@@ -3333,7 +3336,7 @@
+@@ -3421,7 +3424,7 @@ static int mtk_tx_alloc(struct mtk_eth *
  			if (mtk_is_netsys_v1(eth))
  				val |= MTK_QTX_SCH_LEAKY_BUCKET_EN;
  			mtk_w32(eth, val, soc->reg_map->qdma.qtx_sch + ofs);

@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c
-@@ -1662,6 +1662,18 @@ static int hnat_probe(struct platform_de
+@@ -1663,6 +1663,18 @@ static int hnat_probe(struct platform_de
  		dev_info(&pdev->dev, "ext devices = %s\n", ext_entry->name);
  	}
  
@@ -21,7 +21,7 @@
  
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
-@@ -229,6 +229,7 @@
+@@ -237,6 +237,7 @@
   */
  #define MAX_EXT_DEVS		(0x3fU)
  #define MAX_IF_NUM		64
@@ -29,7 +29,7 @@
  
  #if defined(CONFIG_MEDIATEK_NETSYS_V3)
  #define MAX_PPE_NUM		3
-@@ -996,6 +997,7 @@ struct mtk_hnat {
+@@ -1068,6 +1069,7 @@ struct mtk_hnat {
  	struct net_device *g_wandev;
  	struct net_device *wifi_hook_if[MAX_IF_NUM];
  	struct extdev_entry *ext_if[MAX_EXT_DEVS];
@@ -39,7 +39,7 @@
  	struct timer_list hnat_mcast_check_timer;
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
-@@ -119,14 +119,32 @@ static inline struct net_device *get_wan
+@@ -121,14 +121,32 @@ static inline struct net_device *get_wan
  	return NULL;
  }
  
@@ -73,7 +73,7 @@
  			dev_hold(dev);
  			ext_entry->dev = dev;
  			pr_info("%s(%s)\n", __func__, dev->name);
-@@ -136,6 +154,26 @@ static inline int extif_set_dev(struct n
+@@ -137,6 +155,26 @@ static inline int extif_set_dev(struct n
  		}
  	}
  

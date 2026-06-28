@@ -1,8 +1,8 @@
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -347,6 +347,9 @@ EXPORT_SYMBOL(mtk_get_tnl_dev);
- void (*mtk_set_tops_crsn)(struct sk_buff *skb, u8 tops_crsn) = NULL;
- EXPORT_SYMBOL(mtk_set_tops_crsn);
+@@ -361,6 +361,9 @@ static const char * const mtk_clks_sourc
+ struct net_device *(*mtk_get_tnl_dev)(u8 tops_crsn) = NULL;
+ EXPORT_SYMBOL(mtk_get_tnl_dev);
  
 +struct net_device *g_rx_ppdev;
 +EXPORT_SYMBOL(g_rx_ppdev);
@@ -10,7 +10,7 @@
  void mtk_w32(struct mtk_eth *eth, u32 val, unsigned reg)
  {
  	__raw_writel(val, eth->base + reg);
-@@ -2693,15 +2696,19 @@ static int mtk_poll_rx(struct napi_struc
+@@ -2793,15 +2796,19 @@ static int mtk_poll_rx(struct napi_struc
  	dma_addr_t dma_addr = DMA_MAPPING_ERROR;
  	int ppe_idx = 0;
  	u8 tops_crsn = 0;
@@ -30,7 +30,7 @@
  
  		idx = NEXT_DESP_IDX(ring->calc_idx, ring->dma_size);
  		rxd = ring->dma + RX_DESC_OFS(eth, idx);
-@@ -2727,7 +2734,19 @@ static int mtk_poll_rx(struct napi_struc
+@@ -2827,7 +2834,19 @@ static int mtk_poll_rx(struct napi_struc
  			}
  		} else if (!MTK_HAS_CAPS(eth->soc->caps, MTK_SOC_MT7628) &&
  			   !(trxd.rxd4 & RX_DMA_SPECIAL_TAG)) {
@@ -51,7 +51,7 @@
  		}
  
  		if (unlikely(mac < 0 || mac >= MTK_MAX_DEVS ||
-@@ -2846,6 +2865,12 @@ static int mtk_poll_rx(struct napi_struc
+@@ -2946,6 +2965,12 @@ static int mtk_poll_rx(struct napi_struc
  				trace_printk("[%s] reason=0x%x(force to CPU) from WAN to Ext\n",
  					     __func__, skb_hnat_reason(skb));
  				skb->pkt_type = PACKET_HOST;
@@ -64,7 +64,7 @@
  			}
  
  			trace_printk("[%s] rxd:(entry=%x,sport=%x,reason=%x,alg=%x\n",
-@@ -2907,6 +2932,12 @@ static int mtk_poll_rx(struct napi_struc
+@@ -3005,6 +3030,12 @@ static int mtk_poll_rx(struct napi_struc
  			mtk_eth_debugfs_hwlro_flush_stats_update(eth, ring->ring_no, &trxd);
  		}
  

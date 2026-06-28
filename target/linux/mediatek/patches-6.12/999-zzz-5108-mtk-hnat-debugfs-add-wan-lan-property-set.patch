@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
-@@ -2483,6 +2483,171 @@ static const struct file_operations hnat
+@@ -2575,6 +2575,171 @@ static const struct file_operations hnat
  	.release = single_release,
  };
  
@@ -172,7 +172,7 @@
  static ssize_t hnat_ppd_if_write(struct file *file, const char __user *buffer,
  				 size_t count, loff_t *data)
  {
-@@ -3623,6 +3788,12 @@ int hnat_init_debugfs(struct mtk_hnat *h
+@@ -3882,6 +4047,12 @@ int hnat_init_debugfs(struct mtk_hnat *h
  			    &hnat_qos_toggle_fops);
  	debugfs_create_file("hnat_version", 0444, root, h,
  			    &hnat_version_fops);

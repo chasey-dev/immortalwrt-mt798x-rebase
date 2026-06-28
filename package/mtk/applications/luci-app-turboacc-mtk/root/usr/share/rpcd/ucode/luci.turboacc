@@ -5,7 +5,7 @@
 
 'use strict';
 
-import { access, open, stat, glob, readfile } from 'fs';
+import { access, open, stat, readfile } from 'fs';
 import { connect } from 'ubus';
 
 // Persistent ubus connection
@@ -60,16 +60,6 @@ const methods = {
 				let hnat_toggle = read_trimmed('/sys/kernel/debug/hnat/hook_toggle');
 				if (hnat_toggle === 'enabled') {
 					fptype = 'MediaTek HNAT';
-					
-					let whnat_enabled = false;
-                    // fs.glob is useful for regex matching here
-					for (let f in glob('/etc/wireless/mediatek/*_card*.dat')) {
-						if (match(readfile(f) || '', /WHNAT=1/)) {
-							whnat_enabled = true;
-							break;
-						}
-					}
-					if (!whnat_enabled) fptype += ' / Wireless HNAT Disabled';
 				}
 			}
 

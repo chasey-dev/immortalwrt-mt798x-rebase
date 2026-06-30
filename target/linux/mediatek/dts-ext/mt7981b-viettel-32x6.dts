@@ -8,8 +8,8 @@
 #include "mt7981b.dtsi"
 
 / {
-	model = "Viettel VHT-32X6V1";
-	compatible = "viettel,vht-32x6", "mediatek,mt7981";
+	model = "Viettel 32X6V1";
+	compatible = "viettel,32x6", "mediatek,mt7981";
 
 	aliases {
 		label-mac-device = &gmac0;

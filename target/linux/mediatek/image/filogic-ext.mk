@@ -124,12 +124,12 @@ define Device/sl_3000-emmc
 endef
 TARGET_DEVICES += sl_3000-emmc
 
-define Device/vht_32x6
+define Device/viettel_32x6
   DEVICE_VENDOR := Viettel
-  DEVICE_MODEL := VHT-32X6V1
-  DEVICE_DTS := mt7981b-viettel-vht-32x6
+  DEVICE_MODEL := 32X6V1
+  DEVICE_DTS := mt7981b-viettel-32x6
   DEVICE_DTS_DIR := ../dts-ext
-  SUPPORTED_DEVICES := viettel,vht-32x6
+  SUPPORTED_DEVICES := viettel,32x6
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k
   PAGESIZE := 2048
@@ -145,9 +145,9 @@ define Device/vht_32x6
 	append-metadata
   ARTIFACTS := preloader.bin bl31-uboot.fip
   ARTIFACT/preloader.bin := mt7981-bl2 spim-nand-ddr3
-  ARTIFACT/bl31-uboot.fip := mt7981-bl31-uboot vht_32x6
+  ARTIFACT/bl31-uboot.fip := mt7981-bl31-uboot viettel_32x6
 endef
-TARGET_DEVICES += vht_32x6
+TARGET_DEVICES += viettel_32x6
 
 define Device/viettel_nr3053
   DEVICE_VENDOR := Viettel

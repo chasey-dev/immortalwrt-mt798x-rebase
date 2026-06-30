@@ -133,6 +133,7 @@ define Device/viettel_32x6
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k
   PAGESIZE := 2048
+  IMAGE_SIZE := 114688k
   KERNEL_IN_UBI := 1
   UBOOTENV_IN_UBI := 1
   IMAGES := sysupgrade.itb

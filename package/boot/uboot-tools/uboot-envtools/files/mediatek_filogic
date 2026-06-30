@@ -91,7 +91,8 @@ livinet,zr-3020|\
 netgear,wax220|\
 ruijie,rg-x30e-pro|\
 zbtlink,zbt-z8102ax|\
-zbtlink,zbt-z8103ax)
+zbtlink,zbt-z8103ax|\
+zhao,7981r128)
 	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x20000" "0x20000"
 	;;
 asus,rt-ax59u)

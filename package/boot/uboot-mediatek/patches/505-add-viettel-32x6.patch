@@ -1,5 +1,5 @@
 --- /dev/null
-+++ b/configs/mt7981_vht_32x6_defconfig
++++ b/configs/mt7981_viettel_32x6_defconfig
 @@ -0,0 +1,108 @@
 +CONFIG_ARM=y
 +CONFIG_SYS_HAS_NONCACHED_MEMORY=y
@@ -8,7 +8,7 @@
 +CONFIG_TEXT_BASE=0x41e00000
 +CONFIG_SYS_MALLOC_F_LEN=0x4000
 +CONFIG_NR_DRAM_BANKS=1
-+CONFIG_DEFAULT_DEVICE_TREE="mt7981-vht_32x6"
++CONFIG_DEFAULT_DEVICE_TREE="mt7981-viettel_32x6"
 +CONFIG_OF_LIBFDT_OVERLAY=y
 +CONFIG_TARGET_MT7981=y
 +CONFIG_SYS_LOAD_ADDR=0x46000000
@@ -20,7 +20,7 @@
 +CONFIG_BOOTDELAY=30
 +CONFIG_AUTOBOOT_KEYED=y
 +CONFIG_AUTOBOOT_MENU_SHOW=y
-+CONFIG_DEFAULT_FDT_FILE="mediatek/mt7981-vht_32x6.dtb"
++CONFIG_DEFAULT_FDT_FILE="mediatek/mt7981-viettel_32x6.dtb"
 +CONFIG_LOGLEVEL=7
 +CONFIG_PRE_CONSOLE_BUFFER=y
 +CONFIG_LOG=y
@@ -66,7 +66,7 @@
 +CONFIG_ENV_UBI_VOLUME_REDUND="ubootenv2"
 +CONFIG_ENV_RELOC_GD_ENV_ADDR=y
 +CONFIG_ENV_USE_DEFAULT_ENV_TEXT_FILE=y
-+CONFIG_ENV_DEFAULT_ENV_TEXT_FILE="defenvs/vht_32x6_env"
++CONFIG_ENV_DEFAULT_ENV_TEXT_FILE="defenvs/viettel_32x6_env"
 +CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG=y
 +CONFIG_VERSION_VARIABLE=y
 +CONFIG_NETCONSOLE=y
@@ -110,7 +110,7 @@
 +CONFIG_ZSTD=y
 +CONFIG_HEXDUMP=y
 --- /dev/null
-+++ b/arch/arm/dts/mt7981-vht_32x6.dts
++++ b/arch/arm/dts/mt7981-viettel_32x6.dts
 @@ -0,0 +1,143 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
@@ -122,8 +122,8 @@
 +/ {
 +	#address-cells = <1>;
 +	#size-cells = <1>;
-+	model = "Viettel VHT-32X6V1";
-+	compatible = "viettel,vht-32x6", "mediatek,mt7981";
++	model = "Viettel 32X6V1";
++	compatible = "viettel,32x6", "mediatek,mt7981";
 +
 +	aliases {
 +		serial0 = &uart0;
@@ -260,7 +260,7 @@
 +	status = "disabled";
 +};
 --- /dev/null
-+++ b/defenvs/vht_32x6_env
++++ b/defenvs/viettel_32x6_env
 @@ -0,0 +1,57 @@
 +ipaddr=192.168.1.1
 +serverip=192.168.1.254
@@ -269,10 +269,10 @@
 +bootcmd=run check_buttons ; if pstore check ; then run boot_recovery ; else run boot_ubi ; fi
 +bootconf=config-1
 +bootdelay=0
-+bootfile=immortalwrt-mediatek-filogic-vht_32x6-initramfs-recovery.itb
-+bootfile_bl2=immortalwrt-mediatek-filogic-vht_32x6-preloader.bin
-+bootfile_fip=immortalwrt-mediatek-filogic-vht_32x6-bl31-uboot.fip
-+bootfile_upg=immortalwrt-mediatek-filogic-vht_32x6-squashfs-sysupgrade.itb
++bootfile=immortalwrt-mediatek-filogic-viettel_32x6-initramfs-recovery.itb
++bootfile_bl2=immortalwrt-mediatek-filogic-viettel_32x6-preloader.bin
++bootfile_fip=immortalwrt-mediatek-filogic-viettel_32x6-bl31-uboot.fip
++bootfile_upg=immortalwrt-mediatek-filogic-viettel_32x6-squashfs-sysupgrade.itb
 +bootled_status=red:power
 +bootmenu_confirm_return=askenv - Press ENTER to return to menu ; bootmenu 60
 +bootmenu_default=0

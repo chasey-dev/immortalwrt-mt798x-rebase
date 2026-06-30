@@ -66,7 +66,7 @@ viettel,nr3053|\
 xiaomi,mi-router-ax3000t-ubootmod|\
 =======
 	tplink,tl-xtr8488|\
-	viettel,vht-32x6|\
+	viettel,32x6|\
 	viettel,nr3053|\
 	xiaomi,mi-router-ax3000t-ubootmod|\
 >>>>>>> 1bbd4610f6 (mediatek: filogic: add Viettel VHT-32X6V1 support)

@@ -147,6 +147,9 @@ mediatek_setup_interfaces()
 	wirelesstag,zx7981pd-ubootmod)
 		ucidef_set_interfaces_lan_wan "lan1 lan2" wan
 		;;
+	mediatek,zhao-7981r128)
+		ucidef_set_interfaces_lan_wan "lan1 lan2" eth1
+		;;
 	airpi,ap3000m|\
 	bananapi,bpi-r3-mini|\
 	edgecore,eap111|\
@@ -306,6 +309,11 @@ mediatek_setup_macs()
 	mediatek,mt7988*)
 		lan_mac=$(mtd_get_mac_binary "Factory" "0xFFFF4")
 		wan_mac=$(mtd_get_mac_binary "Factory" "0xFFFFA")
+		;;
+	mediatek,zhao-7981r128)
+		lan_mac=$(mtd_get_mac_binary "Factory" 0x04)
+		wan_mac=$(macaddr_add "$lan_mac" 1)
+		label_mac=$lan_mac
 		;;
 	mercusys,mr90x-v1|\
 	tplink,archer-ax80-v1|\

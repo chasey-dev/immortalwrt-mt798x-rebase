@@ -761,7 +761,7 @@ define U-Boot/mt7981_snr_snr-cpe-ax2
 endef
 
 define U-Boot/mt7981_viettel_32x6
-  NAME:=Viettel 32X6V1
+  NAME:=Viettel 32X6
   BUILD_SUBTARGET:=filogic
   BUILD_DEVICES:=viettel_32x6
   UBOOT_CONFIG:=mt7981_viettel_32x6

@@ -126,7 +126,7 @@ TARGET_DEVICES += sl_3000-emmc
 
 define Device/viettel_32x6
   DEVICE_VENDOR := Viettel
-  DEVICE_MODEL := 32X6V1
+  DEVICE_MODEL := 32X6
   DEVICE_DTS := mt7981b-viettel-32x6
   DEVICE_DTS_DIR := ../dts-ext
   SUPPORTED_DEVICES := viettel,32x6

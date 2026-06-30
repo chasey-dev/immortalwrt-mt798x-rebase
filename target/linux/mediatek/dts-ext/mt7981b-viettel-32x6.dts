@@ -8,7 +8,7 @@
 #include "mt7981b.dtsi"
 
 / {
-	model = "Viettel 32X6V1";
+	model = "Viettel 32X6";
 	compatible = "viettel,32x6", "mediatek,mt7981";
 
 	aliases {
@@ -271,12 +271,4 @@
 	status = "okay";
 	nvmem-cell-names = "eeprom";
 	nvmem-cells = <&eeprom_factory_0>;
-};
-
-&usb_phy {
-	status = "disabled";
-};
-
-&xhci {
-	status = "disabled";
 };

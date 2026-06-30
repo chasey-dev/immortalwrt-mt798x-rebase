@@ -831,6 +831,7 @@ setup_model()
 	xiaomi,mi-router-wr30u* |\
 	yuncore,ax835 |\
 	zbtlink,zbt-z810* |\
+	zhao,7981r128 |\
 	zyxel,nwa50ax-pro |\
 	*7981*)
 		MT7981_whnat $num_of_wifi $usbnet

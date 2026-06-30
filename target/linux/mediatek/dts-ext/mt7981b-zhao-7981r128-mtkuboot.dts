@@ -8,8 +8,8 @@
 #include "mt7981b.dtsi"
 
 / {
-	model = "ZHAO 7981 R128 (MTK U-Boot layout)";
-	compatible = "mediatek,zhao-7981r128", "mediatek,mt7981";
+	model = "ZHAO 7981r128 (MTK U-Boot layout)";
+	compatible = "zhao,7981r128", "mediatek,mt7981";
 
 	aliases {
 		label-mac-device = &gmac0;

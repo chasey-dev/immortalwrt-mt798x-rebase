@@ -203,8 +203,8 @@ platform_do_upgrade() {
 	huasifei,wh3000-pro-nand|\
 	huasifei,wh3000r-nand|\
 	jiorouter,ax6000-jidu6101|\
-	mediatek,zhao-7981r128|\
-	ruijie,rg-x30e-pro)
+	ruijie,rg-x30e-pro|\
+	zhao,7981r128)
 		CI_UBIPART="ubi"
 		nand_do_upgrade "$1"
 		;;
@@ -378,8 +378,8 @@ platform_check_image() {
 		;;
 	creatlentem,clt-r30b1|\
 	creatlentem,clt-r30b1-112m|\
-	mediatek,zhao-7981r128|\
-	nradio,c8-668gl)
+	nradio,c8-668gl|\
+	zhao,7981r128)
 		# tar magic `ustar`
 		magic="$(dd if="$1" bs=1 skip=257 count=5 2>/dev/null)"
 

@@ -179,25 +179,6 @@ endif
 endef
 TARGET_DEVICES += wirelesstag_zx7981pd-ubootmod
 
-define Device/zhao_7981-r128-mtkuboot
-  DEVICE_VENDOR := ZHAO
-  DEVICE_MODEL := 7981 R128
-  DEVICE_VARIANT := (MTK U-Boot layout)
-  DEVICE_DTS := mt7981b-zhao-7981r128-mtkuboot
-  DEVICE_DTS_DIR := ../dts-ext
-  SUPPORTED_DEVICES := mediatek,zhao-7981r128
-  DEVICE_PACKAGES := kmod-usb3 kmod-sfp kmod-i2c-gpio automount f2fsck mkf2fs
-  UBINIZE_OPTS := -E 5
-  BLOCKSIZE := 128k
-  PAGESIZE := 2048
-  IMAGE_SIZE := 114688k
-  KERNEL_IN_UBI := 1
-  IMAGES += factory.bin
-  IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
-  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-endef
-TARGET_DEVICES += zhao_7981-r128-mtkuboot
-
 define Device/xiaomi_mi-router-ax3000t-mtkuboot
   DEVICE_VENDOR := Xiaomi
   DEVICE_MODEL := Mi Router AX3000T
@@ -248,3 +229,22 @@ define Device/xiaomi_redmi-router-ax6000-mtkuboot
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 endef
 TARGET_DEVICES += xiaomi_redmi-router-ax6000-mtkuboot
+
+define Device/zhao_7981r128-mtkuboot
+  DEVICE_VENDOR := ZHAO
+  DEVICE_MODEL := 7981r128
+  DEVICE_VARIANT := (MTK U-Boot layout)
+  DEVICE_DTS := mt7981b-zhao-7981r128-mtkuboot
+  DEVICE_DTS_DIR := ../dts-ext
+  SUPPORTED_DEVICES := zhao,7981r128
+  DEVICE_PACKAGES := kmod-usb3 kmod-sfp kmod-i2c-gpio automount f2fsck mkf2fs
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE_SIZE := 114688k
+  KERNEL_IN_UBI := 1
+  IMAGES += factory.bin
+  IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += zhao_7981r128-mtkuboot

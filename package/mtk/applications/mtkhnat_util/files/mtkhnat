@@ -9,8 +9,8 @@
 config_load mtkhnat
 config_get enable global enable 0
 config_get hqos global hqos 0
-config_get txq_num global txq_num 16
-config_get sch_num global sch_num 2
+config_get txq_num global txq_num 64
+config_get sch_num global sch_num 4
 config_get scheduling global scheduling "wrr"
 config_get sch0_bw global sch0_bw 100000
 config_get sch1_bw global sch1_bw 100000
@@ -25,17 +25,9 @@ echo 0 > /proc/sys/net/bridge/bridge-nf-filter-pppoe-tagged
 echo 0 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged
 echo 0 > /proc/sys/net/bridge/bridge-nf-pass-vlan-input-dev
 
-#if mtk_ppe is not exist, switch module to hnat
-module=mtk_ppe
-[ -d /sys/kernel/debug/${module} ] || {
-	module=hnat
-}
-
-#if module=mtk_ppe, enable the bridge netfilter
-[ "${module}" = "mtk_ppe" ] && {
-	echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
-	echo 1 > /proc/sys/net/bridge/bridge-nf-call-ip6tables
-}
+module=hnat
+[ -d /sys/kernel/debug/${module} ] || insmod mtkhnat 2>/dev/null
+[ -d /sys/kernel/debug/${module} ] || exit 1
 
 #if enable=0, disable qdma_sch & qdma_txq
 [ "${enable}" -eq 1 ] || {
@@ -51,13 +43,8 @@ module=mtk_ppe
 		echo 0 0 0 0 0 0 0 > /sys/kernel/debug/${module}/qdma_txq$i
 	done
 
-	rmmod mtkhnat
+	rmmod mtkhnat 2>/dev/null
 	exit 0
-}
-
-# if module=hnat, install the hnat driver module
-[ "${module}" = "hnat" ] && {
-	insmod mtkhnat
 }
 
 #if hqos=0, disable qdma_sch & qdma_txq
@@ -70,8 +57,8 @@ module=mtk_ppe
 
 	for i in $(seq 0 $((txq_num - 1)))
 	do
-		current_sch=$((${i} / (txq_num / sch_num)))
-		echo ${current_sch} 0 0 0 0 0 4 > /sys/kernel/debug/${module}/qdma_txq$i
+		# NETSYS V3 HNAT uses qid 0~14 for PPPQ and qid 63 for PPD.
+		echo 0 0 0 0 0 0 4 > /sys/kernel/debug/${module}/qdma_txq$i
 	done
 
 	exit 0
@@ -91,7 +78,7 @@ echo 1 > /proc/sys/net/bridge/bridge-nf-call-ip6tables
 setup_queue() {
 	local queue_id queue_minebl queue_maxebl
 	local queue_minrate queue_maxrate queue_resv minrate maxrate queue_weight
-	local current_sch
+	local current_sch ppd_txq
 
 	config_get queue_id $1 id 0
 	config_get queue_minrate $1 minrate 0
@@ -101,6 +88,9 @@ setup_queue() {
 
 	# check qid < txq max num or not for loop condition
 	[ "${queue_id}" -gt $((txq_num - 1)) ] && return 0
+	# Queue 63 reserved for HNAT PPD ping-pong packets.
+	ppd_txq=63
+	[ "${queue_id}" -eq "${ppd_txq}" ] && return 0
 
 	# start to set per queue config
 	queue_minebl=1

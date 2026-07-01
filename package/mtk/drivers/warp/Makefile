@@ -15,6 +15,8 @@ PKG_SOURCE_URL:=https://github.com/chasey-dev/objs/releases/download/v1
 PKG_HASH:=6537088695c124135b695bf4ce6d4f9febecd3fb41889c4419de77780dca6488
 PKG_BUILD_DIR:=$(KERNEL_BUILD_DIR)/$(PKG_NAME)
 
+PKG_BUILD_PARALLEL:=1
+
 PKG_KCONFIG:= \
 	WARP_VERSION \
 	WARP_DBG_SUPPORT \
@@ -53,7 +55,7 @@ KCFLAGS += $(addprefix -Wno-error=,missing-prototypes missing-declarations)
 
 
 define Build/Compile
-	$(MAKE) -C "$(LINUX_DIR)" V=1 \
+	+$(MAKE) $(PKG_JOBS) -C "$(LINUX_DIR)" V=1 \
 		CROSS_COMPILE="$(TARGET_CROSS)" \
 		ARCH="$(LINUX_KARCH)" \
 		M="$(PKG_BUILD_DIR)" \

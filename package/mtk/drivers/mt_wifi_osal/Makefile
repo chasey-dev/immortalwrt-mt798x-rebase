@@ -8,6 +8,8 @@ PKG_SOURCE:=mt_wifi_osal-543726.tar.xz
 PKG_SOURCE_URL:=https://github.com/chasey-dev/objs/releases/download/v1
 PKG_HASH:=102bf755e7d5b8a92767068ff03abe44ede05a2158936e76a793244acdb6d25a
 
+PKG_BUILD_PARALLEL:=1
+
 include $(INCLUDE_DIR)/package.mk
 
 define KernelPackage/$(PKG_NAME)

@@ -1,0 +1,129 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Copyright (C) 2021 MediaTek Inc.
+#
+
+. /lib/functions.sh
+
+config_load mtkhnat
+config_get enable global enable 0
+config_get hqos global hqos 0
+config_get txq_num global txq_num 16
+config_get sch_num global sch_num 2
+config_get scheduling global scheduling "wrr"
+config_get sch0_bw global sch0_bw 100000
+config_get sch1_bw global sch1_bw 100000
+config_get sch2_bw global sch2_bw 100000
+config_get sch3_bw global sch3_bw 100000
+
+# disable bridge netfilter module to avoid high cpu usage
+echo 0 > /proc/sys/net/bridge/bridge-nf-call-arptables
+echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables
+echo 0 > /proc/sys/net/bridge/bridge-nf-call-ip6tables
+echo 0 > /proc/sys/net/bridge/bridge-nf-filter-pppoe-tagged
+echo 0 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged
+echo 0 > /proc/sys/net/bridge/bridge-nf-pass-vlan-input-dev
+
+#if mtk_ppe is not exist, switch module to hnat
+module=mtk_ppe
+[ -d /sys/kernel/debug/${module} ] || {
+	module=hnat
+}
+
+#if module=mtk_ppe, enable the bridge netfilter
+[ "${module}" = "mtk_ppe" ] && {
+	echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
+	echo 1 > /proc/sys/net/bridge/bridge-nf-call-ip6tables
+}
+
+#if enable=0, disable qdma_sch & qdma_txq
+[ "${enable}" -eq 1 ] || {
+	for i in $(seq 0 $((sch_num - 1)))
+	do
+		eval sch_bw='$sch'$i'_bw'
+		echo 0 ${scheduling} ${sch_bw} > /sys/kernel/debug/${module}/qdma_sch${i}
+	done
+
+	echo 0 0 0 0 0 0 4 > /sys/kernel/debug/${module}/qdma_txq0
+	for i in $(seq 1 $((txq_num - 1)))
+	do
+		echo 0 0 0 0 0 0 0 > /sys/kernel/debug/${module}/qdma_txq$i
+	done
+
+	rmmod mtkhnat
+	exit 0
+}
+
+# if module=hnat, install the hnat driver module
+[ "${module}" = "hnat" ] && {
+	insmod mtkhnat
+}
+
+#if hqos=0, disable qdma_sch & qdma_txq
+[ "${hqos}" -eq 1 ] || {
+	for i in $(seq 0 $((sch_num - 1)))
+	do
+		eval sch_bw='$sch'$i'_bw'
+		echo 0 ${scheduling} ${sch_bw} > /sys/kernel/debug/${module}/qdma_sch${i}
+	done
+
+	for i in $(seq 0 $((txq_num - 1)))
+	do
+		current_sch=$((${i} / (txq_num / sch_num)))
+		echo ${current_sch} 0 0 0 0 0 4 > /sys/kernel/debug/${module}/qdma_txq$i
+	done
+
+	exit 0
+}
+
+# enable qdma_sch
+for i in $(seq 0 $((sch_num - 1)))
+do
+	eval sch_bw='$sch'$i'_bw'
+	echo 1 ${scheduling} ${sch_bw} > /sys/kernel/debug/${module}/qdma_sch${i}
+done
+
+# enable bridge netfilter module to allow skb being marked
+echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
+echo 1 > /proc/sys/net/bridge/bridge-nf-call-ip6tables
+
+setup_queue() {
+	local queue_id queue_minebl queue_maxebl
+	local queue_minrate queue_maxrate queue_resv minrate maxrate queue_weight
+	local current_sch
+
+	config_get queue_id $1 id 0
+	config_get queue_minrate $1 minrate 0
+	config_get queue_maxrate $1 maxrate 0
+	config_get queue_resv $1 resv 4
+	config_get queue_weight $1 weight 4
+
+	# check qid < txq max num or not for loop condition
+	[ "${queue_id}" -gt $((txq_num - 1)) ] && return 0
+
+	# start to set per queue config
+	queue_minebl=1
+	queue_maxebl=1
+
+	# if min rate = 0, set min enable = 0
+	# if max rate = 0, set max enable = 0
+	[ "${queue_minrate}" -eq 0 ] && queue_minebl=0
+	[ "${queue_maxrate}" -eq 0 ] && queue_maxebl=0
+
+	# get current scheduler id
+	current_sch=$((${queue_id} / (txq_num / sch_num)))
+
+	# calculate min rate according to schx_bw
+	minrate=$((sch${current_sch}_bw * $queue_minrate))
+	minrate=$((minrate / 100))
+
+	# calculate max rate according to schx_bw
+	maxrate=$((sch${current_sch}_bw * $queue_maxrate))
+	maxrate=$((maxrate / 100))
+
+	echo ${current_sch} ${queue_minebl} ${minrate} ${queue_maxebl} ${maxrate} ${queue_weight} \
+		${queue_resv} > /sys/kernel/debug/${module}/qdma_txq${queue_id}
+}
+
+config_foreach setup_queue queue

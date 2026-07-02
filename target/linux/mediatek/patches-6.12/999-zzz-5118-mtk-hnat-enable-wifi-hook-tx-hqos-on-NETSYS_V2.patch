@@ -1,0 +1,18 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
+@@ -3411,6 +3411,7 @@ int mtk_sw_nat_hook_tx(struct sk_buff *s
+ 			entry.ipv4_hnapt.winfo_pao.hf = skb_hnat_hf(skb);
+ 			entry.ipv4_hnapt.winfo_pao.amsdu = skb_hnat_amsdu(skb);
+ #elif defined(CONFIG_MEDIATEK_NETSYS_V2)
++			entry.ipv4_hnapt.iblk2.fqos = IS_HQOS_DL_MODE ? 1 : 0;
+ 			entry.ipv4_hnapt.iblk2.rxid = skb_hnat_rx_id(skb);
+ 			entry.ipv4_hnapt.iblk2.winfoi = 1;
+ #else
+@@ -3532,6 +3533,7 @@ int mtk_sw_nat_hook_tx(struct sk_buff *s
+ 				break;
+ 			}
+ #elif defined(CONFIG_MEDIATEK_NETSYS_V2)
++			entry.ipv6_5t_route.iblk2.fqos = IS_HQOS_DL_MODE ? 1 : 0;
+ 			entry.ipv6_5t_route.winfo.bssid = skb_hnat_bss_id(skb);
+ 			entry.ipv6_5t_route.winfo.wcid = skb_hnat_wc_id(skb);
+ 			entry.ipv6_5t_route.iblk2.rxid = skb_hnat_rx_id(skb);

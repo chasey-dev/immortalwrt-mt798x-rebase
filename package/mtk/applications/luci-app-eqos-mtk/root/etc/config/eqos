@@ -1,12 +1,17 @@
-# The bandwidth unit is Mbit/s
 config eqos 'config'
 	option enabled      0
 	option download     100
 	option upload       20
 
-# Limiting the bandwidth of a single Device
+# Per-device bandwidth is kbit/s.
+# Slots 1~31 use NETSYS V2/V3 64-QDMA HQoS.
+# Slots 32 and above use tc software shaping with IPv4 or IPv6 selectors.
+# qid0 is the default queue and qid63 is reserved for PPD.
+# Configure exactly one of ip or ip6. LuCI may also save selector.
 #config device
-#	option ip       "192.168.1.100"
-#	option download 10
-#	option upload   5
-#	option comment  1
+#	option enabled  1
+#	option queue    1
+#	option selector 'ip'
+#	option ip       '192.168.1.100'
+#	option download 10000
+#	option upload   5000

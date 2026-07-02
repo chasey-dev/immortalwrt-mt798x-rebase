@@ -4,51 +4,178 @@
 START=50
 USE_PROCD=1
 
+QDMA_RATE_MAX=1000000
+TOTAL_RATE_MAX=1000
+
+is_uinteger() {
+	case "$1" in
+		''|*[!0-9]*|0[0-9]*) return 1 ;;
+	esac
+
+	return 0
+}
+
+validate_device() {
+	local cfg="$1"
+	local enabled
+
+	config_get_bool enabled "$cfg" enabled 1
+	[ "$enabled" -eq 1 ] || return 0
+
+	local ip ip6 queue selector selector_count selector_key
+	local download upload
+	config_get ip "$cfg" ip
+	config_get ip6 "$cfg" ip6
+	config_get download "$cfg" download 0
+	config_get upload "$cfg" upload 0
+	config_get queue "$cfg" queue
+	config_get selector "$cfg" selector
+	[ -n "$queue" ] || config_get queue "$cfg" comment
+
+	if ! is_uinteger "$queue" || [ "$queue" -lt 1 ] || [ "$queue" -gt 65535 ]; then
+		echo "eqos: $cfg queue slot must be between 1 and 65535" >&2
+		CONFIG_ERROR=1
+		return 0
+	fi
+
+	case " $USED_QUEUES " in
+		*" $queue "*)
+			echo "eqos: queue slot $queue is used by more than one rule" >&2
+			CONFIG_ERROR=1
+			return 0
+			;;
+	esac
+	USED_QUEUES="${USED_QUEUES}${queue} "
+
+	if ! is_uinteger "$download" || ! is_uinteger "$upload"; then
+		echo "eqos: $cfg download and upload rates must be integers" >&2
+		CONFIG_ERROR=1
+		return 0
+	fi
+
+	if [ "$download" -gt "$QDMA_RATE_MAX" ] || [ "$upload" -gt "$QDMA_RATE_MAX" ]; then
+		echo "eqos: $cfg download and upload rates must not exceed $QDMA_RATE_MAX kbit/s" >&2
+		CONFIG_ERROR=1
+		return 0
+	fi
+
+	selector_count=0
+	[ -z "$ip" ] || selector_count=$((selector_count + 1))
+	[ -z "$ip6" ] || selector_count=$((selector_count + 1))
+
+	if [ "$selector_count" -ne 1 ]; then
+		echo "eqos: $cfg must set exactly one match field: ip or ip6" >&2
+		CONFIG_ERROR=1
+		return 0
+	fi
+
+	case "$selector" in
+		''|ip|ip6) ;;
+		*)
+			echo "eqos: $cfg selector must be ip or ip6" >&2
+			CONFIG_ERROR=1
+			return 0
+			;;
+	esac
+
+	case "$selector" in
+		ip)
+			if [ -z "$ip" ]; then
+				echo "eqos: $cfg selector does not match configured field" >&2
+				CONFIG_ERROR=1
+				return 0
+			fi
+			;;
+		ip6)
+			if [ -z "$ip6" ]; then
+				echo "eqos: $cfg selector does not match configured field" >&2
+				CONFIG_ERROR=1
+				return 0
+			fi
+			;;
+	esac
+
+	if [ -n "$ip" ]; then
+		selector_key="ip:$ip"
+	else
+		selector_key="ip6:$ip6"
+	fi
+
+	case "$USED_SELECTORS" in
+		*" $selector_key "*)
+			echo "eqos: selector $selector_key is used by more than one rule" >&2
+			CONFIG_ERROR=1
+			return 0
+			;;
+	esac
+	USED_SELECTORS="${USED_SELECTORS}${selector_key} "
+}
+
 parse_device() {
 	local cfg="$1"
-
 	local enabled
-	config_get_bool enabled "$cfg" "enabled" "1"
-	[ "$enabled" -eq "1" ] || return 1
-	
 
-	local ip download upload comment mac
+	config_get_bool enabled "$cfg" enabled 1
+	[ "$enabled" -eq 1 ] || return 0
+
+	local ip ip6 address download upload queue total_download total_upload
 	config_get ip "$cfg" ip
-	config_get download "$cfg" "download"
-	config_get upload "$cfg" "upload"
-	config_get comment "$cfg" "comment"
-	config_get mac "$cfg" "mac"
+	config_get ip6 "$cfg" ip6
+	config_get download "$cfg" download 0
+	config_get upload "$cfg" upload 0
+	config_get queue "$cfg" queue
+	config_get total_download config download
+	config_get total_upload config upload
+	[ -n "$queue" ] || config_get queue "$cfg" comment
 
-	eqos add "$ip" "$download" "$upload" "$comment" "$mac"
+	address="$ip"
+	[ -n "$address" ] || address="$ip6"
+	if ! eqos add "$queue" "$download" "$upload" "$address" \
+		"$total_download" "$total_upload"; then
+		CONFIG_ERROR=1
+	fi
 }
 
 start_service() {
-	config_load "eqos"
+	config_load eqos
 
 	local enabled
-	config_get_bool enabled "config" "enabled" "0"
-	[ "$enabled" -eq "1" ] || return 1
-	
-	local download upload comment
-	config_get download "config" "download"
-	config_get upload "config" "upload"
-	config_get comment "config" "comment"
-	
-	eqos start "$download" "$upload" "$comment"
-	
-	local ipv6enabled                              
-        config_get_bool ipv6enabled "config" "ipv6enabled" "0"    
-        ip6tables -t mangle -N eqos
-        ip6tables -t mangle -F eqos
-        ebtables -t nat  -N eqos
-        ebtables -t nat  -F eqos
-        if [ "$ipv6enabled" -eq "1" ]; then                                
-        ebtables -t nat -D POSTROUTING  -j eqos -p ipv6              
-        ebtables -t nat -A POSTROUTING  -j eqos -p ipv6
-        ip6tables -t mangle -D FORWARD  -j eqos
-        ip6tables -t mangle -A FORWARD  -j eqos             
-        fi  
-        config_foreach parse_device "device"
+	config_get_bool enabled config enabled 0
+	[ "$enabled" -eq 1 ] || return 0
+
+	local download upload
+	config_get download config download
+	config_get upload config upload
+
+	if ! is_uinteger "$download" || ! is_uinteger "$upload" ||
+	   [ "$download" -lt 1 ] || [ "$upload" -lt 1 ] ||
+	   [ "$download" -gt "$TOTAL_RATE_MAX" ] || [ "$upload" -gt "$TOTAL_RATE_MAX" ]; then
+		echo "eqos: total download and upload rates must be between 1 and $TOTAL_RATE_MAX Mbit/s" >&2
+		return 1
+	fi
+
+	CONFIG_ERROR=0
+	USED_QUEUES=" "
+	USED_SELECTORS=" "
+	config_foreach validate_device device
+	[ "$CONFIG_ERROR" -eq 0 ] || return 1
+
+	if ! eqos start "$download" "$upload"; then
+		eqos stop >/dev/null 2>&1
+		return 1
+	fi
+
+	CONFIG_ERROR=0
+	config_foreach parse_device device
+	if [ "$CONFIG_ERROR" -ne 0 ]; then
+		eqos stop >/dev/null 2>&1
+		return 1
+	fi
+
+	if ! eqos enable; then
+		eqos stop >/dev/null 2>&1
+		return 1
+	fi
 }
 
 stop_service() {
@@ -56,10 +183,17 @@ stop_service() {
 }
 
 reload_service() {
-	stop
-	start
+	local enabled
+
+	config_load eqos
+	config_get_bool enabled config enabled 0
+	if [ "$enabled" -eq 1 ]; then
+		start_service
+	else
+		stop_service
+	fi
 }
 
 service_triggers() {
-	procd_add_reload_trigger "eqos"
+	procd_add_reload_trigger eqos
 }

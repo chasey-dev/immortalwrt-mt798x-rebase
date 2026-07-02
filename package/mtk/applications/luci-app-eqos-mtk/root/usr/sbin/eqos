@@ -1,148 +1,585 @@
 #!/bin/sh
 
-dev=br-lan
+DEV_DEFAULT="br-lan"
+IFB_DEV="ifb-eqos"
+HNAT_DIR="/sys/kernel/debug/hnat"
+NFT="/usr/sbin/nft"
+
+TABLE_FAMILY="inet"
+TABLE_NAME="eqos"
+CHAIN_NAME="forward"
+MARK_CLEAR_MASK="0xffff0000"
+HNAT_EXCEPTION_MARK="0x99"
+HNAT_BIND_THRESHOLD=5
+HNAT_RESTART_DELAY=3
+
+QDMA_QUEUE_COUNT=64
+QDMA_RATE_MAX=1000000
+TOTAL_RATE_MAX=1000
+UP_SCH=2
+DL_SCH=3
+UP_QID_BASE=1
+DL_QID_BASE=32
+QUEUE_SLOTS=31
+TC_SLOT_MAX=65535
+PPD_QID=63
+MANAGED_QID_LAST=62
+DEFAULT_QUEUE_CFG="0 0 0 0 0 0 4"
+
+die() {
+	echo "eqos: $*" >&2
+	exit 1
+}
+
+is_uinteger() {
+	case "$1" in
+		''|*[!0-9]*|0[0-9]*) return 1 ;;
+	esac
+
+	return 0
+}
+
+valid_ipv4() {
+	[ -n "$1" ] || return 1
+
+	case "$1" in
+		*[!0-9./]*) return 1 ;;
+	esac
+
+	return 0
+}
+
+valid_ipv6() {
+	[ -n "$1" ] || return 1
+
+	case "$1" in
+		*[!0-9A-Fa-f:./]*) return 1 ;;
+	esac
+
+	return 0
+}
+
+need_nft() {
+	[ -x "$NFT" ] || die "nftables is not available"
+}
+
+need_hnat() {
+	[ -d "$HNAT_DIR" ] || insmod mtkhnat 2>/dev/null
+	[ -d "$HNAT_DIR" ] || die "HNAT debugfs is not available"
+}
+
+write_hnat() {
+	local node="$1"
+	local value="$2"
+
+	[ -w "$HNAT_DIR/$node" ] || die "$HNAT_DIR/$node is not writable"
+	printf '%s' "$value" > "$HNAT_DIR/$node" ||
+		die "failed to write $HNAT_DIR/$node"
+}
+
+need_qdma_layout() {
+	need_hnat
+
+	for node in qdma_sch$UP_SCH qdma_sch$DL_SCH \
+		qdma_txq$UP_QID_BASE qdma_txq$DL_QID_BASE qdma_txq$MANAGED_QID_LAST; do
+		[ -w "$HNAT_DIR/$node" ] || die "$HNAT_DIR/$node is not writable"
+	done
+
+	[ -e "$HNAT_DIR/qdma_txq0" ] ||
+		die "qid0 is missing; expected $QDMA_QUEUE_COUNT-QDMA NETSYS layout"
+	[ -e "$HNAT_DIR/qdma_txq$PPD_QID" ] ||
+		die "qid$PPD_QID is missing; expected PPD-reserved queue"
+}
 
 stop_qos() {
-	tc qdisc del dev $dev root 2>/dev/null
-	tc qdisc del dev $dev ingress 2>/dev/null
-	tc qdisc del dev ${dev}-ifb root 2>/dev/null
-	ip link del dev ${dev}-ifb 2>/dev/null
+	local dev="$1"
+	local have_ifb=0
+
+	[ ! -d "/sys/class/net/$IFB_DEV" ] || have_ifb=1
+
+	if tc qdisc show dev "$dev" 2>/dev/null | grep -q "qdisc htb 1:"; then
+		tc qdisc del dev "$dev" root 2>/dev/null
+	fi
+	[ "$have_ifb" -eq 1 ] || return 0
+
+	tc qdisc del dev "$dev" ingress 2>/dev/null
+	tc qdisc del dev "$IFB_DEV" root 2>/dev/null
+	ip link del dev "$IFB_DEV" 2>/dev/null
 }
 
 start_qos() {
-	local dl=$1
-	local up=$2
-	
-	tc qdisc add dev $dev root handle 1: htb
-	tc class add dev $dev parent 1: classid 1:1 htb rate ${dl}mbit
-	
-	ip link add dev ${dev}-ifb name ${dev}-ifb type ifb
-	ip link set dev ${dev}-ifb up
-	
-	tc qdisc add dev ${dev}-ifb root handle 1: htb
-	tc class add dev ${dev}-ifb parent 1: classid 1:1 htb rate ${up}mbit
-	
-	tc qdisc add dev $dev ingress
-	tc filter add dev $dev parent ffff: protocol ip u32 match u32 0 0 flowid 1:1 action mirred egress redirect dev ${dev}-ifb
+	local dev="$1"
+	local dl="$2"
+	local up="$3"
+	local root_qdisc
+
+	root_qdisc="$(tc qdisc show dev "$dev" 2>/dev/null | sed -n '/ root /p')"
+	case "$root_qdisc" in
+		''|qdisc\ noqueue\ 0:*|qdisc\ noop\ 0:*) ;;
+		*)
+			echo "eqos: $dev already has a root qdisc" >&2
+			return 1
+			;;
+	esac
+
+	if tc qdisc show dev "$dev" 2>/dev/null |
+	   grep -Eq 'qdisc (ingress|clsact) '; then
+		echo "eqos: $dev already has an ingress qdisc" >&2
+		return 1
+	fi
+
+	ip link add "$IFB_DEV" type ifb || return 1
+
+	if ! ip link set dev "$IFB_DEV" up ||
+	   ! tc qdisc add dev "$dev" root handle 1: htb ||
+	   ! tc class add dev "$dev" parent 1: classid 1:1 htb rate "${dl}mbit" ||
+	   ! tc qdisc add dev "$IFB_DEV" root handle 1: htb ||
+	   ! tc class add dev "$IFB_DEV" parent 1: classid 1:1 htb rate "${up}mbit" ||
+	   ! tc qdisc add dev "$dev" ingress ||
+	   ! tc filter add dev "$dev" parent ffff: protocol ip pref 1 u32 \
+		match u32 0 0 action mirred egress redirect dev "$IFB_DEV" ||
+	   ! tc filter add dev "$dev" parent ffff: protocol ipv6 pref 2 u32 \
+		match u32 0 0 action mirred egress redirect dev "$IFB_DEV"; then
+		stop_qos "$dev"
+		return 1
+	fi
 }
 
-iptables_stop() {
-		iptables -t mangle -D FORWARD  -j eqos
-		ip6tables -t mangle -D FORWARD  -j eqos
-		ebtables -t nat -D POSTROUTING  -j eqos -p ipv6
-		echo 0 > /sys/kernel/debug/hnat/qos_toggle
-		sed -i '/\/etc\/init.d\/eqos start/d' /etc/firewall.user
-		iptables -t mangle -D FORWARD -i br-lan -j DSCP --set-dscp 0
-		iptables -t mangle -D FORWARD -o br-lan -j DSCP --set-dscp 0
-		ip6tables -t mangle -D FORWARD -i br-lan -j DSCP --set-dscp 0
-		ip6tables -t mangle -D FORWARD -o br-lan -j DSCP --set-dscp 0
-		echo "10 0" > /sys/kernel/debug/hnat/hnat_setting
-		echo "11 30" >/sys/kernel/debug/hnat/hnat_setting
-		for i in $(seq 0 31); do
-		echo 0 0 0 0 0 4 4 > $hqos_path/qdma_txq$i
-		done
-		for i in $(seq 32 63); do
-		echo 1 0 0 0 0 4 4 > $hqos_path/qdma_txq$i
-		done	
-		echo 0 wrr 10000000 > /sys/kernel/debug/hnat/qdma_sch0
-		echo 0 wrr 10000000 > /sys/kernel/debug/hnat/qdma_sch1
-		echo 0 wrr 10000000 > /sys/kernel/debug/hnat/qdma_sch2
-		echo 0 wrr 10000000 > /sys/kernel/debug/hnat/qdma_sch3
+nft_stop() {
+	need_nft
+	"$NFT" delete table "$TABLE_FAMILY" "$TABLE_NAME" 2>/dev/null
 }
 
-iptables_start_prepare() {
-		iptables -t mangle -D FORWARD -i br-lan -j DSCP --set-dscp 0
-		iptables -t mangle -D FORWARD -o br-lan -j DSCP --set-dscp 0
-		iptables -t mangle -A FORWARD -i br-lan -j DSCP --set-dscp 0
-		iptables -t mangle -A FORWARD -o br-lan -j DSCP --set-dscp 0
-		ip6tables -t mangle -D FORWARD -i br-lan -j DSCP --set-dscp 0
-		ip6tables -t mangle -D FORWARD -o br-lan -j DSCP --set-dscp 0
-		ip6tables -t mangle -A FORWARD -i br-lan -j DSCP --set-dscp 0
-		ip6tables -t mangle -A FORWARD -o br-lan -j DSCP --set-dscp 0
+nft_start() {
+	local dev="$1"
+
+	need_nft
+	nft_stop
+
+	"$NFT" -f - <<EOF || return 1
+table $TABLE_FAMILY $TABLE_NAME {
+	chain $CHAIN_NAME {
+		type filter hook forward priority mangle; policy accept;
+	}
+}
+EOF
+
+	"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+		iifname "$dev" meta mark != "$HNAT_EXCEPTION_MARK" \
+		meta mark set meta mark '&' "$MARK_CLEAR_MASK" || return 1
+	"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+		oifname "$dev" meta mark != "$HNAT_EXCEPTION_MARK" \
+		meta mark set meta mark '&' "$MARK_CLEAR_MASK" || return 1
 }
 
-iptables_start_inital() {
-		iptables -t mangle -N eqos
-		iptables -t mangle -F eqos
-		iptables -t mangle -D FORWARD  -j eqos
-		iptables -t mangle -A FORWARD  -j eqos	
-		echo 1 > /sys/kernel/debug/hnat/qos_toggle
-		echo 0 wrr 10000000 > /sys/kernel/debug/hnat/qdma_sch0
-		echo 0 wrr 10000000 > /sys/kernel/debug/hnat/qdma_sch1
-		echo 0 0 0 0 0 0 0 > /sys/kernel/debug/hnat/qdma_txq0
-		echo 1 0 0 0 0 0 0 > /sys/kernel/debug/hnat/qdma_txq8
-		echo "11 5" >/sys/kernel/debug/hnat/hnat_setting
-		uci -q set "turboacc.config.fastpath_mh_eth_hnat_bind_rate"="5"
-		uci -q commit "turboacc"
-		sed -i '/\/etc\/init.d\/eqos start/d' /etc/firewall.user
-		echo "/etc/init.d/eqos start" >> /etc/firewall.user
-		echo "10 1" > /sys/kernel/debug/hnat/hnat_setting
+reset_hnat_qdma() {
+	local i
+
+	need_qdma_layout
+	write_hnat "qdma_sch$UP_SCH" "0 wrr 0"
+	write_hnat "qdma_sch$DL_SCH" "0 wrr 0"
+
+	i=$UP_QID_BASE
+	while [ "$i" -le "$MANAGED_QID_LAST" ]; do
+		write_hnat "qdma_txq$i" "$DEFAULT_QUEUE_CFG"
+		i=$((i + 1))
+	done
 }
 
+start_hnat_qos() {
+	local dl="$1"
+	local up="$2"
+
+	need_qdma_layout
+	write_hnat "qos_toggle" "1"
+	reset_hnat_qdma
+	write_hnat "qdma_sch$UP_SCH" "1 wrr $((up * 1000))"
+	write_hnat "qdma_sch$DL_SCH" "1 wrr $((dl * 1000))"
+}
+
+stop_hnat_qos() {
+	[ -d "$HNAT_DIR" ] || return 0
+
+	need_qdma_layout
+	write_hnat "qos_toggle" "0"
+	reset_hnat_qdma
+}
+
+enable_hnat() {
+	local fastpath bind_rate hook_state
+
+	need_hnat
+	hook_state="$(cat "$HNAT_DIR/hook_toggle")"
+	case "$hook_state" in
+		enabled)
+			write_hnat "hook_toggle" "0"
+			[ "$(cat "$HNAT_DIR/hook_toggle")" = "disabled" ] ||
+				die "failed to disable HNAT hooks"
+			# hnat_disable_hook() restores PPE build mode on a three-second timer.
+			sleep "$HNAT_RESTART_DELAY"
+			;;
+		disabled) ;;
+		*) die "invalid HNAT hook state: $hook_state" ;;
+	esac
+
+	write_hnat "hook_toggle" "1"
+	[ "$(cat "$HNAT_DIR/hook_toggle")" = "enabled" ] ||
+		die "failed to enable HNAT hooks"
+	write_hnat "hnat_setting" "1 $HNAT_BIND_THRESHOLD"
+
+	[ -f /etc/config/turboacc ] || return 0
+
+	fastpath="$(uci -q get turboacc.config.fastpath)"
+	bind_rate="$(uci -q get turboacc.config.fastpath_mh_bind_rate)"
+	[ "$fastpath" = "mediatek_hnat" ] &&
+		[ "$bind_rate" = "$HNAT_BIND_THRESHOLD" ] && return 0
+
+	if ! uci -q set "turboacc.config.fastpath=mediatek_hnat" ||
+	   ! uci -q set "turboacc.config.fastpath_mh_bind_rate=$HNAT_BIND_THRESHOLD" ||
+	   ! uci -q commit turboacc; then
+		die "failed to synchronize turboacc HNAT settings"
+	fi
+}
+
+queue_from_slot() {
+	local slot="$1"
+	local dir="$2"
+
+	case "$dir" in
+		up) echo $((UP_QID_BASE + slot - 1)) ;;
+		dl) echo $((DL_QID_BASE + slot - 1)) ;;
+	esac
+}
+
+tc_classid_from_slot() {
+	printf '%x\n' "$1"
+}
+
+ensure_tc_qos() {
+	local dev="$1"
+	local dl="$2"
+	local up="$3"
+
+	[ -n "$dl" ] || dl="$(uci -q get eqos.config.download)"
+	[ -n "$up" ] || up="$(uci -q get eqos.config.upload)"
+	is_uinteger "$dl" || die "download rate must be an integer"
+	is_uinteger "$up" || die "upload rate must be an integer"
+	[ "$dl" -gt 0 ] || die "download rate must be greater than 0"
+	[ "$up" -gt 0 ] || die "upload rate must be greater than 0"
+	[ "$dl" -le "$TOTAL_RATE_MAX" ] && [ "$up" -le "$TOTAL_RATE_MAX" ] ||
+		die "total rate must not exceed $TOTAL_RATE_MAX Mbit/s"
+
+	if tc qdisc show dev "$dev" 2>/dev/null | grep -q "qdisc htb 1:" &&
+	   tc qdisc show dev "$IFB_DEV" 2>/dev/null | grep -q "qdisc htb 1:"; then
+		return 0
+	fi
+
+	stop_qos "$dev"
+	start_qos "$dev" "$dl" "$up"
+}
+
+program_queue() {
+	local qid="$1"
+	local sch="$2"
+	local rate="$3"
+
+	[ "$rate" -eq 0 ] && return 0
+	write_hnat "qdma_txq$qid" "$sch 0 0 1 $rate 4 1"
+}
+
+tc_filter_rule() {
+	local dir="$1"
+	local family="$2"
+	local value="$3"
+	local pref="$4"
+	local classid="$5"
+	local dev="$6"
+	local tcdev key
+
+	[ -n "$value" ] || return 0
+
+	case "$dir" in
+		up)
+			tcdev="$IFB_DEV"
+			key="src"
+			;;
+		dl)
+			tcdev="$dev"
+			key="dst"
+			;;
+		*)
+			return 1
+			;;
+	esac
+
+	case "$family" in
+		ip)
+			tc filter add dev "$tcdev" parent 1: protocol ip pref "$pref" u32 \
+				match ip "$key" "$value" flowid "1:$classid"
+			;;
+		ip6)
+			tc filter add dev "$tcdev" parent 1: protocol ipv6 pref "$pref" u32 \
+				match ip6 "$key" "$value" flowid "1:$classid"
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+program_tc_queue() {
+	local dir="$1"
+	local slot="$2"
+	local rate="$3"
+	local ip4="$4"
+	local ip6="$5"
+	local dev="$6"
+	local classid tcdev
+
+	[ "$rate" -eq 0 ] && return 0
+	[ -n "$ip4$ip6" ] ||
+		die "software tc queue requires an IPv4 or IPv6 selector"
+
+	case "$dir" in
+		up) tcdev="$IFB_DEV" ;;
+		dl) tcdev="$dev" ;;
+		*) return 1 ;;
+	esac
+
+	classid="$(tc_classid_from_slot "$slot")"
+	tc class replace dev "$tcdev" parent 1:1 classid "1:$classid" \
+		htb rate "${rate}kbit" ceil "${rate}kbit" || return 1
+	tc_filter_rule "$dir" ip "$ip4" "$slot" "$classid" "$dev" || return 1
+	tc_filter_rule "$dir" ip6 "$ip6" "$slot" "$classid" "$dev" || return 1
+}
+
+nft_mark_rule() {
+	local dir="$1"
+	local family="$2"
+	local value="$3"
+	local qid="$4"
+	local addr
+
+	[ -n "$value" ] || return 0
+
+	case "$dir" in
+		up) addr="saddr" ;;
+		dl) addr="daddr" ;;
+		*)
+			return 1
+			;;
+	esac
+
+	case "$family" in
+		ip)
+			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+				ip "$addr" "$value" \
+				meta mark != "$HNAT_EXCEPTION_MARK" \
+				meta mark set "$qid"
+			;;
+		ip6)
+			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+				ip6 "$addr" "$value" \
+				meta mark != "$HNAT_EXCEPTION_MARK" \
+				meta mark set "$qid"
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+nft_exception_rule() {
+	local dir="$1"
+	local family="$2"
+	local value="$3"
+	local addr
+
+	[ -n "$value" ] || return 0
+
+	case "$dir" in
+		up) addr="saddr" ;;
+		dl) addr="daddr" ;;
+		*)
+			return 1
+			;;
+	esac
+
+	case "$family" in
+		ip)
+			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+				ip "$addr" "$value" \
+				meta mark set "$HNAT_EXCEPTION_MARK"
+			;;
+		ip6)
+			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+				ip6 "$addr" "$value" \
+				meta mark set "$HNAT_EXCEPTION_MARK"
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+add_rule() {
+	local slot="$1"
+	local dl="$2"
+	local up="$3"
+	local ip4="$4"
+	local ip6="$5"
+	local total_dl="$6"
+	local total_up="$7"
+	local dev="$DEV_DEFAULT"
+	local up_qid dl_qid selector_count
+
+	is_uinteger "$slot" || die "queue slot must be an integer"
+	is_uinteger "$dl" || die "download rate must be an integer"
+	is_uinteger "$up" || die "upload rate must be an integer"
+
+	[ "$slot" -ge 1 ] && [ "$slot" -le "$TC_SLOT_MAX" ] ||
+		die "queue slot must be between 1 and $TC_SLOT_MAX"
+	[ "$dl" -le "$QDMA_RATE_MAX" ] && [ "$up" -le "$QDMA_RATE_MAX" ] ||
+		die "device rate must not exceed $QDMA_RATE_MAX kbit/s"
+	[ -n "$ip4" ] && valid_ipv4 "$ip4" || [ -z "$ip4" ] ||
+		die "invalid IPv4 selector"
+	[ -n "$ip6" ] && valid_ipv6 "$ip6" || [ -z "$ip6" ] ||
+		die "invalid IPv6 selector"
+
+	selector_count=0
+	[ -z "$ip4" ] || selector_count=$((selector_count + 1))
+	[ -z "$ip6" ] || selector_count=$((selector_count + 1))
+	[ "$selector_count" -eq 1 ] ||
+		die "exactly one selector is required: IPv4 or IPv6"
+
+	[ "$dl" -ne 0 ] || [ "$up" -ne 0 ] || return 0
+
+	need_nft
+	need_qdma_layout
+
+	if [ "$slot" -gt "$QUEUE_SLOTS" ]; then
+		ensure_tc_qos "$dev" "$total_dl" "$total_up" || return 1
+		program_tc_queue up "$slot" "$up" "$ip4" "$ip6" "$dev" || return 1
+		program_tc_queue dl "$slot" "$dl" "$ip4" "$ip6" "$dev" || return 1
+
+		if [ "$up" -ne 0 ]; then
+			nft_exception_rule up ip "$ip4" || return 1
+			nft_exception_rule up ip6 "$ip6" || return 1
+		fi
+
+		if [ "$dl" -ne 0 ]; then
+			nft_exception_rule dl ip "$ip4" || return 1
+			nft_exception_rule dl ip6 "$ip6" || return 1
+		fi
+
+		return 0
+	fi
+
+	up_qid="$(queue_from_slot "$slot" up)"
+	dl_qid="$(queue_from_slot "$slot" dl)"
+
+	program_queue "$up_qid" "$UP_SCH" "$up" || return 1
+	program_queue "$dl_qid" "$DL_SCH" "$dl" || return 1
+
+	if [ "$up" -ne 0 ]; then
+		nft_mark_rule up ip "$ip4" "$up_qid" || return 1
+		nft_mark_rule up ip6 "$ip6" "$up_qid" || return 1
+	fi
+
+	if [ "$dl" -ne 0 ]; then
+		nft_mark_rule dl ip "$ip4" "$dl_qid" || return 1
+		nft_mark_rule dl ip6 "$ip6" "$dl_qid" || return 1
+	fi
+
+}
+
+add_inferred_rule() {
+	local slot="$1"
+	local dl="$2"
+	local up="$3"
+	local selector="$4"
+	local total_dl="$5"
+	local total_up="$6"
+	local ip4 ip6
+
+	[ -n "$selector" ] || die "selector is required"
+
+	if valid_ipv4 "$selector"; then
+		ip4="$selector"
+	elif valid_ipv6 "$selector"; then
+		ip6="$selector"
+	else
+		die "selector must be an IPv4 or IPv6 address"
+	fi
+
+	add_rule "$slot" "$dl" "$up" "$ip4" "$ip6" "$total_dl" "$total_up"
+}
+
+start_all() {
+	local dl="$1"
+	local up="$2"
+	local dev="$DEV_DEFAULT"
+
+	is_uinteger "$dl" || die "download rate must be an integer"
+	is_uinteger "$up" || die "upload rate must be an integer"
+	[ "$dl" -gt 0 ] || die "download rate must be greater than 0"
+	[ "$up" -gt 0 ] || die "upload rate must be greater than 0"
+	[ "$dl" -le "$TOTAL_RATE_MAX" ] && [ "$up" -le "$TOTAL_RATE_MAX" ] ||
+		die "total rate must not exceed $TOTAL_RATE_MAX Mbit/s"
+
+	need_qdma_layout
+	stop_qos "$dev"
+	nft_stop
+	start_hnat_qos "$dl" "$up"
+	nft_start "$dev" || die "failed to configure nftables"
+}
+
+stop_all() {
+	local dev="$DEV_DEFAULT"
+
+	stop_qos "$dev"
+	nft_stop
+	stop_hnat_qos
+}
+
+usage() {
+	cat <<EOF
+Usage: $0 <command> [options]
+
+Commands:
+  start <download_mbit> <upload_mbit>
+  add <slot> <download_kbit> <upload_kbit> <ipv4|ipv6> [total_down_mbit] [total_up_mbit]
+  enable
+  stop
+
+Run enable once after all add commands.
+
+Queue slots 1-31 use the common NETSYS V2/V3 64-QDMA layout. EQoS keeps
+qid0 as the default unclassified queue, uses qid1-31 for upload and
+qid32-62 for download, and keeps qid63 free for the PPD path. Slots 32
+and above use tc software shaping with an IPv4 or IPv6 selector.
+EOF
+}
 
 case "$1" in
-	"stop")
-		stop_qos
-		iptables_stop
-	;;
-	"start")
-		stop_qos
-		iptables_start_prepare
-		start_qos $2 $3
-		iptables_start_inital
-		echo 1 wrr $(($3*1000)) > /sys/kernel/debug/hnat/qdma_sch2
-		echo 1 wrr $(($2*1000)) > /sys/kernel/debug/hnat/qdma_sch3
-	;;
-	"add")
-		ip="$2"
-		dl="$3"
-		up="$4"
-		id="$5" idpair=$((id+32))
-		macaddr="$6"
-		cnt=$(tc class show dev $dev | wc -l)
-		
-		
-		if [ $id -lt 32 ]; then
-		iptables -t mangle -D eqos -s $ip -j DSCP --set-dscp ${id}
-		iptables -t mangle -D eqos -d $ip -j DSCP --set-dscp ${idpair}
-		ip6tables -t mangle -D eqos -m mac --mac-source $macaddr -j MARK --set-mark ${id}
-		ebtables -t nat -D eqos -p ipv6 -d $macaddr -j mark --mark-set ${idpair}
-		if [ $up -ne 0 ]; then
-		echo 2 0 0 1 ${up} 4 1 > /sys/kernel/debug/hnat/qdma_txq${id}
-		iptables -t mangle -A eqos -s $ip -j DSCP --set-dscp ${id}
-		ip6tables -t mangle -A eqos -m mac --mac-source $macaddr -j MARK --set-mark ${id}
-		fi
-		if [ $dl -ne 0 ]; then
-		echo 3 0 0 1 ${dl} 4 1 > /sys/kernel/debug/hnat/qdma_txq${idpair}
-		iptables -t mangle -A eqos -d $ip -j DSCP --set-dscp ${idpair}
-		ebtables -t nat -A eqos -p ipv6 -d $macaddr -j mark --mark-set ${idpair}
-		fi
-		else
-		iptables -t mangle -D eqos -s $ip -j MARK --set-mark 0x99
-		iptables -t mangle -D eqos -d $ip -j MARK --set-mark 0x99
-		if [ $up -ne 0 ]; then
-		iptables -t mangle -A eqos -s $ip -j MARK --set-mark 0x99
-		fi
-		if [ $dl -ne 0 ]; then
-		iptables -t mangle -A eqos -d $ip -j MARK --set-mark 0x99
-		fi
-		fi
-		if [ $id -gt 31 ]; then
-		tc class add dev $dev parent 1:1 classid 1:1$cnt htb rate ${dl}kbit ceil ${dl}kbit
-		tc filter add dev $dev parent 1:0 protocol ip u32 match ip dst $ip flowid 1:1$cnt
-		
-		tc class add dev ${dev}-ifb parent 1:1 classid 1:1$cnt htb rate ${up}kbit ceil ${up}kbit
-		tc filter add dev ${dev}-ifb parent 1:0 protocol ip u32 match ip src $ip flowid 1:1$cnt
-		fi
-	;;
+	start)
+		shift
+		start_all "$@"
+		;;
+	stop)
+		shift
+		stop_all "$@"
+		;;
+	add)
+		shift
+		add_inferred_rule "$@"
+		;;
+	enable)
+		shift
+		enable_hnat "$@"
+		;;
 	*)
-		echo "Usage: $0 <command> [options]"
-		echo "Commands:"
-		echo "  start dl_rate up_rate       #Total bandwidth (Mbit/s)"
-		echo "  stop"
-		echo "  add ip dl_rate up_rate      #Limiting the bandwidth of a single IP (kbit/s)"
-		echo "Example:"
-		echo "  $0 start 30 20              # Total bandwidth: down 30Mbit/s up 20Mbit/s"
-		echo "  $0 add 192.168.22.12 10 2   # down 10kbit/s  up 2kbit/s"
-	;;
+		usage
+		exit 1
+		;;
 esac

@@ -1,62 +1,65 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:64
-msgid "Comment"
+msgid "Address"
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:28
-msgid "Download speed (Mbit/s)"
+msgid "Device rules"
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:18
-#: applications/luci-app-eqos/root/usr/share/luci/menu.d/luci-app-eqos.json:3
+msgid "Download"
+msgstr ""
+
 msgid "EQoS"
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:24
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:43
 msgid "Enable"
 msgstr ""
 
-msgid "IPV6Enable"
+msgid "General Settings"
 msgstr ""
 
-#: applications/luci-app-eqos/root/usr/share/rpcd/acl.d/luci-app-eqos.json:3
 msgid "Grant UCI access for luci-app-eqos"
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:46
-msgid "IPV4 address"
+msgid "IPv4 address"
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:19
-msgid "Network speed control service."
+msgid "IPv6 address"
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:38
-msgid "Speed limit based on IP address(using unique comment less than 32 will enable hardware QOS"
+msgid "Maximum rate in Mbit/s. Use 0 for no limit."
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:29
+msgid "Network speed control service for MediaTek HNAT."
+msgstr ""
+
+msgid "Queue ID"
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "This value is already in use."
+msgstr ""
+
 msgid "Total download bandwidth."
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:34
 msgid "Total upload bandwidth."
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:33
-msgid "Upload speed (Mbit/s)"
+msgid "Type"
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:56
-msgid "Download speed (kbit/s)"
+msgid "Upload"
 msgstr ""
 
-#: applications/luci-app-eqos/htdocs/luci-static/resources/view/eqos.js:60
-msgid "Upload speed (kbit/s)"
+msgid "Values 1-31 use HNAT HQoS. Values 32 and above use software shaping."
 msgstr ""
 
-msgid "IPV6 host"
+msgid "unlimited"
+msgstr ""
+
+msgid "unspecified"
 msgstr ""

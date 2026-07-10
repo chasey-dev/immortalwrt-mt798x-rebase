@@ -1,0 +1,35 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7987.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7987.dtsi
+@@ -581,9 +581,10 @@
+ 				      "dma_ck";
+ 			#address-cells = <2>;
+ 			#size-cells = <2>;
+-			phys = <&tphyu2port0 PHY_TYPE_USB2>;
++			mediatek,u3p-dis-msk = <0x0>;
++			phys = <&tphyu2port0 PHY_TYPE_USB2>,
++			       <&tphyu3port0 PHY_TYPE_USB3>;
+ 			usb2-lpm-disable;
+-			mediatek,u3p-dis-msk=<1>;
+ 			status = "disabled";
+ 		};
+ 
+--- a/arch/arm64/boot/dts/mediatek/mt7987a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7987a.dtsi
+@@ -62,7 +62,3 @@
+ &watchdog {
+ 	status = "okay";
+ };
+-
+-&ssusb {
+-	status = "okay";
+-};
+--- a/arch/arm64/boot/dts/mediatek/mt7987b.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7987b.dtsi
+@@ -6,7 +6,6 @@
+ 
+ /dts-v1/;
+ #include "mt7987a.dtsi"
+-#include "mt7987-netsys-eth2-usb.dtsi"
+ 
+ / {
+ 	compatible = "mediatek,mt7987b", "mediatek,mt7987";

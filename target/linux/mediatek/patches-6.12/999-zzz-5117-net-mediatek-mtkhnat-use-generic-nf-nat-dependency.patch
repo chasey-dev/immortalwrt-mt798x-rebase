@@ -1,0 +1,11 @@
+--- a/drivers/net/ethernet/mediatek/Kconfig
++++ b/drivers/net/ethernet/mediatek/Kconfig
+@@ -58,7 +58,7 @@ config MEDIATEK_NETSYS_V3
+ 
+ config NET_MEDIATEK_HNAT
+ 	tristate "MediaTek HW NAT support"
+-	depends on NET_MEDIATEK_SOC && NF_CONNTRACK && IP_NF_NAT
++	depends on NET_MEDIATEK_SOC && NF_CONNTRACK && NF_NAT
+ 	help
+ 	  This driver supports the hardward Network Address Translation
+ 	  in the MediaTek MT7988/MT7986/MT2701/MT7622/MT7629/MT7621 chipset

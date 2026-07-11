@@ -33,6 +33,11 @@ MT7990_whnat()
 	#Physical IRQ# setting
 	PCIe0=
 	eth_tx=229
+	case "$(tr '\0' '\n' < /proc/device-tree/compatible)" in
+	*mediatek,mt7987*) usb=204 ;;
+	*mediatek,mt7988*) usb="204 205" ;;
+	*) usb= ;;
+	esac
 
 	#Ethernet RSS feature enables 4 Rx rings
 	eth_rx0=221
@@ -57,7 +62,7 @@ MT7990_whnat()
 	if [ "$num_of_wifi" = "0" ]; then
 		CPU0_AFFINITY="$wifi1_irq $eth_rx0"
 		CPU1_AFFINITY="$wifi2_irq $eth_rx1"
-		CPU2_AFFINITY="$eth_tx $eth_rx2"
+		CPU2_AFFINITY="$eth_tx $eth_rx2 $usb"
 		CPU3_AFFINITY="$eth_rx3"
 
 		CPU0_RPS=""
@@ -67,7 +72,7 @@ MT7990_whnat()
 	elif [ "$num_of_wifi" = "1" ]; then
 		CPU0_AFFINITY="$wifi1_irq $eth_rx0"
 		CPU1_AFFINITY="$wifi2_irq $eth_rx1"
-		CPU2_AFFINITY="$eth_tx $eth_rx2"
+		CPU2_AFFINITY="$eth_tx $eth_rx2 $usb"
 		CPU3_AFFINITY="$eth_rx3"
 
 		CPU0_RPS="                $wifi1 $wifi1_apcli0"
@@ -77,7 +82,7 @@ MT7990_whnat()
 	elif [ "$num_of_wifi" = "2" ]; then
 		CPU0_AFFINITY="$wifi1_irq $eth_rx0"
 		CPU1_AFFINITY="$wifi2_irq $eth_rx1"
-		CPU2_AFFINITY="$eth_tx $eth_rx2"
+		CPU2_AFFINITY="$eth_tx $eth_rx2 $usb"
 		CPU3_AFFINITY="$eth_rx3"
 
 		CPU0_RPS="                $wifi1 $wifi2 $wifi1_apcli0 $wifi2_apcli0"
@@ -87,7 +92,7 @@ MT7990_whnat()
 	elif [ "$num_of_wifi" = "3" ]; then
 		CPU0_AFFINITY="$wifi1_irq $eth_rx0"
 		CPU1_AFFINITY="$wifi2_irq $eth_rx1"
-		CPU2_AFFINITY="$PCIe0 $wifi3_irq $eth_rx2"
+		CPU2_AFFINITY="$PCIe0 $wifi3_irq $eth_rx2 $usb"
 		CPU3_AFFINITY="$eth_tx $eth_rx3"
 
 		CPU0_RPS=""

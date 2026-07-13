@@ -1,0 +1,200 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CONFIG=fancontrol
+SECTION=settings
+HWMON_NAME=pwmfan
+PWM_ENABLE_MODE=2
+
+log_msg() {
+	logger -t fancontrol-mtk "$*"
+}
+
+is_uint() {
+	case "$1" in
+	''|*[!0-9]*)
+		return 1
+		;;
+	esac
+
+	return 0
+}
+
+clamp() {
+	local value="$1"
+	local min="$2"
+	local max="$3"
+
+	[ "$value" -lt "$min" ] && value="$min"
+	[ "$value" -gt "$max" ] && value="$max"
+	printf '%s\n' "$value"
+}
+
+find_hwmon() {
+	local wanted="$1"
+	local path
+
+	if [ -n "$wanted" ] && [ "$wanted" != "auto" ]; then
+		case "$wanted" in
+		/sys/class/hwmon/hwmon*|/sys/devices/*)
+			[ -w "$wanted/pwm1" ] && [ -w "$wanted/pwm1_enable" ] && {
+				printf '%s\n' "$wanted"
+				return 0
+			}
+			;;
+		hwmon*)
+			path="/sys/class/hwmon/$wanted"
+			[ -w "$path/pwm1" ] && [ -w "$path/pwm1_enable" ] && {
+				printf '%s\n' "$path"
+				return 0
+			}
+			;;
+		esac
+
+		return 1
+	fi
+
+	for path in /sys/class/hwmon/hwmon*; do
+		[ -d "$path" ] || continue
+		[ "$(cat "$path/name" 2>/dev/null)" = "$HWMON_NAME" ] || continue
+		[ -w "$path/pwm1" ] && [ -w "$path/pwm1_enable" ] || continue
+		printf '%s\n' "$path"
+		return 0
+	done
+
+	return 1
+}
+
+find_temp_source() {
+	local wanted="$1"
+	local path
+
+	if [ -n "$wanted" ] && [ "$wanted" != "auto" ]; then
+		[ -r "$wanted" ] && {
+			printf '%s\n' "$wanted"
+			return 0
+		}
+		return 1
+	fi
+
+	for path in /sys/class/thermal/thermal_zone*; do
+		[ -r "$path/type" ] && [ -r "$path/temp" ] || continue
+		[ "$(cat "$path/type" 2>/dev/null)" = "cpu-thermal" ] || continue
+		printf '%s\n' "$path/temp"
+		return 0
+	done
+
+	for path in /sys/class/thermal/thermal_zone*; do
+		[ -r "$path/temp" ] || continue
+		printf '%s\n' "$path/temp"
+		return 0
+	done
+
+	return 1
+}
+
+read_settings() {
+	config_load "$CONFIG"
+
+	config_get mode "$SECTION" mode auto
+	config_get hwmon "$SECTION" hwmon auto
+	config_get temp_source "$SECTION" temp_source auto
+	config_get manual_pwm "$SECTION" manual_pwm 128
+	config_get min_pwm "$SECTION" min_pwm 80
+	config_get max_pwm "$SECTION" max_pwm 255
+	config_get low_temp "$SECTION" low_temp 45
+	config_get high_temp "$SECTION" high_temp 75
+	config_get interval "$SECTION" interval 5
+
+	case "$mode" in
+	auto|manual)
+		;;
+	*)
+		log_msg "unsupported mode: $mode"
+		return 1
+		;;
+	esac
+
+	for value in "$manual_pwm" "$min_pwm" "$max_pwm" "$low_temp" "$high_temp" "$interval"; do
+		is_uint "$value" || {
+			log_msg "invalid numeric setting"
+			return 1
+		}
+	done
+
+	[ "$manual_pwm" -le 255 ] || return 1
+	[ "$min_pwm" -le 255 ] || return 1
+	[ "$max_pwm" -le 255 ] || return 1
+	[ "$min_pwm" -le "$max_pwm" ] || return 1
+	[ "$low_temp" -lt "$high_temp" ] || return 1
+	[ "$interval" -ge 1 ] || return 1
+
+	return 0
+}
+
+calc_auto_pwm() {
+	local temp_mC="$1"
+	local low_mC=$((low_temp * 1000))
+	local high_mC=$((high_temp * 1000))
+	local pwm
+
+	if [ "$temp_mC" -le "$low_mC" ]; then
+		pwm="$min_pwm"
+	elif [ "$temp_mC" -ge "$high_mC" ]; then
+		pwm="$max_pwm"
+	else
+		pwm=$((min_pwm + (temp_mC - low_mC) * (max_pwm - min_pwm) / (high_mC - low_mC)))
+	fi
+
+	clamp "$pwm" "$min_pwm" "$max_pwm"
+}
+
+apply_pwm() {
+	local path="$1"
+	local pwm="$2"
+
+	echo "$PWM_ENABLE_MODE" > "$path/pwm1_enable" || {
+		log_msg "failed to write $PWM_ENABLE_MODE to $path/pwm1_enable"
+		return 1
+	}
+
+	echo "$pwm" > "$path/pwm1" || {
+		log_msg "failed to write $pwm to $path/pwm1"
+		return 1
+	}
+}
+
+while :; do
+	read_settings || exit 1
+
+	hwmon_path="$(find_hwmon "$hwmon")" || {
+		log_msg "pwmfan hwmon not found"
+		exit 1
+	}
+
+	case "$mode" in
+	manual)
+		pwm="$manual_pwm"
+		;;
+	auto)
+		temp_path="$(find_temp_source "$temp_source")" || {
+			log_msg "temperature source not found"
+			exit 1
+		}
+		temp_mC="$(cat "$temp_path" 2>/dev/null)" || exit 1
+		is_uint "$temp_mC" || {
+			log_msg "invalid temperature from $temp_path"
+			exit 1
+		}
+		pwm="$(calc_auto_pwm "$temp_mC")"
+		;;
+	esac
+
+	apply_pwm "$hwmon_path" "$pwm" || {
+		log_msg "failed to write PWM under $hwmon_path"
+		exit 1
+	}
+
+	sleep "$interval"
+done

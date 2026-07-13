@@ -1,0 +1,172 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-fancontrol-mtk\n"
+"PO-Revision-Date: 2026-07-13 00:00+0800\n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: Chinese (Simplified)\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "%d%% (%d / 255)"
+msgstr "%d%%（%d / 255）"
+
+msgid "%s (%s)"
+msgstr "%s（%s）"
+
+msgid "Adjust the fan continuously between two temperature and speed points."
+msgstr "在两个温度和转速端点之间连续调节风扇。"
+
+msgid "Apply test"
+msgstr "应用测试"
+
+msgid "Apply the selected speed immediately without saving it or starting the service."
+msgstr "立即应用所选转速，但不保存设置，也不启动服务。"
+
+msgid "At or above this temperature, the fan uses the maximum speed."
+msgstr "达到或高于此温度时，风扇使用最大转速。"
+
+msgid "At or below this temperature, the fan uses the minimum speed."
+msgstr "达到或低于此温度时，风扇使用最小转速。"
+
+msgid "Automatic detection"
+msgstr "自动检测"
+
+msgid "Control mode"
+msgstr "控制模式"
+
+msgid "Control temperature"
+msgstr "控制温度"
+
+msgid "Detected"
+msgstr "已检测到"
+
+msgid "Enable fan control"
+msgstr "启用风扇控制"
+
+msgid "Enable fan control below to start the service."
+msgstr "在下方启用风扇控制以启动服务。"
+
+msgid "Failed to apply the test speed."
+msgstr "应用测试转速失败。"
+
+msgid "Failed to apply the test speed: %s"
+msgstr "应用测试转速失败：%s"
+
+msgid "Fan Control"
+msgstr "风扇控制"
+
+msgid "Fan device"
+msgstr "风扇设备"
+
+msgid "Fan output set to %d%%."
+msgstr "风扇输出已设为 %d%%。"
+
+msgid "Fan output used at the full-speed temperature."
+msgstr "达到满速温度时使用的风扇输出。"
+
+msgid "Fan output used at the start temperature."
+msgstr "达到起始温度时使用的风扇输出。"
+
+msgid "Fan output used in fixed speed mode."
+msgstr "固定转速模式下使用的风扇输出。"
+
+msgid "Fan speed"
+msgstr "风扇转速"
+
+msgid "Fixed fan speed (%)"
+msgstr "固定风扇转速（%）"
+
+msgid "Fixed speed"
+msgstr "固定转速"
+
+msgid "Fixed speed mode"
+msgstr "固定转速模式"
+
+msgid "Full-speed temperature (°C)"
+msgstr "满速温度（°C）"
+
+msgid "Full-speed temperature must be higher than the start temperature."
+msgstr "满速温度必须高于起始温度。"
+
+msgid "Grant access to MTK PWM fan control"
+msgstr "授予访问 MTK PWM 风扇控制的权限"
+
+msgid "Hardware"
+msgstr "硬件"
+
+msgid "How often the temperature is checked and the fan output is updated."
+msgstr "检查温度并更新风扇输出的时间间隔。"
+
+msgid "Keep the fan at one constant output."
+msgstr "使风扇保持固定输出。"
+
+msgid "Live status"
+msgstr "实时状态"
+
+msgid "Maximum fan speed (%)"
+msgstr "最大风扇转速（%）"
+
+msgid "Maximum fan speed cannot be lower than the minimum fan speed."
+msgstr "最大风扇转速不能低于最小风扇转速。"
+
+msgid "Minimum fan speed (%)"
+msgstr "最小风扇转速（%）"
+
+msgid "Monitor the cooling system and control the PWM fan with a fixed speed or a temperature curve."
+msgstr "监控散热系统，并使用固定转速或温度曲线控制 PWM 风扇。"
+
+msgid "No compatible PWM fan was detected. Check the hardware settings and pwm-fan driver."
+msgstr "未检测到兼容的 PWM 风扇。请检查硬件设置和 pwm-fan 驱动。"
+
+msgid "Not detected"
+msgstr "未检测到"
+
+msgid "Not found"
+msgstr "未找到"
+
+msgid "Not reported"
+msgstr "未上报"
+
+msgid "Not running"
+msgstr "未运行"
+
+msgid "PWM output"
+msgstr "PWM 输出"
+
+msgid "Raw PWM value: %d / 255"
+msgstr "原始 PWM 值：%d / 255"
+
+msgid "Run the fan control service after the configuration is applied."
+msgstr "应用配置后运行风扇控制服务。"
+
+msgid "Running"
+msgstr "运行中"
+
+msgid "Start temperature (°C)"
+msgstr "起始温度（°C）"
+
+msgid "Temperature curve"
+msgstr "温度曲线"
+
+msgid "Temperature curve mode"
+msgstr "温度曲线模式"
+
+msgid "Temperature sensor"
+msgstr "温度传感器"
+
+msgid "Test fan speed"
+msgstr "测试风扇转速"
+
+msgid "The service is enabled but is not running."
+msgstr "服务已启用，但当前未运行。"
+
+msgid "Update interval"
+msgstr "更新间隔"
+
+msgid "Use automatic detection to prefer cpu-thermal, or select a detected sensor."
+msgstr "使用自动检测时优先选择 cpu-thermal，也可选择已检测到的传感器。"
+
+msgid "Use automatic detection unless more than one compatible PWM fan is present."
+msgstr "除非存在多个兼容的 PWM 风扇，否则请使用自动检测。"

@@ -1,0 +1,18 @@
+{
+	"luci-app-fancontrol-mtk": {
+		"description": "Grant access to MTK PWM fan control",
+		"read": {
+			"ubus": {
+				"luci.fancontrol": [ "getStatus" ],
+				"service": [ "list" ]
+			},
+			"uci": [ "fancontrol" ]
+		},
+		"write": {
+			"ubus": {
+				"luci.fancontrol": [ "setPwm" ]
+			},
+			"uci": [ "fancontrol" ]
+		}
+	}
+}

@@ -1,0 +1,188 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+msgid "%.1f °C"
+msgstr ""
+
+msgid "%d RPM"
+msgstr ""
+
+msgid "%d%%"
+msgstr ""
+
+msgid "%d%% (%d / 255)"
+msgstr ""
+
+msgid "%s (%s)"
+msgstr ""
+
+msgid "Adjust the fan continuously between two temperature and speed points."
+msgstr ""
+
+msgid "Apply test"
+msgstr ""
+
+msgid "Apply the selected speed immediately without saving it or starting the service."
+msgstr ""
+
+msgid "At or above this temperature, the fan uses the maximum speed."
+msgstr ""
+
+msgid "At or below this temperature, the fan uses the minimum speed."
+msgstr ""
+
+msgid "Automatic detection"
+msgstr ""
+
+msgid "Control mode"
+msgstr ""
+
+msgid "Control temperature"
+msgstr ""
+
+msgid "Detected"
+msgstr ""
+
+msgid "Disabled"
+msgstr ""
+
+msgid "Enable fan control"
+msgstr ""
+
+msgid "Enable fan control below to start the service."
+msgstr ""
+
+msgid "Failed to apply the test speed."
+msgstr ""
+
+msgid "Failed to apply the test speed: %s"
+msgstr ""
+
+msgid "Fan Control"
+msgstr ""
+
+msgid "Fan device"
+msgstr ""
+
+msgid "Fan output set to %d%%."
+msgstr ""
+
+msgid "Fan output used at the full-speed temperature."
+msgstr ""
+
+msgid "Fan output used at the start temperature."
+msgstr ""
+
+msgid "Fan output used in fixed speed mode."
+msgstr ""
+
+msgid "Fan speed"
+msgstr ""
+
+msgid "Fixed fan speed (%)"
+msgstr ""
+
+msgid "Fixed speed"
+msgstr ""
+
+msgid "Fixed speed mode"
+msgstr ""
+
+msgid "Full-speed temperature (°C)"
+msgstr ""
+
+msgid "Full-speed temperature must be higher than the start temperature."
+msgstr ""
+
+msgid "General"
+msgstr ""
+
+msgid "Grant access to MTK PWM fan control"
+msgstr ""
+
+msgid "Hardware"
+msgstr ""
+
+msgid "How often the temperature is checked and the fan output is updated."
+msgstr ""
+
+msgid "Keep the fan at one constant output."
+msgstr ""
+
+msgid "Live status"
+msgstr ""
+
+msgid "Maximum fan speed (%)"
+msgstr ""
+
+msgid "Maximum fan speed cannot be lower than the minimum fan speed."
+msgstr ""
+
+msgid "Minimum fan speed (%)"
+msgstr ""
+
+msgid "Monitor the cooling system and control the PWM fan with a fixed speed or a temperature curve."
+msgstr ""
+
+msgid "No compatible PWM fan was detected. Check the hardware settings and pwm-fan driver."
+msgstr ""
+
+msgid "Not detected"
+msgstr ""
+
+msgid "Not found"
+msgstr ""
+
+msgid "Not reported"
+msgstr ""
+
+msgid "Not running"
+msgstr ""
+
+msgid "PWM output"
+msgstr ""
+
+msgid "Raw PWM value: %d / 255"
+msgstr ""
+
+msgid "Run the fan control service after the configuration is applied."
+msgstr ""
+
+msgid "Running"
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "Start temperature (°C)"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "Temperature"
+msgstr ""
+
+msgid "Temperature curve"
+msgstr ""
+
+msgid "Temperature curve mode"
+msgstr ""
+
+msgid "Temperature sensor"
+msgstr ""
+
+msgid "Test fan speed"
+msgstr ""
+
+msgid "The service is enabled but is not running."
+msgstr ""
+
+msgid "Update interval"
+msgstr ""
+
+msgid "Use automatic detection to prefer cpu-thermal, or select a detected sensor."
+msgstr ""
+
+msgid "Use automatic detection unless more than one compatible PWM fan is present."
+msgstr ""

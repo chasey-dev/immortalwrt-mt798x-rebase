@@ -25,7 +25,7 @@ import * as uci from 'uci';
 import * as l1parser from 'l1parser';
 import * as datconf from 'datconf';
 
-import { schemas, wpad_overlay } from 'mtwifi.defaults';
+import { defs, schemas, wpad_overlay } from 'mtwifi.defaults';
 import * as netifd from 'mtwifi.netifd';
 import * as cfg from 'mtwifi.config';
 import * as driver from 'mtwifi.driver';
@@ -36,6 +36,7 @@ import * as supplicant from 'wifi.supplicant';
 import { validate } from 'wifi.validate';
 
 const LOCK_FILE = "/var/lock/mtwifi.lock";
+const MAX_AP_VIFS = defs.MAX_MBSSID;
 // MTWIFI_MAX_* interface index limits.
 const MAX_AP_IDX = 15;
 const MAX_APCLI_IDX = 0;
@@ -82,7 +83,10 @@ function dump_options() {
 	let dump = {
 		"name": "mtwifi", // driver name
 		"mlo": {
-			"mld_setup": "driver"
+			"mld_setup": "driver",
+			"vif_limit": {
+				"ap": MAX_AP_VIFS
+			}
 		}
 	};
 

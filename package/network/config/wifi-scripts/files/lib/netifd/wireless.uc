@@ -106,6 +106,32 @@ function resolve_mlo_handler(devices, dev_names)
 	return handler;
 }
 
+// Admit the complete MLO interface before splitting it into radio payloads.
+function validate_mlo(devices, dev_names, mode, iface_name, handler)
+{
+	let mode_label = (mode == "ap") ? "AP" : "STA";
+	let capabilities = handler.mlo;
+
+	for (let dev_name in dev_names) {
+		let dev = devices[dev_name];
+		if (dev.config.disabled)
+			continue;
+		if (index(dev.config.htmode, "EHT") != 0) {
+			warn(`${handler.name}: drop MLO ${mode_label} ${iface_name}: ${dev_name} is not EHT`);
+			return false;
+		}
+
+		let vif_limit = capabilities.vif_limit[mode];
+		let vif_count = length(filter(dev.vif, (vif) => vif.config.mode == mode));
+		if (vif_count >= vif_limit) {
+			warn(`${handler.name}: drop MLO ${mode_label} ${iface_name}: no ${mode_label} VIF slot on ${dev_name}`);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 function update_config(new_devices, mlo_vifs)
 {
 	wireless.mlo = mlo_vifs;
@@ -193,6 +219,10 @@ function config_init(uci)
 		let mlo_handler = mlo_vif && resolve_mlo_handler(devices, dev_names);
 		let ifname;
 		let mlo_created = false;
+
+		if (mlo_handler && data.mode == "ap" &&
+			!validate_mlo(devices, dev_names, data.mode, name, mlo_handler))
+			continue;
 
 		for (let dev_name in dev_names) {
 			let dev = devices[dev_name];
@@ -343,6 +373,10 @@ function config_init(uci)
 						radio_config = filter(radio_config, (v) => v != null);
 						let mlo_handler = mlo_vif && resolve_mlo_handler(devices, devs);
 						let ifname;
+
+						if (mlo_handler && config.mode == "ap" &&
+							!validate_mlo(devices, devs, config.mode, name, mlo_handler))
+							continue;
 
 						if (mlo_vif) {
 							ifname = mlo_vif_create(config, radio_config,

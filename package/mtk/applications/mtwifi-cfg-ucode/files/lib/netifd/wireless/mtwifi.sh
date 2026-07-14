@@ -552,6 +552,7 @@ function handle_setup(data) {
     teardown_wpad(cur_dev);
 
     if (!cfg.setup(data, all_devs)) {
+        netifd.setup_failed("DAT_SETUP_FAILED");
         l1.close();
         return;
     }

@@ -86,11 +86,6 @@
 		"beacon_int": [ "BeaconPeriod", "100" ],
 		"sta_mlo": [ "ApcliMloDisable", "1" ]
 	},
-	"REINSTALL_CFGS": {
-		"E2pAccessMode": { "preinit": true },
-		"HT_RxStream": { "preinit": false },
-		"HT_TxStream": { "preinit": false }
-	},
 	"IWPRIV_AP_CFGS": {
 		"kicklow": [ "KickStaRssiLow", "0" ],
 		"assocthres": [ "AssocReqRssiThres", "0" ]

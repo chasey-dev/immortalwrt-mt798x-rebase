@@ -233,124 +233,8 @@ export function scan_related_vifs(dev) {
 };
 
 // ==========================================
-// Driver Operations (modules / iwpriv)
+// Driver Operations
 // ==========================================
-
-/**
- * Check whether a kernel module is currently loaded.
- *
- * @param {string} name - Kernel module name.
- * @returns {boolean} true when /sys/module/<name> exists.
- */
-function module_loaded(name) {
-	return fs.access(`/sys/module/${name}`);
-}
-
-// Module names in unload order. Do not unload mtk_warp here; split WiFi7
-// targets fast-fail while it is loaded.
-const WIFI_MODULES = [
-	"mt7993", "mt7992", "mt7990",
-	"mtk_wed",
-	"mtk_pci",
-	"connac_if",
-	"mtk_hwifi",
-	"mt7915_mt_wifi",
-	"mt_wifi",
-	"mt_wifi_osal", "mt_wifi_cmn"
-];
-
-const WIFI7_CHIP_MODULES = [ "mt7993", "mt7992", "mt7990" ];
-const COMMON_MODULES = [ "mt_wifi_osal", "mt_wifi_cmn" ];
-
-/**
- * Build the loaded WiFi module list in unload order.
- *
- * The plan is intentionally conservative: it requires mt_wifi, rejects mixed
- * common layers, and refuses split WiFi7 reload while mtk_warp is loaded.
- *
- * @returns {(string[]|null)} Module names in unload order, or null on unsafe state.
- */
-function reload_plan() {
-	let modules = [];
-	let common = null;
-	let has_wifi7_chip = false;
-
-	for (let mod in WIFI_MODULES) {
-		if (!module_loaded(mod))
-			continue;
-
-		if (index(COMMON_MODULES, mod) >= 0) {
-			if (common) {
-				log.error("[Driver] Both mt_wifi_osal and mt_wifi_cmn are loaded, skip mixed common layer reload");
-				return null;
-			}
-			common = mod;
-		}
-
-		if (index(WIFI7_CHIP_MODULES, mod) >= 0)
-			has_wifi7_chip = true;
-
-		push(modules, mod);
-	}
-
-	if (index(modules, "mt_wifi") < 0) {
-		log.error("[Driver] mt_wifi is not loaded, skip partial module reload");
-		return null;
-	}
-
-	if (has_wifi7_chip && module_loaded("mtk_warp")) {
-		log.error("[Driver] Split WiFi7 module reload is unsafe while mtk_warp is loaded");
-		return null;
-	}
-
-	return modules;
-}
-
-/**
- * Read module options from /etc/modules.d for one module.
- *
- * @param {string} name - Kernel module name.
- * @returns {string} Raw option string, or an empty string when none is found.
- */
-function module_options(name) {
-	let files = fs.glob("/etc/modules.d/*") || [];
-
-	for (let file in files) {
-		let data = fs.readfile(file);
-		if (!data)
-			continue;
-
-		for (let line in split(data, "\n")) {
-			line = trim(line);
-			if (!line || substr(line, 0, 1) == "#")
-				continue;
-
-			let fields = split(line, /\s+/, 2);
-			if (fields[0] == name)
-				return trim(fields[1] || "");
-		}
-	}
-
-	return "";
-}
-
-/**
- * Build modprobe argv with /etc/modules.d options preserved.
- *
- * @param {string} name - Kernel module name.
- * @returns {string[]} argv passed to system().
- */
-function module_load_args(name) {
-	let args = [ "modprobe", name ];
-	let opts = module_options(name);
-
-	if (opts) {
-		for (let opt in split(opts, /\s+/))
-			push(args, opt);
-	}
-
-	return args;
-}
 
 /**
  * Check whether the mtwifi driver stack is available as loaded modules.
@@ -358,64 +242,11 @@ function module_load_args(name) {
  * @returns {boolean} true when mt_wifi is loaded.
  */
 export function is_kmod() {
-	if (!module_loaded("mt_wifi")) {
+	if (!fs.access("/sys/module/mt_wifi")) {
 		log.error("[Driver] mt_wifi module is not loaded.");
 		return false;
 	}
 
-	return true;
-};
-
-/**
- * Disable HW NAT registration for one existing interface.
- *
- * Missing or empty ifnames are ignored because teardown paths may call this
- * after an interface is already gone.
- *
- * @param {string} ifname - Interface name.
- */
-export function unregister_hw_nat(ifname) {
-	if (!ifname || !fs.access(`/sys/class/net/${ifname}`))
-		return;
-
-	exec_mwctl(ifname, "hw_nat_register", "0");
-};
-
-/**
- * Reload the live mtwifi module stack using the conservative reload plan.
- *
- * Modules are removed in dependency order and loaded back in reverse order.
- * Module options are preserved through module_load_args().
- *
- * @returns {boolean} true when unload and reload both complete.
- */
-export function reload() {
-	let modules = reload_plan();
-	if (!modules)
-		return false;
-
-	log.notice(`[Driver] Removing Kernel Modules: ${join(" ", modules)}`);
-	for (let mod in modules) {
-		let rc = system([ "rmmod", mod ]);
-		if (rc != 0) {
-			log.error(`[Driver] rmmod ${mod} failed: ${rc}`);
-			return false;
-		}
-	}
-
-	sleep(2000);
-
-	let load_modules = reverse(modules);
-	log.notice(`[Driver] Installing Kernel Modules: ${join(" ", load_modules)}`);
-	for (let mod in load_modules) {
-		let rc = system(module_load_args(mod));
-		if (rc != 0) {
-			log.error(`[Driver] modprobe ${mod} failed: ${rc}`);
-			return false;
-		}
-	}
-
-	sleep(1000);
 	return true;
 };
 

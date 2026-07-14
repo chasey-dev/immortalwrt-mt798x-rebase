@@ -53,8 +53,8 @@ export function setup(uci_cfg, all_devs) {
 		log.error(`[Main] Unable to open profile path for ${cur_devname}`);
 		return false;
 	}
-	// UCI config ==> DAT updates
-	let dat_new = converter.convert(uci_cfg);
+	// UCI config ==> DAT apply plan
+	let dat_update = converter.convert(uci_cfg);
 
 	/*****       SETTING VIFS     *******/
 
@@ -64,8 +64,10 @@ export function setup(uci_cfg, all_devs) {
 	log.debug(`[Main] UP vifs related to ${cur_devname}: ${vifs}`);
 	for (let vif in vifs) driver.ifdown(vif);
 
-	// Commit converted DAT config
-	ctx.merge(dat_new);
+	// Apply explicit deletions first; keys absent from both lists stay untouched.
+	for (let key in dat_update.unset)
+		ctx.unset(key);
+	ctx.merge(dat_update.values);
 	ctx.commit();
 	ctx.close();
 	system("sync");

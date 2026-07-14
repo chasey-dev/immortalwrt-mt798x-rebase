@@ -183,9 +183,11 @@ function calc_bandwidth(htmode, noscan) {
  * indexed DAT tokens, while ApCli values target the single supported ApCli slot.
  * Interface capacity and MLO topology are admitted before this payload reaches
  * conversion.
+ * A key in values is overwritten, a key in unset is deleted, and a key in
+ * neither collection keeps its existing DAT value.
  *
  * @param {Object} uci_cfg - netifd wireless payload for one radio.
- * @returns {Object} DAT key/value updates.
+ * @returns {Object} DAT update with values to merge and keys to unset.
  */
 export function convert(uci_cfg) {
 	let dat = {};
@@ -294,7 +296,8 @@ export function convert(uci_cfg) {
 		dat.ApCliEnable = "1";
 		dat.ApCliSsid = c.ssid;
 		dat.ApCliBssid = c.bssid;
-		dat.ApcliMacAddress = c.macaddr;
+		if (c.macaddr)
+			dat.ApcliMacAddress = c.macaddr;
 		dat.ApCliWPAPSK = c.key;
 		dat.ApCliWirelessMode = wmode_int;
 
@@ -399,7 +402,8 @@ export function convert(uci_cfg) {
 		// set suffix-key settings
 		set_suffix("SSID", c.ssid);
 		set_suffix("WPAPSK", c.key);
-		dat[(vif_idx == 0) ? "MacAddress" : `MacAddress${vif_idx}`] = c.macaddr;
+		if (c.macaddr)
+			dat[(vif_idx == 0) ? "MacAddress" : `MacAddress${vif_idx}`] = c.macaddr;
 
 		// base cfgs
 		set_token("WirelessMode", wmode_int); // here WirelessMode is set twice, we keep it for safety
@@ -466,5 +470,23 @@ export function convert(uci_cfg) {
 		}
 	}
 
-	return dat;
+	/*
+	 * Mac address overrides are presence-sensitive in the driver profile parser:
+	 * an absent key selects the default/derived address, while an empty value is
+	 * parsed as an explicit address and rejected. Revoke every unused override;
+	 * a valid explicit value already present in dat is kept out of this list.
+	 */
+	let unset = [];
+	for (let i = 0; i < defs.MAX_MBSSID; i++) {
+		let key = i ? `MacAddress${i}` : "MacAddress";
+		if (!exists(dat, key))
+			push(unset, key);
+	}
+	for (let i = 0; i < defs.MAX_APCLI_NUM; i++) {
+		let key = i ? `ApcliMacAddress${i}` : "ApcliMacAddress";
+		if (!exists(dat, key))
+			push(unset, key);
+	}
+
+	return { values: dat, unset };
 };

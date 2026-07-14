@@ -399,6 +399,39 @@ function teardown_wpad(dev) {
 // ==========================================
 //              SETUP
 // ==========================================
+/**
+ * Resolve one L1 device's card wrapper to its band DAT path.
+ *
+ * l1parser exposes the wrapper path on the first band only. Devices with the
+ * same INDEX/mainidx share that wrapper, and subidx N maps to BN(N - 1).
+ *
+ * @param {Object} dev - Current L1 device descriptor.
+ * @param {Object} all_devs - L1 device map.
+ * @returns {string} Effective DAT profile path.
+ */
+function resolve_band_profile_path(dev, all_devs) {
+    let profile_key = `BN${int(dev.subidx) - 1}_profile_path`;
+
+    for (let devname, sibling in all_devs) {
+        if (sibling.INDEX != dev.INDEX ||
+            sibling.mainidx != dev.mainidx ||
+            !sibling.profile_path)
+            continue;
+
+        let wrapper = datconf.open(sibling.profile_path);
+        if (!wrapper)
+            continue;
+
+        let profile_path = wrapper.get(profile_key);
+        wrapper.close();
+
+        if (profile_path)
+            return profile_path;
+    }
+
+    return dev.profile_path;
+}
+
 function handle_setup(data) {
     let l1 = l1parser.open();
 
@@ -428,39 +461,7 @@ function handle_setup(data) {
         return;
     }
 
-    let card_profiles = {};
-    for (let devname, dev in all_devs) {
-        if (!dev.profile_path) continue;
-
-        let ctx = datconf.open(dev.profile_path);
-        if (!ctx) continue;
-
-        let profile_data = ctx.getall();
-        let card_profile = {
-            band_profiles: {}
-        };
-
-        for (let key, value in profile_data) {
-            if (match(key, /^BN\d+_profile_path$/) && value)
-                card_profile.band_profiles[key] = value;
-        }
-        ctx.close();
-
-        if (length(card_profile.band_profiles) > 0)
-            card_profiles[`${dev.INDEX}_${dev.mainidx}`] = card_profile;
-    }
-
-    for (let devname, dev in all_devs) {
-        let card_profile = card_profiles[`${dev.INDEX}_${dev.mainidx}`];
-        if (!card_profile) continue;
-
-        let bn_idx = int(dev.subidx) - 1;
-        let band_path = card_profile.band_profiles["BN" + bn_idx + "_profile_path"];
-
-        if (band_path) dev.profile_path = band_path;
-    }
-
-    cur_dev = all_devs[cur_devname];
+    cur_dev.profile_path = resolve_band_profile_path(cur_dev, all_devs);
 
     // inject cur_devname into UCI cfg data
     // UCI doesnt contain this key

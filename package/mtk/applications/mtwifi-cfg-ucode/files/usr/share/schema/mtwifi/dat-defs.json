@@ -1,5 +1,7 @@
 {
 	"MAX_MBSSID": 16,
+	"MAX_APCLI_NUM": 1,
+	"MAX_MLD_GROUP_ID": 64,
 	"MAX_ACL_ENTRY": 129,
 	"AP_CFGS": {
 		"AuthMode": "OPEN",

@@ -78,12 +78,11 @@ function calc_pmf_sha256(authmode, pmf_mode) {
  * Examples: ra0 -> 0, rax1 -> 1.
  *
  * @param {string} ifname - mtwifi VIF name.
- * @returns {number} Numeric VIF index, or 0 when absent.
+ * @returns {number} Numeric VIF index.
  */
 function get_vif_idx(ifname) {
-	if (!ifname) return 0;
-	let m = match(ifname, /[0-9]+$/);
-	return m ? int(m[0]) : 0;
+	// The handler assigns this name; a broken contract must not alias slot 0.
+	return int(match(ifname, /[0-9]+$/)[0]);
 }
 
 /**
@@ -182,26 +181,16 @@ function calc_bandwidth(htmode, noscan) {
  *
  * The result only represents the current band profile. AP values are encoded as
  * indexed DAT tokens, while ApCli values target the single supported ApCli slot.
+ * Interface capacity and MLO topology are admitted before this payload reaches
+ * conversion.
  *
  * @param {Object} uci_cfg - netifd wireless payload for one radio.
  * @returns {Object} DAT key/value updates.
  */
 export function convert(uci_cfg) {
 	let dat = {};
-	let conf = uci_cfg.config || {}; // uci device config
-	let ifaces = uci_cfg.interfaces || {};
-
-	// ------------------------------------------
-	// count vifs in UCI config
-	// ------------------------------------------
-
-	let has_apcli = false; // ApCli flag, ApCli appears in per DEVICE
-
-	for (let k, iface in ifaces) {
-		let c = iface.config;
-		if (c.mode == "sta")
-			has_apcli = true;
-	}
+	let conf = uci_cfg.config;
+	let ifaces = uci_cfg.interfaces;
 
 	// BssidNum is the MBSSID slot capacity used by cfg80211 add_virtual_intf.
 	// Keep it stable so hostapd can add/remove ext BSS without module reload.
@@ -265,8 +254,7 @@ export function convert(uci_cfg) {
 	if (conf.mu_beamformer) {
 		dat.ETxBfEnCond = "1";
 		dat.ITxBfEn = "0";
-		// MUTxRxEnable set to 3 if has an apcli
-		dat.MUTxRxEnable = has_apcli ? "3" : "1";
+		dat.MUTxRxEnable = "1";
 	} else {
 		dat.ETxBfEnCond = "0";
 		dat.MUTxRxEnable = "0";
@@ -289,54 +277,56 @@ export function convert(uci_cfg) {
 
 	for (let k, v in defs.APCLI_CFGS) dat[k] = v;
 
-	if (has_apcli) {
-		for (let k, iface in ifaces) {
-			let c = ifaces[k].config;
-			if (c.mode == "sta") {
-				/* skip null tokens */
-				let set_token = function(key, val) {
-					if (val != null)
-						dat[key] = val;
-				};
+	for (let k, iface in ifaces) {
+		let c = iface.config;
+		if (c.mode != "sta")
+			continue;
 
-				dat.ApCliEnable = c.disabled ? "0" : "1";
-				dat.ApCliSsid = c.ssid;
-				dat.ApCliBssid = c.bssid;
-				dat.ApcliMacAddress = c.macaddr;
-				dat.ApCliWPAPSK = c.key;
-				dat.ApCliWirelessMode = wmode_int;
+		/* skip null tokens */
+		let set_token = function(key, val) {
+			if (val != null)
+				dat[key] = val;
+		};
 
-				set_token("ApCliMuMimoDlEnable", strict_bool(c.mumimo_dl));
-				set_token("ApCliMuMimoUlEnable", strict_bool(c.mumimo_ul));
-				set_token("ApCliMuOfdmaDlEnable", strict_bool(c.ofdma_dl));
-				set_token("ApCliMuOfdmaUlEnable", strict_bool(c.ofdma_ul));
-				set_token("ApCliPweMethod", defs.SAE_PWE_2_DAT[c.sae_pwe]);
+		if (conf.mu_beamformer)
+			dat.MUTxRxEnable = "3";
 
-				// only one sae_group for ApCli
-				set_token("ApCliSAEGroup", c.sae_groups?.[0]);
+		dat.ApCliEnable = "1";
+		dat.ApCliSsid = c.ssid;
+		dat.ApCliBssid = c.bssid;
+		dat.ApcliMacAddress = c.macaddr;
+		dat.ApCliWPAPSK = c.key;
+		dat.ApCliWirelessMode = wmode_int;
 
-				// uci encryption mode => DAT cfg
-				let enc_info = defs.ENC_2_COMMON_DAT[c.encryption];
-				let authmode = enc_info[0];
-				let pmf_mode = calc_pmf_mode(authmode, c.ieee80211w);
+		set_token("ApCliMuMimoDlEnable", strict_bool(c.mumimo_dl));
+		set_token("ApCliMuMimoUlEnable", strict_bool(c.mumimo_ul));
+		set_token("ApCliMuOfdmaDlEnable", strict_bool(c.ofdma_dl));
+		set_token("ApCliMuOfdmaUlEnable", strict_bool(c.ofdma_ul));
+		set_token("ApCliPweMethod", defs.SAE_PWE_2_DAT[c.sae_pwe]);
 
-				dat.ApCliAuthMode = authmode;
-				dat.ApCliEncrypType = enc_info[1];
-				dat.ApCliPMFSHA256 = calc_pmf_sha256(authmode, pmf_mode);
+		// only one sae_group for ApCli
+		set_token("ApCliSAEGroup", c.sae_groups?.[0]);
 
-				// ApCli PMF
-				if (pmf_mode == 2) {
-					dat.ApCliPMFMFPC = "1";
-					dat.ApCliPMFMFPR = "1";
-				} else if (pmf_mode == 1) {
-					dat.ApCliPMFMFPC = "1";
-					dat.ApCliPMFMFPR = "0";
-				} else {
-					dat.ApCliPMFMFPC = "0";
-					dat.ApCliPMFMFPR = "0";
-				}
-				break; // only ONE ApCli supported for each device
-			}
+		// uci encryption mode => DAT cfg
+		let enc_info = defs.ENC_2_COMMON_DAT[c.encryption];
+		let authmode = enc_info[0];
+		let pmf_mode = calc_pmf_mode(authmode, c.ieee80211w);
+
+		dat.ApCliAuthMode = authmode;
+		dat.ApCliEncrypType = enc_info[1];
+		dat.ApCliPMFSHA256 = calc_pmf_sha256(authmode, pmf_mode);
+
+		// ApCli PMF
+		if (pmf_mode == 2) {
+			dat.ApCliPMFMFPC = "1";
+			dat.ApCliPMFMFPR = "1";
+		} else if (pmf_mode == 1) {
+			dat.ApCliPMFMFPC = "1";
+			dat.ApCliPMFMFPR = "0";
+		} else {
+			dat.ApCliPMFMFPC = "0";
+			dat.ApCliPMFMFPR = "0";
+		}
 	}
 
 	// ------------------------------------------
@@ -376,10 +366,8 @@ export function convert(uci_cfg) {
 	// ------------------------------------------
 
 	for (let k, iface in ifaces) {
-		let c = ifaces[k].config;
+		let c = iface.config;
 		if (c.mode != "ap") continue;
-		if (!iface.mtwifi_ifname) continue;
-
 		// get vif index from name
 		let vif_idx = get_vif_idx(iface.mtwifi_ifname);
 
@@ -432,10 +420,13 @@ export function convert(uci_cfg) {
 		set_token("HT_AMSDU", strict_bool(c.amsdu));
 		set_token("HT_AutoBA", strict_bool(c.autoba));
 
-		if (is_be && c.mlo && !c.disabled) {
-			// Mainline wifi-scripts names AP MLD intent ap-mldN; DAT uses 1-based groups.
-			let m = match(c.ifname || "", /^ap-mld([0-9]+)$/);
-			set_token("MldGroup", m ? int(m[1]) + 1 : 1);
+		if (c.mlo) {
+			/*
+			 * Input admission guarantees EHT, and the handler validates the
+			 * mainline ap-mldN identity before conversion.
+			 */
+			let m = match(c.ifname, /^ap-mld([0-9]+)$/);
+			set_token("MldGroup", int(m[1]) + 1);
 		}
 
 		// MU-MIMO / OFDMA

@@ -110,7 +110,14 @@ function resolve_mlo_handler(devices, dev_names)
 function validate_mlo(devices, dev_names, mode, iface_name, handler)
 {
 	let mode_label = (mode == "ap") ? "AP" : "STA";
+	let primary_dev = devices[dev_names[0]];
 	let capabilities = handler.mlo;
+
+	if (mode == "sta" && capabilities.sta_network_on_primary &&
+		primary_dev.config.disabled) {
+		warn(`${handler.name}: drop MLO ${mode_label} ${iface_name}: primary radio is unavailable`);
+		return false;
+	}
 
 	for (let dev_name in dev_names) {
 		let dev = devices[dev_name];
@@ -132,7 +139,20 @@ function validate_mlo(devices, dev_names, mode, iface_name, handler)
 	return true;
 }
 
-function update_config(new_devices, mlo_vifs)
+/*
+ * Preserve the configured device order. Only the primary STA member retains
+ * the network config; record its device so it starts before the others.
+ */
+function prepare_mlo_sta_config(config, dev_name, dev_names, sta_primary_dev_names)
+{
+	config.device = dev_names;
+	if (dev_name == dev_names[0])
+		push(sta_primary_dev_names, dev_name);
+	else
+		config.network = [];
+}
+
+function update_config(new_devices, mlo_vifs, sta_primary_dev_names)
 {
 	wireless.mlo = mlo_vifs;
 	hostapd_update_mlo();
@@ -142,7 +162,14 @@ function update_config(new_devices, mlo_vifs)
 		if (!new_devices[name])
 			dev.destroy();
 
-	for (let name, dev in new_devices) {
+	// Start each STA MLO primary device before the remaining devices.
+	let ordered_device_names = [
+		...sta_primary_dev_names,
+		...filter(keys(new_devices), (name) => index(sta_primary_dev_names, name) < 0)
+	];
+
+	for (let name in ordered_device_names) {
+		let dev = new_devices[name];
 		let cur_dev = wireless.devices[name];
 		if (cur_dev) {
 			cur_dev.update(dev);
@@ -166,6 +193,7 @@ function config_init(uci)
 	let devices = {};
 	let vifs = {};
 	let mlo_vifs = {};
+	let sta_primary_dev_names = [];
 
 	let sections = {
 		device: {},
@@ -220,7 +248,7 @@ function config_init(uci)
 		let ifname;
 		let mlo_created = false;
 
-		if (mlo_handler && data.mode == "ap" &&
+		if (mlo_handler && (data.mode == "ap" || data.mode == "sta") &&
 			!validate_mlo(devices, dev_names, data.mode, name, mlo_handler))
 			continue;
 
@@ -235,6 +263,9 @@ function config_init(uci)
 
 			let config = parse_attribute_list(data, handler.iface);
 			config.radios = radios;
+			if (mlo_handler?.mlo.sta_network_on_primary && data.mode == "sta")
+				prepare_mlo_sta_config(config, dev_name, dev_names,
+					sta_primary_dev_names);
 
 			if (mlo_vif && !mlo_created) {
 				ifname = mlo_vif_create(config, radio_config, vif_idx,
@@ -374,7 +405,8 @@ function config_init(uci)
 						let mlo_handler = mlo_vif && resolve_mlo_handler(devices, devs);
 						let ifname;
 
-						if (mlo_handler && config.mode == "ap" &&
+						if (mlo_handler &&
+							(config.mode == "ap" || config.mode == "sta") &&
 							!validate_mlo(devices, devs, config.mode, name, mlo_handler))
 							continue;
 
@@ -390,6 +422,10 @@ function config_init(uci)
 								continue;
 
 							let vif_config = ifname ? { ...config, ifname, radios } : config;
+							if (mlo_handler?.mlo.sta_network_on_primary &&
+								config.mode == "sta")
+								prepare_mlo_sta_config(vif_config, device, devs,
+									sta_primary_dev_names);
 							if (ifname)
 								mlo_vif_macaddr(vif_config, devs, device);
 
@@ -410,7 +446,7 @@ function config_init(uci)
 		}
 	}
 
-	update_config(devices, mlo_vifs);
+	update_config(devices, mlo_vifs, sta_primary_dev_names);
 }
 
 function config_start()

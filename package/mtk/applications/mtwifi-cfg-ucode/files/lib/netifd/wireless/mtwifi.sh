@@ -83,8 +83,10 @@ function dump_options() {
 		"mlo": {
 			"mld_setup": "driver",
 			"vif_limit": {
-				"ap": MAX_AP_VIFS
-			}
+				"ap": MAX_AP_VIFS,
+				"sta": MAX_APCLI_VIFS
+			},
+			"sta_network_on_primary": true
 		}
 	};
 

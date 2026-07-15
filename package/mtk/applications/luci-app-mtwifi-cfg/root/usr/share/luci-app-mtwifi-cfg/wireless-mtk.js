@@ -50,6 +50,20 @@ function render_radio_badge(radioDev) {
 	]);
 }
 
+function render_radio_label(radioDev) {
+	var name = radioDev.getName(),
+	    band = uci.get('wireless', name, 'band'),
+	    label = render_radio_badge(radioDev);
+
+	dom.append(label, [
+		band ? ' (%s)'.format(band) : '',
+		uci.get('wireless', name, 'disabled') == '1'
+			? ' - %s'.format(_('disabled')) : ''
+	]);
+
+	return label;
+}
+
 function render_signal_badge(signalPercent, signalValue, noiseValue, wrap, mode) {
 	let icon = L.resource('icons/signal-075-100.svg'), title, value;
 
@@ -298,7 +312,7 @@ function render_mlo_status(section_id) {
 
 	return L.itemlist(E('div'), [
 		_('SSID'),          uci.get('wireless', section_id, 'ssid') || '?',
-		_('Mode'),          _('AP MLO'),
+		_('Mode'),          _('MLO AP'),
 		_('Member radios'), devices.join(' + '),
 		_('Encryption'),    network.formatWifiEncryption(enc) || '-',
 		null,               status_text
@@ -1071,8 +1085,7 @@ return view.extend({
 		};
 
 		s.cfgsections = function() {
-			var rv = [],
-			    emittedMlo = {};
+			var rv = [];
 
 			for (var i = 0; i < this.radios.length; i++) {
 				var radio = this.radios[i].getName();
@@ -1082,17 +1095,10 @@ return view.extend({
 				for (var j = 0; j < this.wifis.length; j++)
 					if (this.wifis[j].getWifiDeviceName() == radio)
 						rv.push(this.wifis[j].getName());
-
-				for (var j = 0; j < this.mloAps.length; j++) {
-					var section_id = this.mloAps[j],
-					    devices = get_iface_devices(section_id);
-
-					if (!emittedMlo[section_id] && devices.indexOf(radio) >= 0) {
-						rv.push(section_id);
-						emittedMlo[section_id] = true;
-					}
-				}
 			}
+
+			for (var i = 0; i < this.mloAps.length; i++)
+				rv.push(this.mloAps[i]);
 
 			return rv;
 		};
@@ -1190,10 +1196,14 @@ return view.extend({
 		};
 
 		s.addModalOptions = function(s) {
+			var overview = this;
+
 			return network.getWifiNetwork(s.section).then(function(radioNet) {
 				var hwtype = uci.get('wireless', radioNet.getWifiDeviceName(), 'type');
 				var band = uci.get('wireless', radioNet.getWifiDeviceName(), 'band');
 				var ifmode = radioNet.getMode();
+				var isNewMtwifiNetwork = (hwtype == 'mtwifi' && s.map.parent &&
+					s.map.parent.addedSection == s.section);
 				var o, ss;
 
 				o = s.option(form.SectionValue, '_device', form.NamedSection, radioNet.getWifiDeviceName(), 'wifi-device', _('Device Configuration'));
@@ -1309,16 +1319,39 @@ return view.extend({
 				ss.tab('advanced', _('Advanced Settings'));
 				ss.tab('roaming', _('WLAN roaming'), _('Settings for assisting wireless clients in roaming between multiple APs: 802.11r, 802.11k and 802.11v'));
 
-				o = ss.taboption('general', form.ListValue, 'mode', _('Mode'));
-				if (hwtype == 'mtwifi') {
-					if (ifmode == 'ap')
-						o.value('ap', _('Access Point'));
-					else if (ifmode == 'sta')
-						o.value('sta', _('Client'));
-				} else {
+				if (isNewMtwifiNetwork) {
+					o = ss.taboption('general', form.ListValue, 'mode', _('Mode'));
 					o.value('ap', _('Access Point'));
-					o.value('sta', _('Client'));
-					o.value('adhoc', _('Ad-Hoc'));
+					o.value('mlo-ap', _('MLO Access Point (MLO AP)'));
+					o.default = 'ap';
+					o.validate = function(section_id, value) {
+						return (value == 'mlo-ap')
+							? _('Click "Switch mode" to open the MLO AP configuration.')
+							: true;
+					};
+
+					o = ss.taboption('general', form.Button, '_switch_mode');
+					o.title = _('Really switch mode?');
+					o.inputtitle = _('Switch mode');
+					o.inputstyle = 'apply';
+					o.depends('mode', 'mlo-ap');
+					/* Discard the temporary single-radio section before changing editors. */
+					o.onclick = L.bind(function(modalMap) {
+						return this.handleModalCancel(modalMap).then(
+							L.bind(this.renderMloOptionsModal, this, null));
+					}, overview, s.map);
+				} else {
+					o = ss.taboption('general', form.ListValue, 'mode', _('Mode'));
+					if (hwtype == 'mtwifi') {
+						if (ifmode == 'ap')
+							o.value('ap', _('Access Point'));
+						else if (ifmode == 'sta')
+							o.value('sta', _('Client'));
+					} else {
+						o.value('ap', _('Access Point'));
+						o.value('sta', _('Client'));
+						o.value('adhoc', _('Ad-Hoc'));
+					}
 				}
 
 				o = ss.taboption('general', form.Value, 'mesh_id', _('Mesh Id'));
@@ -2460,43 +2493,43 @@ return view.extend({
 			s2.tab('general', _('General Setup'));
 			s2.tab('encryption', _('Wireless Security'));
 
-			var o = s2.taboption('general', form.Value, 'ssid', _('<abbr title="Extended Service Set Identifier">ESSID</abbr>'));
+			var encryptionOption, memberRadios,
+			    o = s2.taboption('general', form.Value, 'ssid', _('<abbr title="Extended Service Set Identifier">ESSID</abbr>'));
 			o.datatype = 'maxlength(32)';
 			o.default = 'ImmortalWrt-MLO';
 			o.rmempty = false;
 
-			o = s2.taboption('general', form.MultiValue, '_mlo_devices', _('Member radios'));
-			o.rmempty = false;
+			memberRadios = s2.taboption('general', form.MultiValue, '_mlo_devices', _('Member radios'));
+			memberRadios.rmempty = false;
 			for (var i = 0; i < mtRadios.length; i++) {
-				var name = mtRadios[i].getName(),
-				    band = uci.get('wireless', name, 'band'),
-				    label = band ? '%s (%s)'.format(name, band) : name;
+				var name = mtRadios[i].getName();
 
-				if (uci.get('wireless', name, 'disabled') == '1')
-					label = '%s - %s'.format(label, _('disabled'));
-
-				o.value(name, label);
+				memberRadios.value(name, render_radio_label(mtRadios[i]));
 			}
-			o.cfgvalue = function(section_id) {
+			memberRadios.cfgvalue = function(section_id) {
 				return isNew ? defaultDevices : get_iface_devices(section_id);
 			};
-			o.validate = function(section_id, value) {
-				return (get_iface_devices({ device: value }).length >= 2)
-					? true
-					: _('Select at least two member radios.');
+			memberRadios.validate = function(form_section, value) {
+				var errmsg = validate_mlo_ap({
+					devices: value,
+					encryption: (encryptionOption && encryptionOption.formvalue(form_section)) || 'sae',
+					section_id: isNew ? null : section_id
+				});
+
+				return errmsg || true;
 			};
-			o.write = function() {};
+			memberRadios.write = function() {};
 
 			o = s2.taboption('general', widgets.NetworkSelect, 'network', _('Network'));
 			o.default = 'lan';
 			o.rmempty = false;
 			o.nocreate = true;
 
-			o = s2.taboption('encryption', form.ListValue, 'encryption', _('Encryption'));
-			o.value('sae', 'WPA3-SAE');
-			o.value('owe', 'OWE');
-			o.default = 'sae';
-			o.rmempty = false;
+			encryptionOption = s2.taboption('encryption', form.ListValue, 'encryption', _('Encryption'));
+			encryptionOption.value('sae', 'WPA3-SAE');
+			encryptionOption.value('owe', 'OWE');
+			encryptionOption.default = 'sae';
+			encryptionOption.rmempty = false;
 
 			o = s2.taboption('encryption', form.Value, 'key', _('Key'));
 			o.depends('encryption', 'sae');
@@ -2520,7 +2553,12 @@ return view.extend({
 			o.rmempty = true;
 
 			return m2.render().then(L.bind(function(nodes) {
-				ui.showModal(isNew ? _('Add MLO AP') : _('Edit MLO AP'), [
+				var title = isNew ? _('Add MLO AP') : '%s: %s "%s"'.format(
+					_('Wireless Network'),
+					_('MLO Access Point (MLO AP)'),
+					uci.get('wireless', section_id, 'ssid') || '?'
+				),
+				    modal = ui.showModal(title, [
 					nodes,
 					E('div', { 'class': 'right' }, [
 						E('button', {
@@ -2533,6 +2571,9 @@ return view.extend({
 						}, _('Save'))
 					])
 				], 'cbi-modal');
+
+				memberRadios.triggerValidation(form_section);
+				return modal;
 			}, this));
 		};
 
@@ -2543,11 +2584,16 @@ return view.extend({
 			    encopt = L.toArray(m2.lookupOption('encryption', form_section))[0],
 			    keyopt = L.toArray(m2.lookupOption('key', form_section))[0],
 			    pweopt = L.toArray(m2.lookupOption('sae_pwe', form_section))[0],
-			    ssid = (ssidopt && ssidopt.isValid(form_section)) ? ssidopt.formvalue(form_section) : null,
-			    devices = (devicesopt && devicesopt.isValid(form_section)) ? get_iface_devices({ device: devicesopt.formvalue(form_section) }) : null,
-			    net = (networkopt && networkopt.isValid(form_section)) ? networkopt.formvalue(form_section) : null,
-			    enc = (encopt && encopt.isValid(form_section)) ? encopt.formvalue(form_section) : null,
-			    key = (keyopt && enc == 'sae' && keyopt.isValid(form_section)) ? keyopt.formvalue(form_section) : null,
+			    ssid, devices, net, enc, key, pwe;
+
+			if (devicesopt)
+				devicesopt.triggerValidation(form_section);
+
+			ssid = (ssidopt && ssidopt.isValid(form_section)) ? ssidopt.formvalue(form_section) : null;
+			devices = (devicesopt && devicesopt.isValid(form_section)) ? get_iface_devices({ device: devicesopt.formvalue(form_section) }) : null;
+			net = (networkopt && networkopt.isValid(form_section)) ? networkopt.formvalue(form_section) : null;
+			enc = (encopt && encopt.isValid(form_section)) ? encopt.formvalue(form_section) : null;
+			key = (keyopt && enc == 'sae' && keyopt.isValid(form_section)) ? keyopt.formvalue(form_section) : null;
 			pwe = (pweopt && enc == 'sae' && pweopt.isValid(form_section)) ? pweopt.formvalue(form_section) : null;
 
 			if (ssid == null || devices == null || net == null || enc == null || (enc == 'sae' && key == null))
@@ -2595,15 +2641,6 @@ return view.extend({
 			if (values == null)
 				return;
 
-			var errmsg = validate_mlo_ap({
-				devices: values.devices,
-				encryption: values.encryption,
-				section_id: section_id
-			});
-
-			if (errmsg)
-				return ui.addNotification(null, E('p', errmsg), 'error');
-
 			return this.map.save(L.bind(function() {
 				if (isNew) {
 					section_id = next_free_sid(uci.sections('wireless', 'wifi-iface').length);
@@ -2615,27 +2652,6 @@ return view.extend({
 				ui.hideModal();
 				return ui.changes.init();
 			}, this));
-		};
-
-		s.handleAddMloAp = function(ev) {
-			var enabledRadios = [];
-
-			for (var i = 0; i < (this.radios || []).length; i++)
-				if (uci.get('wireless', this.radios[i].getName(), 'type') == 'mtwifi' &&
-				    uci.get('wireless', this.radios[i].getName(), 'disabled') != '1')
-					enabledRadios.push(this.radios[i]);
-
-			if (enabledRadios.length < 2)
-				return ui.showModal(_('Wireless configuration error'), [
-					E('p', _('At least two enabled mtwifi radios are required to create an MLO AP.')),
-					E('div', { 'class': 'right' },
-						E('button', {
-							'class': 'btn',
-							'click': ui.hideModal
-						}, _('Close')))
-				]);
-
-			return this.renderMloOptionsModal(null);
 		};
 
 		s.handleMloToggle = function(section_id, map, ev) {
@@ -2688,11 +2704,6 @@ return view.extend({
 			document.querySelector('.cbi-section-table-row[data-sid="%s"]'.format(section_id)).style.opacity = 0.5;
 			return form.TypedSection.prototype.handleRemove.apply(this, [section_id, ev]);
 		};
-
-		s.description = E('div', { 'class': 'right' }, E('button', {
-			'class': 'cbi-button cbi-button-add',
-			'click': ui.createHandlerFn(s, 'handleAddMloAp')
-		}, _('Add MLO AP')));
 
 		s.handleRemove = function(section_id, radioNet, ev) {
 			var radioName = radioNet.getWifiDeviceName();
@@ -3094,7 +3105,7 @@ return view.extend({
 			uci.set('wireless', section_id, 'ssid', 'ImmortalWrt');
 			uci.set('wireless', section_id, 'encryption', 'none');
 
-			this.addedSection = section_id;
+			m.addedSection = section_id;
 			return this.renderMoreOptionsModal(section_id);
 		};
 

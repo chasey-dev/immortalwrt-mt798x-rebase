@@ -58,14 +58,20 @@ msgstr "SAE 有限循环群组"
 msgid "MLO AP"
 msgstr "MLO AP"
 
-msgid "AP MLO"
-msgstr "AP MLO"
-
 msgid "Add MLO AP"
 msgstr "添加 MLO AP"
 
-msgid "Edit MLO AP"
-msgstr "编辑 MLO AP"
+msgid "MLO Access Point (MLO AP)"
+msgstr "MLO 接入点 (MLO AP)"
+
+msgid "Click \"Switch mode\" to open the MLO AP configuration."
+msgstr "请点击“切换模式”打开 MLO AP 配置。"
+
+msgid "Really switch mode?"
+msgstr "确定切换模式？"
+
+msgid "Switch mode"
+msgstr "切换模式"
 
 msgid "Member radios"
 msgstr "无线成员"
@@ -87,9 +93,6 @@ msgstr "%s 上的 MBSSID 数量已达到上限。"
 
 msgid "6 GHz MLO APs only support SAE or OWE encryption."
 msgstr "6 GHz MLO AP 仅支持 SAE 或 OWE 加密。"
-
-msgid "At least two enabled mtwifi radios are required to create an MLO AP."
-msgstr "创建 MLO AP 至少需要两个已启用的 mtwifi 射频。"
 
 msgid "At least one MBSSID needs to be reserved on %s."
 msgstr "%s 上至少需要保留一个 MBSSID。"

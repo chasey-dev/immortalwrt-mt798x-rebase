@@ -68,10 +68,6 @@
         "twt": {
             "type": "string",
             "description": "Target Wake Time support"
-        },
-        "sta_mlo": {
-            "type": "boolean",
-            "description": "Reserved raw override for ApcliMloDisable. true writes 1, false writes 0"
         }
     }
 }

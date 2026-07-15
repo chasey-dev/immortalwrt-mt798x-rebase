@@ -1,0 +1,925 @@
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2105,6 +2105,12 @@ struct wpa_driver_set_key_params {
+ 	 *
+ 	 * Set to a valid Link ID (0-14) when applicable, otherwise -1. */
+ 	int link_id;
++
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	/**
++	 * use_mtk_mlo_preset_link - Use the MTK private MLO preset-link command */
++	bool use_mtk_mlo_preset_link;
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ };
+ 
+ enum wpa_driver_if_type {
+@@ -3043,6 +3049,9 @@ enum wpa_drv_update_connect_params_mask
+  *	from user space to the driver.
+  * @pmkid: Generated PMKID as part of external auth exchange (e.g., SAE).
+  * @mld_addr: AP's MLD address or %NULL if MLO is not used
++ * @own_mld_addr: Local MLD address or %NULL if not provided
++ * @mlo_ie: Driver-generated Multi-Link element for external authentication
++ * @mlo_ie_len: Length of mlo_ie in octets
+  */
+ struct external_auth {
+ 	enum {
+@@ -3056,6 +3065,9 @@ struct external_auth {
+ 	u16 status;
+ 	const u8 *pmkid;
+ 	const u8 *mld_addr;
++	const u8 *own_mld_addr;
++	const u8 *mlo_ie;
++	size_t mlo_ie_len;
+ };
+ 
+ #define WPAS_MAX_PASN_PEERS 10
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3629,6 +3629,26 @@ struct mtk_bss_mlo_info_event {
+ 	u8 addr[ETH_ALEN];
+ };
+ 
++enum mtk_mlo_event_subid {
++	MTK_MLO_EVENT_EXTERNAL_AUTH = 1,
++};
++
++struct mtk_mlo_event {
++	u8 id;
++	u8 len;
++	u8 data[];
++} STRUCT_PACKED;
++
++struct mtk_mlo_external_auth_event {
++	u8 ssid[SSID_MAX_LEN + 1];
++	u8 ssid_len;
++	u8 bssid[ETH_ALEN];
++	u32 key_mgmt_suite;
++	u32 action;
++	u8 da[ETH_ALEN];
++	u8 mlo_ie[];
++} STRUCT_PACKED;
++
+ static enum hostapd_hw_mode get_mtk_hw_mode(u8 hw_mode)
+ {
+ 	switch (hw_mode) {
+@@ -3794,6 +3814,107 @@ static void nl80211_mtk_bss_mlo_info_eve
+ }
+ 
+ 
++static void nl80211_mtk_mlo_external_auth_event(struct i802_bss *bss,
++						u8 *data, size_t len)
++{
++	if (!data)
++		return;
++
++	while (len >= sizeof(struct mtk_mlo_event)) {
++		const struct mtk_mlo_external_auth_event *auth;
++		const struct mtk_mlo_event *vendor_event;
++		struct ieee802_11_elems elems;
++		union wpa_event_data event;
++		const u8 *own_mld_addr = NULL;
++		size_t event_len, mlo_ie_len;
++		u32 action;
++
++		vendor_event = (const struct mtk_mlo_event *) data;
++		event_len = sizeof(*vendor_event) + vendor_event->len;
++		if (event_len > len) {
++			wpa_printf(MSG_DEBUG,
++				   "nl80211: Ignore truncated MTK MLO event");
++			return;
++		}
++
++		if (vendor_event->id != MTK_MLO_EVENT_EXTERNAL_AUTH) {
++			data += event_len;
++			len -= event_len;
++			continue;
++		}
++
++		if (vendor_event->len < sizeof(*auth)) {
++			wpa_printf(MSG_DEBUG,
++				   "nl80211: Ignore short MTK MLO external auth event");
++			return;
++		}
++
++		auth = (const struct mtk_mlo_external_auth_event *)
++			vendor_event->data;
++		if (auth->ssid_len > SSID_MAX_LEN)
++			return;
++
++		os_memset(&event, 0, sizeof(event));
++		action = WPA_GET_LE32(vendor_event->data +
++				       offsetof(struct mtk_mlo_external_auth_event,
++						action));
++		switch (action) {
++		case NL80211_EXTERNAL_AUTH_START:
++			event.external_auth.action = EXT_AUTH_START;
++			mlo_ie_len = vendor_event->len - sizeof(*auth);
++			if (!mlo_ie_len ||
++			    ieee802_11_parse_elems(auth->mlo_ie, mlo_ie_len,
++						 &elems, 0) == ParseFailed ||
++			    !elems.basic_mle || !elems.basic_mle_len) {
++				wpa_printf(MSG_DEBUG,
++					   "nl80211: MTK MLO external auth has no valid "
++					   "Basic Multi-Link element");
++				return;
++			}
++			own_mld_addr = get_basic_mle_mld_addr(elems.basic_mle,
++							       elems.basic_mle_len);
++			if (!own_mld_addr || is_zero_ether_addr(own_mld_addr))
++				return;
++			if (!ether_addr_equal(own_mld_addr, bss->addr))
++				return;
++			event.external_auth.mlo_ie = auth->mlo_ie;
++			event.external_auth.mlo_ie_len = mlo_ie_len;
++			break;
++		case NL80211_EXTERNAL_AUTH_ABORT:
++			event.external_auth.action = EXT_AUTH_ABORT;
++			break;
++		default:
++			return;
++		}
++
++		event.external_auth.key_mgmt_suite =
++			WPA_GET_LE32(vendor_event->data +
++				     offsetof(struct mtk_mlo_external_auth_event,
++					      key_mgmt_suite));
++		event.external_auth.ssid = auth->ssid;
++		event.external_auth.ssid_len = auth->ssid_len;
++		event.external_auth.bssid = auth->bssid;
++		event.external_auth.own_mld_addr = own_mld_addr;
++
++		if (own_mld_addr)
++			wpa_printf(MSG_DEBUG,
++				   "nl80211: MTK MLO external auth action=%u "
++				   "BSSID=" MACSTR " own MLD=" MACSTR,
++				   event.external_auth.action,
++				   MAC2STR(auth->bssid),
++				   MAC2STR(own_mld_addr));
++		else
++			wpa_printf(MSG_DEBUG,
++				   "nl80211: MTK MLO external auth action=%u "
++				   "BSSID=" MACSTR,
++				   event.external_auth.action,
++				   MAC2STR(auth->bssid));
++		wpa_supplicant_event(bss->ctx, EVENT_EXTERNAL_AUTH, &event);
++		return;
++	}
++}
++
++
+ static void nl80211_vendor_event_mtk(struct i802_bss *bss, u32 subcmd,
+ 				     u8 *data, size_t len)
+ {
+@@ -3804,6 +3925,9 @@ static void nl80211_vendor_event_mtk(str
+ 	case MTK_NL80211_VENDOR_EVENT_SEND_ML_INFO:
+ 		nl80211_mtk_bss_mlo_info_event(bss, data, len);
+ 		break;
++	case MTK_NL80211_VENDOR_EVENT_MLO_EVENT:
++		nl80211_mtk_mlo_external_auth_event(bss, data, len);
++		break;
+ 	default:
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: Ignore unsupported MTK vendor event %u",
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -105,8 +105,12 @@ static struct wpabuf * sme_auth_build_sa
+ 	int key_mgmt = external ? wpa_s->sme.ext_auth_key_mgmt :
+ 		wpa_s->key_mgmt;
+ 	const u8 *addr = mld_addr ? mld_addr : bssid;
++	const u8 *own_addr = wpa_s->own_addr;
+ 	enum sae_pwe sae_pwe;
+ 
++	if (external && mld_addr)
++		own_addr = wpa_s->sme.ext_auth_own_mld_addr;
++
+ 	if (ret_use_pt)
+ 		*ret_use_pt = 0;
+ 	if (ret_use_pk)
+@@ -247,11 +251,11 @@ static struct wpabuf * sme_auth_build_sa
+ 		wpa_s_setup_sae_pt(wpa_s, ssid, true);
+ 	if (use_pt &&
+ 	    sae_prepare_commit_pt(&wpa_s->sme.sae, ssid->pt,
+-				  wpa_s->own_addr, addr,
++				  own_addr, addr,
+ 				  wpa_s->sme.sae_rejected_groups, NULL) < 0)
+ 		goto fail;
+ 	if (!use_pt &&
+-	    sae_prepare_commit(wpa_s->own_addr, addr,
++	    sae_prepare_commit(own_addr, addr,
+ 			       (u8 *) password, os_strlen(password),
+ 			       &wpa_s->sme.sae) < 0) {
+ 		wpa_printf(MSG_DEBUG, "SAE: Could not pick PWE");
+@@ -1368,6 +1372,9 @@ static int sme_external_auth_send_sae_co
+ 					     struct wpa_ssid *ssid)
+ {
+ 	struct wpabuf *resp, *buf;
++	const u8 *da;
++	size_t mlo_ie_len;
++	bool is_mtk_private_mlo;
+ 	int use_pt;
+ 	bool use_pk;
+ 	u16 status;
+@@ -1382,9 +1389,12 @@ static int sme_external_auth_send_sae_co
+ 	}
+ 
+ 	wpa_s->sme.sae.state = SAE_COMMITTED;
++	is_mtk_private_mlo = wpa_s->sme.ext_ml_auth &&
++		wpa_s->sme.ext_auth_mlo_ie_len;
++	mlo_ie_len = is_mtk_private_mlo ? wpa_s->sme.ext_auth_mlo_ie_len :
++		(wpa_s->sme.ext_ml_auth ? WPA_AUTH_FRAME_ML_IE_LEN : 0);
+ 	buf = wpabuf_alloc(4 + SAE_COMMIT_MAX_LEN + wpabuf_len(resp) +
+-			   (wpa_s->sme.ext_ml_auth ? WPA_AUTH_FRAME_ML_IE_LEN :
+-			    0));
++			   mlo_ie_len);
+ 	if (!buf) {
+ 		wpabuf_free(resp);
+ 		return -1;
+@@ -1397,12 +1407,16 @@ static int sme_external_auth_send_sae_co
+ 		status = WLAN_STATUS_SAE_HASH_TO_ELEMENT;
+ 	else
+ 		status = WLAN_STATUS_SUCCESS;
++	da = wpa_s->sme.ext_ml_auth && !is_mtk_private_mlo ?
++		wpa_s->sme.ext_auth_ap_mld_addr : bssid;
+ 	sme_external_auth_build_buf(buf, resp, wpa_s->own_addr,
+-				    wpa_s->sme.ext_ml_auth ?
+-				    wpa_s->sme.ext_auth_ap_mld_addr : bssid, 1,
++				    da, 1,
+ 				    wpa_s->sme.seq_num, status,
+-				    wpa_s->sme.ext_ml_auth ?
+-				    wpa_s->own_addr : NULL);
++				    wpa_s->sme.ext_ml_auth && !is_mtk_private_mlo ?
++				    wpa_s->sme.ext_auth_own_mld_addr : NULL);
++	if (is_mtk_private_mlo)
++		wpabuf_put_data(buf, wpa_s->sme.ext_auth_mlo_ie,
++				 wpa_s->sme.ext_auth_mlo_ie_len);
+ 	wpa_drv_send_mlme(wpa_s, wpabuf_head(buf), wpabuf_len(buf), 1, 0, 0);
+ 	wpabuf_free(resp);
+ 	wpabuf_free(buf);
+@@ -1461,6 +1475,8 @@ static void sme_external_auth_send_sae_c
+ 					       const u8 *da)
+ {
+ 	struct wpabuf *resp, *buf;
++	size_t mlo_ie_len;
++	bool is_mtk_private_mlo;
+ 
+ 	resp = sme_auth_build_sae_confirm(wpa_s, 1);
+ 	if (!resp) {
+@@ -1469,9 +1485,12 @@ static void sme_external_auth_send_sae_c
+ 	}
+ 
+ 	wpa_s->sme.sae.state = SAE_CONFIRMED;
++	is_mtk_private_mlo = wpa_s->sme.ext_ml_auth &&
++		wpa_s->sme.ext_auth_mlo_ie_len;
++	mlo_ie_len = is_mtk_private_mlo ? wpa_s->sme.ext_auth_mlo_ie_len :
++		(wpa_s->sme.ext_ml_auth ? WPA_AUTH_FRAME_ML_IE_LEN : 0);
+ 	buf = wpabuf_alloc(4 + SAE_CONFIRM_MAX_LEN + wpabuf_len(resp) +
+-			   (wpa_s->sme.ext_ml_auth ? WPA_AUTH_FRAME_ML_IE_LEN :
+-			    0));
++			   mlo_ie_len);
+ 	if (!buf) {
+ 		wpa_printf(MSG_DEBUG, "SAE: Auth Confirm buf alloc failure");
+ 		wpabuf_free(resp);
+@@ -1481,8 +1500,11 @@ static void sme_external_auth_send_sae_c
+ 	sme_external_auth_build_buf(buf, resp, wpa_s->own_addr,
+ 				    da, 2, wpa_s->sme.seq_num,
+ 				    WLAN_STATUS_SUCCESS,
+-				    wpa_s->sme.ext_ml_auth ?
+-				    wpa_s->own_addr : NULL);
++				    wpa_s->sme.ext_ml_auth && !is_mtk_private_mlo ?
++				    wpa_s->sme.ext_auth_own_mld_addr : NULL);
++	if (is_mtk_private_mlo)
++		wpabuf_put_data(buf, wpa_s->sme.ext_auth_mlo_ie,
++				 wpa_s->sme.ext_auth_mlo_ie_len);
+ 
+ 	wpa_drv_send_mlme(wpa_s, wpabuf_head(buf), wpabuf_len(buf), 1, 0, 0);
+ 	wpabuf_free(resp);
+@@ -1529,6 +1551,9 @@ static bool is_sae_key_mgmt_suite(struct
+ void sme_external_auth_trigger(struct wpa_supplicant *wpa_s,
+ 			       union wpa_event_data *data)
+ {
++	const u8 *ap_mld_addr;
++	struct wpa_bss *bss;
++
+ 	if (!is_sae_key_mgmt_suite(wpa_s, data->external_auth.key_mgmt_suite))
+ 		return;
+ 
+@@ -1540,10 +1565,47 @@ void sme_external_auth_trigger(struct wp
+ 		os_memcpy(wpa_s->sme.ext_auth_ssid, data->external_auth.ssid,
+ 			  data->external_auth.ssid_len);
+ 		wpa_s->sme.ext_auth_ssid_len = data->external_auth.ssid_len;
+-		if (data->external_auth.mld_addr) {
++		if (data->external_auth.mlo_ie_len >
++		    sizeof(wpa_s->sme.ext_auth_mlo_ie) ||
++		    (data->external_auth.mlo_ie_len &&
++		     (!data->external_auth.mlo_ie ||
++		      !data->external_auth.own_mld_addr))) {
++			sme_send_external_auth_status(
++				wpa_s, WLAN_STATUS_UNSPECIFIED_FAILURE);
++			return;
++		}
++		wpa_s->sme.ext_auth_mlo_ie_len =
++			data->external_auth.mlo_ie_len;
++		if (data->external_auth.mlo_ie_len)
++			os_memcpy(wpa_s->sme.ext_auth_mlo_ie,
++				  data->external_auth.mlo_ie,
++				  data->external_auth.mlo_ie_len);
++
++		ap_mld_addr = data->external_auth.mld_addr;
++		if (!ap_mld_addr && data->external_auth.own_mld_addr) {
++			bss = wpa_bss_get_bssid_latest(wpa_s,
++						       data->external_auth.bssid);
++			if (!bss || is_zero_ether_addr(bss->mld_addr)) {
++				wpa_printf(MSG_DEBUG,
++					   "SME: No AP MLD address for external authentication");
++				sme_send_external_auth_status(
++					wpa_s, WLAN_STATUS_UNSPECIFIED_FAILURE);
++				return;
++			}
++			ap_mld_addr = bss->mld_addr;
++		}
++
++		if (ap_mld_addr) {
+ 			wpa_s->sme.ext_ml_auth = true;
+ 			os_memcpy(wpa_s->sme.ext_auth_ap_mld_addr,
+-				  data->external_auth.mld_addr, ETH_ALEN);
++				  ap_mld_addr, ETH_ALEN);
++			if (data->external_auth.own_mld_addr)
++				os_memcpy(wpa_s->sme.ext_auth_own_mld_addr,
++					  data->external_auth.own_mld_addr,
++					  ETH_ALEN);
++			else
++				os_memcpy(wpa_s->sme.ext_auth_own_mld_addr,
++					  wpa_s->own_addr, ETH_ALEN);
+ 		} else {
+ 			wpa_s->sme.ext_ml_auth = false;
+ 		}
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -660,6 +660,8 @@ struct ml_sta_link_info {
+ 	u8 link_id;
+ 	u8 bssid[ETH_ALEN];
+ 	u16 status;
++	const u8 *sta_profile;
++	size_t sta_profile_len;
+ };
+ 
+ 
+@@ -1045,6 +1047,9 @@ struct wpa_supplicant {
+ 		size_t ext_auth_ssid_len;
+ 		int ext_auth_key_mgmt;
+ 		u8 ext_auth_ap_mld_addr[ETH_ALEN];
++		u8 ext_auth_own_mld_addr[ETH_ALEN];
++		u8 ext_auth_mlo_ie[UINT8_MAX];
++		size_t ext_auth_mlo_ie_len;
+ 		bool ext_ml_auth;
+ 		int *sae_rejected_groups;
+ #endif /* CONFIG_SAE */
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -2634,6 +2634,14 @@ static int nl80211_mgmt_subscribe_non_ap
+ {
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+ 	u16 type = (WLAN_FC_TYPE_MGMT << 2) | (WLAN_FC_STYPE_AUTH << 4);
++
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	/* MTK private MLO external auth can require user space SAE frames. */
++	bool should_subscribe_sae = drv->capa.flags & WPA_DRIVER_FLAGS_SAE;
++#else /* CONFIG_DRIVER_NL80211_MTK */
++	bool should_subscribe_sae = (drv->capa.flags & WPA_DRIVER_FLAGS_SAE) &&
++		!(drv->capa.flags & WPA_DRIVER_FLAGS_SME);
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ 	int ret = 0;
+ 
+ 	if (nl80211_alloc_mgmt_handle(bss))
+@@ -2644,8 +2652,7 @@ static int nl80211_mgmt_subscribe_non_ap
+ 	if (drv->nlmode == NL80211_IFTYPE_ADHOC) {
+ 		/* register for any AUTH message */
+ 		nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0, false);
+-	} else if ((drv->capa.flags & WPA_DRIVER_FLAGS_SAE) &&
+-		   !(drv->capa.flags & WPA_DRIVER_FLAGS_SME)) {
++	} else if (should_subscribe_sae) {
+ 		/* register for SAE Authentication frames */
+ 		nl80211_register_frame(bss, bss->nl_mgmt, type,
+ 				       (u8 *) "\x03\x00", 2, false);
+@@ -3649,6 +3656,40 @@ static int nl80211_set_pmk(struct wpa_dr
+ }
+ 
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++static int nl80211_mtk_preset_mlo_link(struct i802_bss *bss, u8 link_id)
++{
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	struct nlattr *data;
++	struct nl_msg *msg;
++	int ret;
++
++	msg = nl80211_bss_msg(bss, 0, NL80211_CMD_VENDOR);
++	if (!msg ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID,
++			MTK_NL80211_VENDOR_ID) ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
++			MTK_NL80211_VENDOR_SUBCMD_SET_MLO_PRESET_LINK) ||
++	    !(data = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)) ||
++	    nla_put_u8(msg, MTK_NL80211_VENDOR_ATTR_MLO_PRESET_LINKID_INFO,
++		       link_id))
++		goto fail;
++
++	nla_nest_end(msg, data);
++	ret = send_and_recv_cmd(drv, msg);
++	if (ret)
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: MTK failed to preset MLO key link: link_id=%u ret=%d (%s)",
++			   link_id, ret, strerror(-ret));
++	return ret;
++
++fail:
++	nlmsg_free(msg);
++	return -ENOBUFS;
++}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
++
+ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
+ 				      struct wpa_driver_set_key_params *params)
+ {
+@@ -3713,6 +3754,15 @@ static int wpa_driver_nl80211_set_key(st
+ 		return -EOPNOTSUPP;
+ 	}
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	if (params->use_mtk_mlo_preset_link) {
++		ret = nl80211_mtk_preset_mlo_link(bss, link_id);
++		if (ret)
++			return ret;
++		link_id = -1;
++	}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
+ 	ret = -ENOBUFS;
+ 	key_msg = nlmsg_alloc();
+ 	if (!key_msg)
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -3921,9 +3921,10 @@ static void wpas_fst_update_mb_assoc(str
+ }
+ 
+ 
+-static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
++static unsigned int wpas_ml_parse_assoc(const u8 *ap_mld_addr,
+ 					struct ieee802_11_elems *elems,
+-					struct ml_sta_link_info *ml_info)
++					struct ml_sta_link_info *ml_info,
++					struct wpabuf **ret_mlbuf)
+ {
+ 	struct wpabuf *mlbuf;
+ 	struct ieee80211_eht_ml *ml;
+@@ -3938,7 +3939,10 @@ static unsigned int wpas_ml_parse_assoc(
+ 	unsigned int i = 0;
+ 	u16 ml_control;
+ 
+-	if (!wpa_s->valid_links || !elems->basic_mle || !elems->basic_mle_len)
++	if (ret_mlbuf)
++		*ret_mlbuf = NULL;
++
++	if (!ap_mld_addr || !elems->basic_mle || !elems->basic_mle_len)
+ 		return 0;
+ 
+ 	mlbuf = ieee802_11_defrag(elems->basic_mle, elems->basic_mle_len, true);
+@@ -4007,9 +4011,9 @@ static unsigned int wpas_ml_parse_assoc(
+ 	wpa_printf(MSG_DEBUG, "MLD: address: " MACSTR,
+ 		   MAC2STR(common_info->mld_addr));
+ 
+-	if (!ether_addr_equal(wpa_s->ap_mld_addr, common_info->mld_addr)) {
++	if (!ether_addr_equal(ap_mld_addr, common_info->mld_addr)) {
+ 		wpa_printf(MSG_DEBUG, "MLD: Mismatching MLD address (expected "
+-			   MACSTR ")", MAC2STR(wpa_s->ap_mld_addr));
++			   MACSTR ")", MAC2STR(ap_mld_addr));
+ 		goto out;
+ 	}
+ 
+@@ -4194,6 +4198,8 @@ static unsigned int wpas_ml_parse_assoc(
+ 
+ 		wpa_hexdump(MSG_MSGDUMP, "MLD: STA profile", pos, sub_elem_len);
+ 		ml_info[i].status = WPA_GET_LE16(pos + 2);
++		ml_info[i].sta_profile = pos + 4;
++		ml_info[i].sta_profile_len = sub_elem_len - 4;
+ 
+ 		pos += sub_elem_len;
+ 		ml_len -= sub_elem_len;
+@@ -4201,7 +4207,10 @@ static unsigned int wpas_ml_parse_assoc(
+ 		i++;
+ 	}
+ 
+-	wpabuf_free(mlbuf);
++	if (ret_mlbuf)
++		*ret_mlbuf = mlbuf;
++	else
++		wpabuf_free(mlbuf);
+ 	return i;
+ out:
+ 	wpabuf_free(mlbuf);
+@@ -4209,6 +4218,103 @@ out:
+ }
+ 
+ 
++#if defined(CONFIG_DRIVER_NL80211_MTK) && defined(CONFIG_SAE) && \
++	defined(CONFIG_SME) && defined(CONFIG_IEEE80211BE)
++static int
++wpas_mtk_parse_ml_assoc_req(struct ieee802_11_elems *elems,
++			    const u8 *own_mld_addr,
++			    struct wpa_sm_mlo *mlo)
++{
++	struct wpabuf *mlbuf;
++	const struct ieee80211_eht_ml *ml;
++	const struct eht_ml_basic_common_info *common_info;
++	const u8 *pos, *ml_end;
++	size_t ml_len;
++	int ret = -1;
++
++	if (!elems->basic_mle || !elems->basic_mle_len)
++		return -1;
++
++	mlbuf = ieee802_11_defrag(elems->basic_mle, elems->basic_mle_len,
++				 true);
++	if (!mlbuf)
++		return -1;
++
++	ml = wpabuf_head(mlbuf);
++	ml_len = wpabuf_len(mlbuf);
++	ml_end = (const u8 *) ml + ml_len;
++	if (ml_len < sizeof(*ml) + 1 + ETH_ALEN ||
++	    (le_to_host16(ml->ml_control) & MULTI_LINK_CONTROL_TYPE_MASK) !=
++	    MULTI_LINK_CONTROL_TYPE_BASIC)
++		goto out;
++
++	common_info = (const struct eht_ml_basic_common_info *) ml->variable;
++	if (common_info->len < 1 + ETH_ALEN ||
++	    sizeof(*ml) + common_info->len > ml_len ||
++	    !ether_addr_equal(common_info->mld_addr, own_mld_addr))
++		goto out;
++
++	pos = (const u8 *) common_info + common_info->len;
++	while (ml_end - pos > 2) {
++		size_t sub_elem_len, sta_info_len;
++		const u8 *sub_elem_end;
++		u16 control;
++		u8 link_id, nstr_bitmap_len = 0;
++		int num_frag_subelems;
++
++		num_frag_subelems =
++			ieee802_11_defrag_mle_subelem(mlbuf, pos,
++						      &sub_elem_len);
++		if (num_frag_subelems < 0)
++			goto out;
++
++		ml_len -= num_frag_subelems * 2;
++		ml_end = (const u8 *) ml + ml_len;
++		if (2 + sub_elem_len > (size_t) (ml_end - pos))
++			goto out;
++
++		if (*pos != EHT_ML_SUB_ELEM_PER_STA_PROFILE) {
++			pos += 2 + sub_elem_len;
++			continue;
++		}
++
++		pos += 2;
++		sub_elem_end = pos + sub_elem_len;
++		if (sub_elem_end - pos < 2)
++			goto out;
++
++		control = WPA_GET_LE16(pos);
++		link_id = control & EHT_PER_STA_CTRL_LINK_ID_MSK;
++		pos += 2;
++		if (link_id >= MAX_NUM_MLD_LINKS ||
++		    (mlo->req_links & BIT(link_id)) ||
++		    !(control & EHT_PER_STA_CTRL_COMPLETE_PROFILE_MSK) ||
++		    !(control & EHT_PER_STA_CTRL_MAC_ADDR_PRESENT_MSK))
++			goto out;
++
++		if (control & EHT_PER_STA_CTRL_NSTR_LINK_PAIR_PRESENT_MSK)
++			nstr_bitmap_len =
++				(control & EHT_PER_STA_CTRL_NSTR_BM_SIZE_MSK) ? 2 : 1;
++
++		sta_info_len = 1 + ETH_ALEN + nstr_bitmap_len;
++		if (sta_info_len > (size_t) (sub_elem_end - pos) ||
++		    sta_info_len > *pos || *pos > sub_elem_end - pos)
++			goto out;
++
++		os_memcpy(mlo->links[link_id].addr, pos + 1, ETH_ALEN);
++		mlo->req_links |= BIT(link_id);
++		pos = sub_elem_end;
++	}
++
++	ret = 0;
++out:
++	wpabuf_free(mlbuf);
++	return ret;
++}
++#endif /* CONFIG_DRIVER_NL80211_MTK && CONFIG_SAE && CONFIG_SME &&
++	* CONFIG_IEEE80211BE */
++
++
+ static int wpa_drv_get_mlo_info(struct wpa_supplicant *wpa_s)
+ {
+ 	struct driver_sta_mlo_info mlo;
+@@ -4320,6 +4426,240 @@ out:
+ }
+ 
+ 
++#if defined(CONFIG_DRIVER_NL80211_MTK) && defined(CONFIG_SAE) && \
++	defined(CONFIG_SME) && defined(CONFIG_IEEE80211BE)
++static int
++wpas_mtk_set_ml_link_security(const struct wpa_sm_link *reporting_link,
++			      const u8 *sta_profile, size_t sta_profile_len,
++			      struct wpa_sm_link *reported_link)
++{
++	struct ieee802_11_elems elems;
++	const u8 *non_inherit, *pos;
++	size_t i, len;
++	bool should_inherit_rsne = true, should_inherit_rsnxe = true;
++	bool should_inherit_vendor = true;
++
++	if (ieee802_11_parse_elems(sta_profile, sta_profile_len, &elems, 1) ==
++	    ParseFailed)
++		return -1;
++
++	non_inherit = get_ie_ext(sta_profile, sta_profile_len,
++				 WLAN_EID_EXT_NON_INHERITANCE);
++	if (non_inherit) {
++		if (non_inherit[1] < 3 ||
++		    non_inherit + 2 + non_inherit[1] !=
++		    sta_profile + sta_profile_len)
++			return -1;
++
++		/* Skip the element header and extension ID. */
++		pos = non_inherit + 3;
++		len = non_inherit[1] - 1;
++		if (len < 1U + pos[0])
++			return -1;
++
++		for (i = 0; i < pos[0]; i++) {
++			switch (pos[1 + i]) {
++			case WLAN_EID_RSN:
++				should_inherit_rsne = false;
++				break;
++			case WLAN_EID_RSNX:
++				should_inherit_rsnxe = false;
++				break;
++			case WLAN_EID_VENDOR_SPECIFIC:
++				should_inherit_vendor = false;
++				break;
++			}
++		}
++
++		len -= 1 + pos[0];
++		pos += 1 + pos[0];
++		if (len < 1U || len != 1U + pos[0])
++			return -1;
++	}
++
++	/*
++	 * IEs omitted from a Per-STA Profile inherit from the reporting link
++	 * unless the Non-Inheritance element explicitly excludes their EID.
++	 */
++	if (elems.rsn_ie) {
++		reported_link->ap_rsne = (u8 *) elems.rsn_ie - 2;
++		reported_link->ap_rsne_len = 2 + elems.rsn_ie_len;
++	} else if (should_inherit_rsne) {
++		reported_link->ap_rsne = reporting_link->ap_rsne;
++		reported_link->ap_rsne_len = reporting_link->ap_rsne_len;
++	}
++	if (elems.rsnxe) {
++		reported_link->ap_rsnxe = (u8 *) elems.rsnxe - 2;
++		reported_link->ap_rsnxe_len = 2 + elems.rsnxe_len;
++	} else if (should_inherit_rsnxe) {
++		reported_link->ap_rsnxe = reporting_link->ap_rsnxe;
++		reported_link->ap_rsnxe_len = reporting_link->ap_rsnxe_len;
++	}
++	if (elems.rsne_override) {
++		reported_link->ap_rsnoe = (u8 *) elems.rsne_override - 2;
++		reported_link->ap_rsnoe_len = 2 + elems.rsne_override_len;
++	} else if (should_inherit_vendor) {
++		reported_link->ap_rsnoe = reporting_link->ap_rsnoe;
++		reported_link->ap_rsnoe_len = reporting_link->ap_rsnoe_len;
++	}
++	if (elems.rsne_override_2) {
++		reported_link->ap_rsno2e = (u8 *) elems.rsne_override_2 - 2;
++		reported_link->ap_rsno2e_len = 2 + elems.rsne_override_2_len;
++	} else if (should_inherit_vendor) {
++		reported_link->ap_rsno2e = reporting_link->ap_rsno2e;
++		reported_link->ap_rsno2e_len = reporting_link->ap_rsno2e_len;
++	}
++	if (elems.rsnxe_override) {
++		reported_link->ap_rsnxoe = (u8 *) elems.rsnxe_override - 2;
++		reported_link->ap_rsnxoe_len = 2 + elems.rsnxe_override_len;
++	} else if (should_inherit_vendor) {
++		reported_link->ap_rsnxoe = reporting_link->ap_rsnxoe;
++		reported_link->ap_rsnxoe_len = reporting_link->ap_rsnxoe_len;
++	}
++
++	return reported_link->ap_rsne ? 0 : -1;
++}
++
++
++static int wpa_sm_set_mtk_ml_info(struct wpa_supplicant *wpa_s,
++				  union wpa_event_data *data,
++				  const u8 *bssid)
++{
++	struct ieee802_11_elems req_elems, resp_elems;
++	struct ml_sta_link_info ml_info[MAX_NUM_MLD_LINKS];
++	struct wpabuf *resp_mlbuf = NULL;
++	struct wpa_sm_mlo mlo;
++	struct wpa_bss *assoc_bss;
++	const u8 *rsne, *rsnxe, *rsnoe, *rsno2e, *rsnxoe;
++	unsigned int i, n_links;
++	int ret = -1;
++	u16 resp_links;
++	u8 link_id;
++
++	if (!data || !data->assoc_info.req_ies ||
++	    !data->assoc_info.resp_ies ||
++	    ieee802_11_parse_elems(data->assoc_info.req_ies,
++				   data->assoc_info.req_ies_len,
++				   &req_elems, 1) == ParseFailed ||
++	    ieee802_11_parse_elems(data->assoc_info.resp_ies,
++				   data->assoc_info.resp_ies_len,
++				   &resp_elems, 1) == ParseFailed) {
++		wpa_dbg(wpa_s, MSG_INFO,
++			"MTK MLO: Missing association request or response IEs");
++		return -1;
++	}
++
++	os_memset(&mlo, 0, sizeof(mlo));
++	os_memcpy(mlo.ap_mld_addr, wpa_s->sme.ext_auth_ap_mld_addr,
++		  ETH_ALEN);
++	if (wpas_mtk_parse_ml_assoc_req(&req_elems,
++					wpa_s->sme.ext_auth_own_mld_addr,
++					&mlo)) {
++		wpa_dbg(wpa_s, MSG_INFO,
++			"MTK MLO: Invalid association request Multi-Link element");
++		return -1;
++	}
++
++	n_links = wpas_ml_parse_assoc(wpa_s->sme.ext_auth_ap_mld_addr,
++				      &resp_elems, ml_info, &resp_mlbuf);
++	if (!n_links || ml_info[0].link_id >= MAX_NUM_MLD_LINKS) {
++		wpa_dbg(wpa_s, MSG_INFO,
++			"MTK MLO: Invalid association response Multi-Link element");
++		goto out;
++	}
++
++	link_id = ml_info[0].link_id;
++	if (mlo.req_links & BIT(link_id)) {
++		wpa_dbg(wpa_s, MSG_INFO,
++			"MTK MLO: Association link repeated in request profiles");
++		goto out;
++	}
++
++	mlo.assoc_link_id = link_id;
++	mlo.req_links |= BIT(link_id);
++	mlo.valid_links = BIT(link_id);
++	resp_links = BIT(link_id);
++	os_memcpy(mlo.links[link_id].addr,
++		  wpa_s->sme.ext_auth_own_mld_addr, ETH_ALEN);
++	os_memcpy(mlo.links[link_id].bssid, bssid, ETH_ALEN);
++
++	assoc_bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
++	if (!assoc_bss) {
++		wpa_dbg(wpa_s, MSG_INFO,
++			"MTK MLO: Association link BSS is unavailable");
++		goto out;
++	}
++	rsne = wpa_bss_get_ie(assoc_bss, WLAN_EID_RSN);
++	rsnxe = wpa_bss_get_ie(assoc_bss, WLAN_EID_RSNX);
++	rsnoe = wpa_bss_get_vendor_ie(assoc_bss,
++					 RSNE_OVERRIDE_IE_VENDOR_TYPE);
++	rsno2e = wpa_bss_get_vendor_ie(assoc_bss,
++					  RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
++	rsnxoe = wpa_bss_get_vendor_ie(assoc_bss,
++					  RSNXE_OVERRIDE_IE_VENDOR_TYPE);
++	if (!rsne) {
++		wpa_dbg(wpa_s, MSG_INFO,
++			"MTK MLO: Association link BSS has no RSNE");
++		goto out;
++	}
++	mlo.links[link_id].ap_rsne = (u8 *) rsne;
++	mlo.links[link_id].ap_rsne_len = 2 + rsne[1];
++	mlo.links[link_id].ap_rsnxe = (u8 *) rsnxe;
++	mlo.links[link_id].ap_rsnxe_len = rsnxe ? 2 + rsnxe[1] : 0;
++	mlo.links[link_id].ap_rsnoe = (u8 *) rsnoe;
++	mlo.links[link_id].ap_rsnoe_len = rsnoe ? 2 + rsnoe[1] : 0;
++	mlo.links[link_id].ap_rsno2e = (u8 *) rsno2e;
++	mlo.links[link_id].ap_rsno2e_len = rsno2e ? 2 + rsno2e[1] : 0;
++	mlo.links[link_id].ap_rsnxoe = (u8 *) rsnxoe;
++	mlo.links[link_id].ap_rsnxoe_len = rsnxoe ? 2 + rsnxoe[1] : 0;
++
++	for (i = 1; i < n_links; i++) {
++		link_id = ml_info[i].link_id;
++		if (link_id >= MAX_NUM_MLD_LINKS ||
++		    !(mlo.req_links & BIT(link_id)) ||
++		    (resp_links & BIT(link_id)) ||
++		    is_zero_ether_addr(ml_info[i].bssid)) {
++			wpa_dbg(wpa_s, MSG_INFO,
++				"MTK MLO: Response does not match requested links");
++			goto out;
++		}
++
++		resp_links |= BIT(link_id);
++		os_memcpy(mlo.links[link_id].bssid, ml_info[i].bssid,
++			  ETH_ALEN);
++		if (wpas_mtk_set_ml_link_security(
++			    &mlo.links[mlo.assoc_link_id],
++			    ml_info[i].sta_profile,
++			    ml_info[i].sta_profile_len,
++			    &mlo.links[link_id])) {
++			wpa_dbg(wpa_s, MSG_INFO,
++				"MTK MLO: Link %u profile has no valid RSNE",
++				link_id);
++			goto out;
++		}
++		if (ml_info[i].status == WLAN_STATUS_SUCCESS)
++			mlo.valid_links |= BIT(link_id);
++	}
++
++	if (resp_links != mlo.req_links) {
++		wpa_dbg(wpa_s, MSG_INFO,
++			"MTK MLO: Response omits a requested link");
++		goto out;
++	}
++
++	wpa_dbg(wpa_s, MSG_DEBUG,
++		"MTK MLO: association link=%u requested=0x%04x accepted=0x%04x",
++		mlo.assoc_link_id, mlo.req_links, mlo.valid_links);
++
++	ret = wpa_sm_set_mlo_params(wpa_s->wpa, &mlo);
++out:
++	wpabuf_free(resp_mlbuf);
++	return ret;
++}
++#endif /* CONFIG_DRIVER_NL80211_MTK && CONFIG_SAE && CONFIG_SME &&
++	* CONFIG_IEEE80211BE */
++
++
+ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
+ 				       union wpa_event_data *data)
+ {
+@@ -4459,6 +4799,20 @@ static void wpa_supplicant_event_assoc(s
+ 		return;
+ 	}
+ 
++#if defined(CONFIG_DRIVER_NL80211_MTK) && defined(CONFIG_SAE) && \
++	defined(CONFIG_SME) && defined(CONFIG_IEEE80211BE)
++	if (!wpa_s->valid_links && wpa_s->sme.ext_ml_auth &&
++	    wpa_s->sme.ext_auth_mlo_ie_len &&
++	    wpa_sm_set_mtk_ml_info(wpa_s, data, bssid)) {
++		wpa_dbg(wpa_s, MSG_INFO,
++			"Failed to set MTK private MLO connection info to wpa_sm");
++		wpa_supplicant_deauthenticate(wpa_s,
++					      WLAN_REASON_DEAUTH_LEAVING);
++		return;
++	}
++#endif /* CONFIG_DRIVER_NL80211_MTK && CONFIG_SAE && CONFIG_SME &&
++	* CONFIG_IEEE80211BE */
++
+ 	if (wpa_s->l2)
+ 		l2_packet_notify_auth_start(wpa_s->l2);
+ 
+@@ -5990,7 +6344,9 @@ static void wpas_event_assoc_reject(stru
+ 		unsigned int n_links, i, idx;
+ 
+ 		idx = 0;
+-		n_links = wpas_ml_parse_assoc(wpa_s, &elems, ml_info);
++		n_links = wpas_ml_parse_assoc(wpa_s->valid_links ?
++					      wpa_s->ap_mld_addr : NULL,
++					      &elems, ml_info, NULL);
+ 
+ 		for (i = 1; i < n_links; i++) {
+ 			/* The status cannot be success here.
+@@ -6812,8 +7168,9 @@ void supplicant_event(void *ctx, enum wp
+ 
+ #ifdef CONFIG_SAE
+ 			if (stype == WLAN_FC_STYPE_AUTH &&
+-			    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) &&
+-			    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE)) {
++			    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE) &&
++			    (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) ||
++			     wpa_s->sme.ext_auth_wpa_ssid)) {
+ 				sme_external_auth_mgmt_rx(
+ 					wpa_s, data->rx_mgmt.frame,
+ 					data->rx_mgmt.frame_len);
+--- a/wpa_supplicant/driver_i.h
++++ b/wpa_supplicant/driver_i.h
+@@ -178,6 +178,13 @@ static inline int wpa_drv_set_key(struct
+ 	params.key_len = key_len;
+ 	params.key_flag = key_flag;
+ 	params.link_id = link_id;
++#if defined(CONFIG_DRIVER_NL80211_MTK) && defined(CONFIG_SAE) && \
++	defined(CONFIG_SME)
++	params.use_mtk_mlo_preset_link = !wpa_s->valid_links &&
++		wpa_s->sme.ext_ml_auth && wpa_s->sme.ext_auth_mlo_ie_len &&
++		alg != WPA_ALG_NONE && link_id >= 0 &&
++		(key_flag & KEY_FLAG_GROUP);
++#endif /* CONFIG_DRIVER_NL80211_MTK && CONFIG_SAE && CONFIG_SME */
+ 
+ 	if (alg != WPA_ALG_NONE) {
+ 		/* keyidx = 1 can be either a broadcast or--with

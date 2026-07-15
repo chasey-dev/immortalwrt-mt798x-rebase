@@ -294,7 +294,12 @@ export function convert(uci_cfg) {
 			dat.MUTxRxEnable = "3";
 
 		dat.ApCliEnable = "1";
-		dat.ApCliSsid = c.ssid;
+		if (c.mlo) {
+			dat.ApcliMloDisable = "0";
+			dat.ApCliSsid = uci_cfg.device == c.device[0] ? c.ssid : "";
+		} else {
+			dat.ApCliSsid = c.ssid;
+		}
 		dat.ApCliBssid = c.bssid;
 		if (c.macaddr)
 			dat.ApcliMacAddress = c.macaddr;

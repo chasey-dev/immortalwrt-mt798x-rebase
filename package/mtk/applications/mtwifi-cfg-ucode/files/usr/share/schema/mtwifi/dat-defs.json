@@ -66,6 +66,7 @@
 	},
 	"APCLI_CFGS": {
 		"ApCliEnable": "0",
+		"ApcliMloDisable": "1",
 		"ApCliSsid": "",
 		"ApCliBssid": "",
 		"ApCliAuthMode": "OPEN",
@@ -83,8 +84,7 @@
 		"ApCliMuMimoUlEnable": "0"
 	},
 	"DEVICE_CFGS": {
-		"beacon_int": [ "BeaconPeriod", "100" ],
-		"sta_mlo": [ "ApcliMloDisable", "1" ]
+		"beacon_int": [ "BeaconPeriod", "100" ]
 	},
 	"IWPRIV_AP_CFGS": {
 		"kicklow": [ "KickStaRssiLow", "0" ],

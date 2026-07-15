@@ -269,6 +269,14 @@ function prepare_wpad_data(data, iface_items, phy) {
             ];
         }
 
+        /*
+         * The driver joins all ApCli links from DAT. wifi-scripts preserves the
+         * ordered MLO device list, so only its first member runs the association.
+         */
+        if (iface_config.mlo && iface_config.mode == "sta" &&
+            data.device != iface_config.device[0])
+            iface_config.disabled = true;
+
         delete iface_config.mlo;
         delete iface_config.mld_addr;
         normalize_iface_config(iface_config, iface.mtwifi_ifname);

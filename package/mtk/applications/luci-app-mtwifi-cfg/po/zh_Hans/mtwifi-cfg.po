@@ -93,3 +93,21 @@ msgstr "此 MLO 接入点配置包含 6 GHz 无线时，仅支持 WPA3-SAE 或 O
 
 msgid "At least one AP interface must remain on %s."
 msgstr "%s 上必须至少保留一个 AP 接口。"
+
+msgid "MLO Client"
+msgstr "MLO 客户端"
+
+msgid "Join this network using the selected radio."
+msgstr "使用当前选择的无线加入此网络。"
+
+msgid "This MLO client configuration requires one 2.4 GHz main radio and one 5 GHz member radio."
+msgstr "此 MLO 客户端配置需要一个 2.4 GHz 主无线成员和一个 5 GHz 无线成员。"
+
+msgid "Member radio %s already has a client interface."
+msgstr "无线成员 %s 已有客户端接口。"
+
+msgid "This version only supports WPA3-SAE encryption in MLO client mode."
+msgstr "当前版本在 MLO 客户端模式下仅支持 WPA3-SAE 加密。"
+
+msgid "The scan result does not identify whether this network supports MLO. Select this mode only for a known MLO AP."
+msgstr "扫描结果无法确认该网络是否支持 MLO。请仅对已知的 MLO 接入点选择此模式。"

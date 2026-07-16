@@ -96,3 +96,24 @@ msgstr "6 GHz MLO AP 仅支持 SAE 或 OWE 加密。"
 
 msgid "At least one MBSSID needs to be reserved on %s."
 msgstr "%s 上至少需要保留一个 MBSSID。"
+
+msgid "MLO STA"
+msgstr "MLO STA"
+
+msgid "MLO Client (MLO STA)"
+msgstr "MLO 客户端 (MLO STA)"
+
+msgid "Join this network using the selected radio."
+msgstr "使用当前选择的无线加入此网络。"
+
+msgid "MLO STA currently requires one 2.4 GHz main radio and one 5 GHz member radio."
+msgstr "当前 MLO STA 需要一个 2.4 GHz 主无线和一个 5 GHz 成员无线。"
+
+msgid "Member radio %s already has a client interface."
+msgstr "无线成员 %s 已有客户端接口。"
+
+msgid "MLO STA currently only supports WPA3-SAE encryption."
+msgstr "当前 MLO STA 仅支持 WPA3-SAE 加密。"
+
+msgid "The scan result does not identify whether this network supports MLO. Select this mode only for a known MLO AP."
+msgstr "扫描结果无法确认该网络是否支持 MLO。请仅对已知的 MLO AP 选择此模式。"

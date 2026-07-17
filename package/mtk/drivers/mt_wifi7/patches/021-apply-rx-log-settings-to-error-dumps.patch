@@ -1,0 +1,56 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] mt_wifi: Apply RX log settings to receive error dumps
+
+header_packet_process() can dump WTBL and RX descriptors for its first
+three receive errors. Direct printing in these dump functions bypasses
+driver log settings, so ICV errors during association can flood a serial
+console even with NOTICE logging disabled.
+
+RX category and RXINFO NOTICE settings now control detailed error dumps.
+This makes the default NOTICE setting effective on this receive path.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/common/cmm_data.c
++++ b/mt_wifi/common/cmm_data.c
+@@ -6463,6 +6463,13 @@ NDIS_STATUS header_packet_process(
+ 	/* Check for all RxD errors */
+ 	if (rtmp_chk_rx_err(pAd, pRxBlk) != NDIS_STATUS_SUCCESS) {
+ 		BOOLEAN bDump = TRUE;
++		BOOLEAN bDumpDetails = FALSE;
++
++#ifdef DBG
++		/* WTBL dumps bypass MTWF_DBG and must follow RX logging settings. */
++		bDumpDetails = (DebugCategory & (1U << DBG_CAT_RX)) &&
++			(DebugSubCategory[DBG_LVL_NOTICE][DBG_CAT_RX] & CATRX_RXINFO);
++#endif
+ 		pAd->Counters8023.RxErrors++;
+ 		/* Filter out the temporary No Key case ICV Error :
+ 		* to prevent host flooding log stuck the system
+@@ -6482,7 +6489,7 @@ NDIS_STATUS header_packet_process(
+ 					bDump = FALSE;
+ 				else {
+ 					/* dump AKM & Cipher & PTK & WTBL */
+-					if (pAd->Counters8023.RxErrors <= 3) {
++					if (bDumpDetails && pAd->Counters8023.RxErrors <= 3) {
+ 						MTWF_DBG(pAd, DBG_CAT_SEC, CATSEC_KEY, DBG_LVL_NOTICE,
+ 							"wcid(%d), AKM(%d), PairwiseCipher(%d)\n", pRxBlk->wcid, pEntry->SecConfig.AKMMap, pEntry->SecConfig.PairwiseCipher);
+ 						hex_dump_with_cat_and_lvl("PTK", &pEntry->SecConfig.PTK[LEN_PTK_KCK + LEN_PTK_KEK], (LEN_TK + LEN_TK2),
+@@ -6496,7 +6503,7 @@ NDIS_STATUS header_packet_process(
+ 				}
+ 			} else if (IS_WCID_VALID(pAd, pRxBlk->wcid)) {
+ 				/* for BMC wcid case */
+-				if (pAd->Counters8023.RxErrors <= 3) {
++				if (bDumpDetails && pAd->Counters8023.RxErrors <= 3) {
+ 					/* WTBL */
+ 					asic_dump_wtbl_info(pAd, pRxBlk->wcid);
+ 					/* DUMP UWTBL.Own MLD Addr */
+@@ -6510,7 +6517,7 @@ NDIS_STATUS header_packet_process(
+ 			MTWF_DBG(pAd, DBG_CAT_RX, CATRX_RXINFO, DBG_LVL_ERROR,
+ 				"CheckRxError, wcid(%d)!\n", pRxBlk->wcid);
+ 			/* dump rx packet */
+-			if (pAd->Counters8023.RxErrors <= 3)
++			if (bDumpDetails && pAd->Counters8023.RxErrors <= 3)
+ 				dump_rxblk(pAd, pRxBlk);
+ 		}
+ 		return NDIS_STATUS_INVALID_DATA;

@@ -1,0 +1,78 @@
+Subject: [PATCH] mt_wifi: read per-band MAC address from wifi_utility
+
+Use the device-scoped wifi_utility MAC backend after explicit DAT and
+module parameter overrides, but before falling back to the EEPROM address.
+
+Also propagate configured OF/NVMEM read failures so a valid-looking 
+EEPROM address cannot silently mask a broken board MAC description.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/common/rtmp_init.c
++++ b/mt_wifi/common/rtmp_init.c
+@@ -226,7 +226,8 @@ INT32 WfEPROMSysInit(RTMP_ADAPTER *pAd,
+ 	UCHAR RfIC;
+ 
+ 	/* We should read EEPROM for all cases */
+-	NICReadEEPROMParameters(pAd, (RTMP_STRING *)mac);
++	if (!NICReadEEPROMParameters(pAd, (RTMP_STRING *)mac))
++		return NDIS_STATUS_FAILURE;
+ 	hc_radio_init(pAd, pAd->RfIcType, dbdc_mode);
+ 	/* +++Add by shiang for debug */
+ 	RfIC = HcGetRadioRfIC(pAd);
+--- a/mt_wifi/hw_ctrl/eeprom.c
++++ b/mt_wifi/hw_ctrl/eeprom.c
+@@ -26,6 +26,10 @@
+ */
+ #include "rt_config.h"
+ 
++#ifdef HWIFI_SUPPORT
++extern int mt_mac_address_read_wifi(struct device *dev, u32 band_idx, u8 *addr);
++#endif
++
+ struct chip_map {
+ 	UINT32 ChipVersion;
+ 	RTMP_STRING *name;
+@@ -499,6 +503,11 @@ INT NICReadEEPROMParameters(
+ 	struct physical_device *ph_dev = pAd->physical_dev;
+ 	UINT16 BandSel = 0;
+ 	struct _RTMP_CHIP_OP *ops = hc_get_chip_ops(pAd->hdev_ctrl);
++	BOOLEAN is_mac_from_of = FALSE;
++#ifdef HWIFI_SUPPORT
++	POS_COOKIE obj = (POS_COOKIE)pAd->OS_Cookie;
++	int mac_ret = -ENOENT;
++#endif
+ 
+ 	os_zero_mem(&Antenna, sizeof(EEPROM_ANTENNA_STRUC));
+ 
+@@ -583,8 +592,29 @@ INT NICReadEEPROMParameters(
+ 		MTWF_DBG(pAd, DBG_CAT_HW, CATHW_EEPROM, DBG_LVL_INFO,
+ 			"Use the MAC address what is assigned from Moudle Parameter.\n");
+ 	} else {
++#ifdef HWIFI_SUPPORT
++		if (obj && obj->mac_dev && obj->mac_dev->hw.pdev)
++			mac_ret = mt_mac_address_read_wifi(obj->mac_dev->hw.pdev,
++							   hc_get_hw_band_idx(pAd),
++							   pAd->PermanentAddress);
++
++		if (mac_ret && mac_ret != -ENOENT) {
++			MTWF_DBG(pAd, DBG_CAT_HW, CATHW_EEPROM, DBG_LVL_ERROR,
++				 "Failed to read OF band MAC address, ret=%d\n", mac_ret);
++			return FALSE;
++		}
++
++		if (!mac_ret) {
++			pAd->bRandomMac = FALSE;
++			is_mac_from_of = TRUE;
++		}
++#endif
+ 		COPY_MAC_ADDR(pAd->CurrentAddress, pAd->PermanentAddress);
+-		if (pAd->bRandomMac) {
++		if (is_mac_from_of)
++			MTWF_DBG(pAd, DBG_CAT_HW, CATHW_EEPROM, DBG_LVL_INFO,
++				 "Use OF band MAC: =" MACSTR "\n",
++				 MAC2STR(pAd->CurrentAddress));
++		else if (pAd->bRandomMac) {
+ 			MTWF_DBG(pAd, DBG_CAT_HW, CATHW_EEPROM, DBG_LVL_WARN,
+ 			"\n\n\n\n\n\033[1;31m[Wanrning] you are using random MAC!!!\033[0m\n"
+ 			"\033[1;31m[Wanrning]please update the MAC before use the board!!!!!!!\033[0m\n\n\n\n\n");

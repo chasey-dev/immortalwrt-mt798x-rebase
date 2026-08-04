@@ -1,0 +1,79 @@
+Subject: [PATCH] mediatek: wifi_utility: add per-band MAC address backend
+
+Some boards keep radio MAC addresses outside the EEPROM data cell. Add a
+device-scoped backend that resolves the requested band child and uses the
+standard OF MAC helper, including its NVMEM and mac-base support.
+
+Export the symbol without a GPL-only restriction so the proprietary mt_wifi
+module can consume it.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/drivers/net/wireless/wifi_utility/Makefile
++++ b/drivers/net/wireless/wifi_utility/Makefile
+@@ -2,5 +2,6 @@
+ obj-y += mt_wifi_mtd.o
+ obj-y += mt_wifi_of.o
+ obj-y += mt_wifi_eeprom.o
++obj-y += mt_wifi_mac.o
+ obj-y += pci_mediatek_rbus.o
+ 
+--- a/drivers/net/wireless/wifi_utility/mt_wifi_eeprom.h
++++ b/drivers/net/wireless/wifi_utility/mt_wifi_eeprom.h
+@@ -3,6 +3,8 @@
+ 
+ #include <linux/types.h>
+ 
++struct device;
++
+ int mt_mtd_read_nm_wifi(char *name, loff_t from, size_t len, u_char *buf);
+ int mt_mtd_write_nm_wifi(char *name, loff_t to, size_t len, const u_char *buf);
+ 
+@@ -10,5 +12,6 @@ int mt_of_read_eeprom_wifi(loff_t from,
+ 
+ int mt_eeprom_read_wifi(loff_t from, size_t len, u_char *buf);
+ int mt_eeprom_write_wifi(loff_t to, size_t len, const u_char *buf);
++int mt_mac_address_read_wifi(struct device *dev, u32 band_idx, u8 *addr);
+ 
+ #endif
+--- /dev/null
++++ b/drivers/net/wireless/wifi_utility/mt_wifi_mac.c
+@@ -0,0 +1,38 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/device.h>
++#include <linux/errno.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_net.h>
++#include <linux/types.h>
++
++#include "mt_wifi_eeprom.h"
++
++int mt_mac_address_read_wifi(struct device *dev, u32 band_idx, u8 *addr)
++{
++	struct device_node *band_np;
++	struct device_node *np;
++	u32 reg;
++	int ret = -ENOENT;
++
++	if (!dev || !addr)
++		return -EINVAL;
++
++	np = dev_of_node(dev);
++	if (!np)
++		return -ENOENT;
++
++	for_each_available_child_of_node(np, band_np) {
++		if (of_property_read_u32(band_np, "reg", &reg))
++			continue;
++		if (reg != band_idx)
++			continue;
++
++		ret = of_get_mac_address(band_np, addr);
++		of_node_put(band_np);
++		return ret;
++	}
++
++	return ret;
++}
++EXPORT_SYMBOL(mt_mac_address_read_wifi);

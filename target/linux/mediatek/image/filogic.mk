@@ -346,6 +346,34 @@ $(call Device/adtran_smartrg)
 endef
 TARGET_DEVICES += smartrg_sdg-8734
 
+define Device/aigo_ags21
+  DEVICE_VENDOR := AIGO
+  DEVICE_MODEL := AGS21
+  DEVICE_DTS := mt7981b-aigo-ags21
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_DTC_FLAGS := --pad 4096
+  DEVICE_DTS_LOADADDR := 0x43f00000
+  DEVICE_PACKAGES :=  automount f2fsck mkf2fs
+  KERNEL_LOADADDR := 0x44000000
+  KERNEL := kernel-bin | gzip
+  KERNEL_INITRAMFS := kernel-bin | lzma | \
+        fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
+  KERNEL_INITRAMFS_SUFFIX := -recovery.itb
+  KERNEL_IN_UBI := 1
+  UBOOTENV_IN_UBI := 1
+  IMAGES := sysupgrade.itb
+  IMAGE_SIZE := $$(shell expr 64 + $$(CONFIG_TARGET_ROOTFS_PARTSIZE))m
+  IMAGE/sysupgrade.itb := append-kernel | \
+        fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-static-with-rootfs | \
+        pad-rootfs | append-metadata
+  ARTIFACTS := emmc-gpt.bin
+  ARTIFACT/emmc-gpt.bin := mt798x-gpt emmc
+  ARTIFACTS += emmc-preloader.bin emmc-bl31-uboot.fip
+  ARTIFACT/emmc-preloader.bin := mt7981-bl2 emmc-ddr4
+  ARTIFACT/emmc-bl31-uboot.fip := mt7981-bl31-uboot aigo_ags21
+endef
+TARGET_DEVICES += aigo_ags21
+
 define Device/airpi_ap3000m
   DEVICE_VENDOR := Airpi
   DEVICE_MODEL := AP3000M

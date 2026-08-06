@@ -773,6 +773,7 @@ setup_model()
 		MT7986_whnat $num_of_wifi $usbnet
 		;;
 	abt,asr3000* |\
+	aigo,ags21|\
 	asus,rt-ax52 |\
 	cetron,ct3003* |\
 	cmcc,a10* |\

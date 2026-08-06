@@ -231,6 +231,18 @@ define U-Boot/mt7981_abt_asr3000
   DEPENDS:=+trusted-firmware-a-mt7981-spim-nand-ddr3
 endef
 
+define U-Boot/mt7981_aigo_ags21
+  NAME:=AIGO ASG21
+  BUILD_SUBTARGET:=filogic
+  BUILD_DEVICES:=aigo_ags21
+  UBOOT_CONFIG:=mt7981_aigo_ags21
+  UBOOT_IMAGE:=u-boot.fip
+  BL2_BOOTDEV:=emmc
+  BL2_SOC:=mt7981
+  BL2_DDRTYPE:=ddr4
+  DEPENDS:=+trusted-firmware-a-mt7981-emmc-ddr4
+endef
+
 define U-Boot/mt7981_bazis-ax3000wm
   NAME:=BAZIS AX3000WM
   BUILD_SUBTARGET:=filogic
@@ -1407,6 +1419,7 @@ UBOOT_TARGETS := \
 	mt7628_ravpower_rp-wd009 \
 	mt7629_rfb \
 	mt7981_abt_asr3000 \
+	mt7981_aigo_ags21 \
 	mt7981_bazis-ax3000wm \
 	mt7981_cetron_ct3003 \
 	mt7981_cmcc_a10 \

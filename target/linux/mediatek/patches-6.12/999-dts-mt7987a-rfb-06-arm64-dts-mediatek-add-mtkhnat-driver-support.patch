@@ -10,10 +10,11 @@ Subject: [PATCH] arm64: dts: mt7987-netsys: add mtkhnat driver support
  .../dts/mediatek/mt7987-netsys-eth0-e2p5g.dtso |  7 +++++++
  .../mt7987-netsys-eth0-mt7531-gsw.dtso         |  7 +++++++
  .../mediatek/mt7987-netsys-eth2-an8801sb.dtso  |  8 ++++++++
+ .../mediatek/mt7987-netsys-eth2-an8811hb.dtso  |  8 ++++++++
  .../dts/mediatek/mt7987-netsys-eth2-e2p5g.dtso |  8 ++++++++
  .../dts/mediatek/mt7987-netsys-eth2-sfp.dtso   |  8 ++++++++
  .../arm64/boot/dts/mediatek/mt7987-netsys.dtsi | 18 ++++++++++++++++++
- 9 files changed, 77 insertions(+)
+ 10 files changed, 85 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8801sb.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8801sb.dtso
 index d5635d4..0a0c63e 100644
@@ -103,6 +104,24 @@ index a9f5d9b..0c68288 100644
 --- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8801sb.dtso
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8801sb.dtso
 @@ -32,5 +32,13 @@ phy31: phy@31 {
+ 			};
+ 		};
+ 	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan2 = "eth2";
++			mtketh-max-gmac = <3>;
++		};
++	};
+ };
+ 
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso
+index a9f5d9b..0c68288 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso
+@@ -34,5 +34,13 @@ phy11: phy@11 {
  			};
  		};
  	};

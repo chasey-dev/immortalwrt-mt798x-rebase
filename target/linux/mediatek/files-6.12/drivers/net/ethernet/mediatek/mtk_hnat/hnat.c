@@ -1483,6 +1483,8 @@ int hnat_warm_init(void)
 	unregister_netevent_notifier(&nf_hnat_netevent_nb);
 	hnat_neigh_update_cleanup();
 
+	hnat_mcast_ser_handle();
+
 	for (ppe_id = 0; ppe_id < CFG_PPE_NUM; ppe_id++) {
 		foe_table_sz =
 			hnat_priv->foe_etry_num * sizeof(struct foe_entry);

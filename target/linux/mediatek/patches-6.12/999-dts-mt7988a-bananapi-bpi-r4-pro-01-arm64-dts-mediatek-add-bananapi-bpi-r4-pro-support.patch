@@ -15,10 +15,10 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4-pro.dts
-@@ -0,0 +1,781 @@
+@@ -0,0 +1,788 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
 +/*
-+ * Copyright (C) 2022 MediaTek Inc.
++ * Copyright (C) 2025 MediaTek Inc.
 + * Author: Sam.Shih <sam.shih@mediatek.com>
 + */
 +
@@ -137,7 +137,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +		compatible = "sff,sfp";
 +		i2c-bus = <&imux1_gpio>;
 +		los-gpios = <&pio 70 GPIO_ACTIVE_HIGH>;
-+		mod-def0-gpios = <&pio 4 GPIO_ACTIVE_LOW>;
++		mod-def0-gpios = <&pio 69 GPIO_ACTIVE_LOW>;
 +		tx-disable-gpios = <&pio 21 GPIO_ACTIVE_HIGH>;
 +		maximum-power-milliwatt = <3000>;
 +	};
@@ -242,12 +242,12 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +			reg = <1>;
 +			chan-sel-gpios = <&pio 3 GPIO_ACTIVE_HIGH>;
 +			mod-def0-gpios = <&pio 1 GPIO_ACTIVE_LOW>;
-+			sfp-present-channel = <1>;
++			sfp-connected-channel = <1>;
 +
 +			channel_10: channel@0 {
 +				reg = <0>;
-+				phy-mode = "10gbase-r";
-+				phy-connection-type = "10gbase-r";
++				phy-mode = "usxgmii";
++				phy-connection-type = "usxgmii";
 +				phy-handle = <&phy28>;
 +			};
 +
@@ -257,28 +257,6 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +				phy-connection-type = "10gbase-r";
 +				managed = "in-band-status";
 +				sfp = <&sfp2>;
-+			};
-+		};
-+		mux2: ethernet-mux@2 {
-+			compatible = "mediatek,eth-mux";
-+			reg = <2>;
-+			chan-sel-gpios = <&pio 54 GPIO_ACTIVE_HIGH>;
-+			mod-def0-gpios = <&pio 4 GPIO_ACTIVE_LOW>;
-+			sfp-present-channel = <0>;
-+
-+			channel_20: channel@0 {
-+				reg = <0>;
-+				phy-mode = "10gbase-r";
-+				phy-connection-type = "10gbase-r";
-+				managed = "in-band-status";
-+				sfp = <&sfp1>;
-+			};
-+
-+			channel_21: channel@1 {
-+				reg = <1>;
-+				phy-mode = "10gbase-r";
-+				phy-connection-type = "10gbase-r";
-+				phy-handle = <&phy24>;
 +			};
 +		};
 +	};
@@ -291,13 +269,14 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +};
 +
 +&gmac1 {
-+	phy-mode = "10gbase-r";
-+	phy-connection-type = "10gbase-r";
++	phy-mode = "usxgmii";
++	phy-connection-type = "usxgmii";
 +	phy = <&phy28>;
 +	nvmem-cell-names = "mac-address";
 +	nvmem-cells = <&gmac1_mac>;
 +	status = "okay";
 +};
++
 +&gmac2 {
 +	phy-mode = "10gbase-r";
 +	phy-connection-type = "10gbase-r";
@@ -342,7 +321,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +	phy24: ethernet-phy@24 {
 +		reg = <24>;
 +		compatible = "ethernet-phy-ieee802.3-c45";
-+		reset-gpios = <&pca9555 12 GPIO_ACTIVE_LOW>;
++		reset-gpios = <&pio 83 GPIO_ACTIVE_LOW>;
 +		reset-assert-us = <200000>;
 +		reset-deassert-us = <350000>;
 +		firmware-name = "as21x1x_fw.bin";
@@ -371,7 +350,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +	phy28: ethernet-phy@28 {
 +		reg = <28>;
 +		compatible = "ethernet-phy-ieee802.3-c45";
-+		reset-gpios = <&pca9555 13 GPIO_ACTIVE_LOW>;
++		reset-gpios = <&pio 82 GPIO_ACTIVE_LOW>;
 +		reset-assert-us = <200000>;
 +		reset-deassert-us = <350000>;
 +		firmware-name = "as21x1x_fw.bin";
@@ -400,7 +379,32 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +		compatible = "mxl,86252";
 +		reg = <16>;
 +		dsa,member = <0 0>;
-+		status = "disabled";
++		status = "okay";
++
++		ds_mux: ds-mux-bus {
++			ds_mux0: ds-mux@0 {
++				compatible = "mxl862xx,ds-mux";
++				reg = <12>;
++				chan-sel-gpios = <&pio 54 GPIO_ACTIVE_HIGH>;
++				mod-def0-gpios = <&pio 69 GPIO_ACTIVE_LOW>;
++				sfp-present-channel = <0>;
++
++				ds_channel_0: channel@0 {
++					reg = <0>;
++					phy-mode = "10gbase-r";
++					phy-connection-type = "10gbase-r";
++					managed = "in-band-status";
++					sfp = <&sfp1>;
++				};
++
++				ds_channel_1: channel@1 {
++					reg = <1>;
++					phy-mode = "usxgmii";
++					phy-connection-type = "usxgmii";
++					phy-handle = <&phy24>;
++				};
++			};
++		};
 +
 +		ports {
 +			port0: port@0 {
@@ -443,17 +447,10 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +				status = "okay";
 +			};
 +
-+			port12: port@12 {
-+				reg = <12>;
-+				label = "mxl_lan12";
-+				phy-mode = "xfi";
-+				status = "okay";
-+			};
-+
-+			port8: port@8 {
++			port5: port@5 {
 +				reg = <8>;
 +				label = "cpu";
-+				phy-mode = "usxgmii";
++				phy-mode = "10gbase-r";
 +				ethernet = <&gmac2>;
 +				dsa-tag-protocol = "mxl862_8021q";
 +
@@ -462,6 +459,15 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +					full-duplex;
 +				};
 +			};
++
++			port6: port@6 {
++				reg = <12>;
++				label = "mxl_lan5";
++				phy-mode = "usxgmii";
++				phy-handle = <&phy24>;
++				status = "okay";
++			};
++
 +		};
 +
 +		mdio {
@@ -498,6 +504,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +&gsw_port0 {
 +	label = "lan0";
 +};
++
 +&i2c0 {
 +	pinctrl-names = "default";
 +	pinctrl-0 = <&i2c0_pins>;
@@ -797,3 +804,5 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +&xsphy {
 +	status = "okay";
 +};
+--
+2.45.2

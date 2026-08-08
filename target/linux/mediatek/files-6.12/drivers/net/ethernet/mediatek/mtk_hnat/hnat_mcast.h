@@ -159,6 +159,8 @@ struct npu_hnat_mcast_ops {
 #define DMAC_TO_HI16(dmac) ((dmac[0] << 8) | dmac[1])
 #define DMAC_TO_LO32(dmac) ((dmac[2] << 24) | (dmac[3] << 16) | (dmac[4] << 8) | dmac[5])
 
+int hnat_mcast_ser_handle(void);
+int hnat_mcast_mcport_ppse_map_init(u32 ppe_id);
 int hnat_mcast_enable(u32 ppe_id);
 int hnat_mcast_disable(void);
 void hnat_mcast_ifdown_handle(int ifindex);

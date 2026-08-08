@@ -1,10 +1,11 @@
 ---
-[v2] arm64: dts: mediatek: mt7987a-rfb: add AN8811HB dtso support
+[v3] arm64: dts: mediatek: mt7987a-rfb: add AN8811HB dtso support
 
 Add device tree overlay support for Airoha AN8811HB 2.5G Ethernet PHY
 on MT7987A RFB. Enables GMAC1 connection with AN8811HB PHY via DTSO
 for flexible PHY configuration.
 ---
+v3: Add AN8811HB 2.5G PHY DTSO support for MT7987A RFB GMAC3 interface.
 v2: Seperate mtkhnat related overlays to independent patch.
 v1: Initial AN8811HB 2.5G PHY DTSO support for MT7987A RFB GMAC1 interface.
 ---
@@ -15,9 +16,11 @@ Date: Thu, 18 Dec 2025 18:00:53 +0800
 Subject: [PATCH] arm64: dts: mediatek: add an8811hb dtso support
 
 ---
- .../mediatek/mt7987-netsys-eth0-an8811hb.dtso | 42 +++++++++++++++++++
- 1 file changed, 42 insertions(+)
+ .../mediatek/mt7987-netsys-eth0-an8811hb.dtso | 38 +++++++++++++++++++
+ .../mediatek/mt7987-netsys-eth2-an8811hb.dtso | 38 +++++++++++++++++++
+ 2 file changed, 76 insertions(+)
  create mode 100644 arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8811hb.dtso
+ create mode 100644 arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso
 
 diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8811hb.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8811hb.dtso
 new file mode 100644
@@ -52,6 +55,50 @@ index 0000000..709a6a4
 +				reset-gpios = <&pio 48 1>;
 +				reset-assert-us = <10000>;
 +				reset-deassert-us = <10000>;
++				phy-mode = "2500base-x";
++				full-duplex;
++				pause;
++				airoha,phy-handle;
++				eee-broken-100tx;
++				eee-broken-1000t;
++			};
++		};
++	};
++};
++
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso
+new file mode 100644
+index 0000000..709a6a4
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso
+@@ -0,0 +1,38 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	fragment@0 {
++		target = <&gmac2>;
++		__overlay__ {
++			phy-mode = "2500base-x";
++			phy-handle = <&phy11>;
++			status = "okay";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/soc_netsys/ethernet@15100000/mdio-bus";
++		__overlay__ {
++			reset-gpios = <&pio 48 1>;
++			reset-delay-us = <10000>;
++
++			phy11: phy@11 {
++				compatible = "ethernet-phy-idc0ff.04a0";
++				reg = <11>;
 +				phy-mode = "2500base-x";
 +				full-duplex;
 +				pause;

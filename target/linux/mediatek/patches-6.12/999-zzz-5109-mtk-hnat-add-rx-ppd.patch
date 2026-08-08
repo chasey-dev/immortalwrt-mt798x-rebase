@@ -59,7 +59,7 @@
  }
  
  static struct notifier_block nf_hnat_netdevice_nb __read_mostly = {
-@@ -1610,6 +1613,13 @@ static int hnat_probe(struct platform_de
+@@ -1612,6 +1615,13 @@ static int hnat_probe(struct platform_de
  		strncpy(hnat_priv->ppd, (char *)name, IFNAMSIZ - 1);
  	dev_info(&pdev->dev, "ppd = %s\n", hnat_priv->ppd);
  

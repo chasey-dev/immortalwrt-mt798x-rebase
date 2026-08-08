@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c
-@@ -1708,6 +1708,18 @@ static int hnat_probe(struct platform_de
+@@ -1710,6 +1710,18 @@ static int hnat_probe(struct platform_de
  		dev_info(&pdev->dev, "ext devices = %s\n", ext_entry->name);
  	}
  

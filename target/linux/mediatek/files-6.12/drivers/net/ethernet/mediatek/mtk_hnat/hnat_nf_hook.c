@@ -3030,7 +3030,7 @@ hnat_entry_bind:
 						    skb_hnat_ppe(skb),
 						    skb_hnat_entry(skb));
 		if (!flow_entry) {
-			flow_entry = kmalloc(sizeof(*flow_entry), GFP_KERNEL);
+			flow_entry = kzalloc(sizeof(*flow_entry), GFP_ATOMIC);
 			if (!flow_entry) {
 				spin_unlock_bh(&hnat_priv->flow_entry_lock);
 				return -1;

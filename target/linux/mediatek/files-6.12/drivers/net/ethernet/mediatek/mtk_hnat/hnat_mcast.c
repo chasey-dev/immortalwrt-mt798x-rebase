@@ -1386,6 +1386,57 @@ int hnat_mcast_offload_handle(bool enable)
 	return 0;
 }
 
+int hnat_mcast_mcport_ppse_map_init(u32 ppe_id)
+{
+	if (!hnat_priv || ppe_id >= CFG_PPE_NUM || !hnat_priv->ppe_base[ppe_id])
+		return -EINVAL;
+
+	/* Enable multicast table lookup */
+	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_GLO_CFG, MCAST_TB_EN, 1);
+	/* multicast port0 map to PDMA */
+	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_MCAST_PPSE, MC_P0_PPSE, NR_PDMA_PORT);
+	/* multicast port1 map to GMAC1 */
+	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_MCAST_PPSE, MC_P1_PPSE, NR_GMAC1_PORT);
+	/* multicast port2 map to GMAC2 */
+	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_MCAST_PPSE, MC_P2_PPSE, NR_GMAC2_PORT);
+	/* multicast port3 map to TDMA */
+	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_MCAST_PPSE, MC_P3_PPSE, NR_TDMA_PORT);
+	/* multicast port4 map to GMAC3 */
+	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_MCAST_PPSE, MC_P4_PPSE, NR_GMAC3_PORT);
+
+	return 0;
+}
+
+int hnat_mcast_ser_handle(void)
+{
+	struct ppe_mcast_table *pmcast = NULL;
+	struct ppe_mcast_group *group, *tmp;
+	int i, ret;
+
+	if (!hnat_priv || !hnat_priv->pmcast)
+		return -EINVAL;
+
+	pmcast = hnat_priv->pmcast;
+	write_lock_bh(&pmcast->mcast_lock);
+	list_for_each_entry_safe(group, tmp, &pmcast->groups, list) {
+		group->psebmp = 0;
+		group->mtbl_idx = INVLD_IDX;
+		group->ppe_id = INVLD_IDX;
+		group->foe_idx = INVLD_IDX;
+	}
+	write_unlock_bh(&pmcast->mcast_lock);
+
+	for (i = 0; i < CFG_PPE_NUM; i++) {
+		ret = hnat_mcast_mcport_ppse_map_init(i);
+		if (ret) {
+			pr_warn("hnat: init mcast map for ppe %d fail\n", i);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
 int hnat_mcast_enable(u32 ppe_id)
 {
 	struct ppe_mcast_table *pmcast;
@@ -1426,19 +1477,7 @@ int hnat_mcast_enable(u32 ppe_id)
 		}
 	}
 
-	/* Enable multicast table lookup */
-	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_GLO_CFG, MCAST_TB_EN, 1);
-	/* multicast port0 map to PDMA */
-	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_MCAST_PPSE, MC_P0_PPSE, NR_PDMA_PORT);
-	/* multicast port1 map to GMAC1 */
-	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_MCAST_PPSE, MC_P1_PPSE, NR_GMAC1_PORT);
-	/* multicast port2 map to GMAC2 */
-	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_MCAST_PPSE, MC_P2_PPSE, NR_GMAC2_PORT);
-	/* multicast port3 map to QDMA */
-	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_MCAST_PPSE, MC_P3_PPSE, NR_TDMA_PORT);
-	/* multicast port4 map to GMAC3 */
-	cr_set_field(hnat_priv->ppe_base[ppe_id] + PPE_MCAST_PPSE, MC_P4_PPSE, NR_GMAC3_PORT);
-
+	hnat_mcast_mcport_ppse_map_init(ppe_id);
 	mtk_hnat_mcast_blist = hnat_mcast_blist_handle;
 	mtk_hnat_mcast_offload = hnat_mcast_offload_handle;
 

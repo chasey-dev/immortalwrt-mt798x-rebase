@@ -1,0 +1,11 @@
+--- a/drivers/net/wireless/wifi_utility/pci_mediatek_rbus.c
++++ b/drivers/net/wireless/wifi_utility/pci_mediatek_rbus.c
+@@ -150,7 +150,7 @@ rbus_pa_lan_config(struct platform_devic
+ 		return ret;
+ 	}
+ 
+-	strncpy(state, "state_epa", sizeof("state_epa"));
++	strncpy(state, "state_epa", sizeof(state));
+ 
+ 	s = pinctrl_lookup_state(p, state);
+ 

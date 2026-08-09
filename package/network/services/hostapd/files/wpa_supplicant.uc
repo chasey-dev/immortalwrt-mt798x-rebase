@@ -29,7 +29,8 @@ function iface_stop(iface)
 
 	delete wpas.data.iface_phy[ifname];
 	wpas.remove_iface(ifname);
-	wdev_remove(ifname);
+	if (!iface.config.existing_netdev)
+		wdev_remove(ifname);
 	iface.running = false;
 }
 
@@ -44,14 +45,22 @@ function iface_start(phydev, iface, macaddr_list)
 	let wdev_config = {};
 	for (let field in iface.config)
 		wdev_config[field] = iface.config[field];
-	if (!wdev_config.macaddr)
-		wdev_config.macaddr = phydev.macaddr_next();
+	if (iface.config.existing_netdev) {
+		if (!readfile(`/sys/class/net/${ifname}/ifindex`)) {
+			wpas.printf(`Existing interface ${ifname} not found`);
+			return;
+		}
+	} else {
+		if (!wdev_config.macaddr)
+			wdev_config.macaddr = phydev.macaddr_next();
+
+		wdev_remove(ifname);
+		let ret = phydev.wdev_add(ifname, wdev_config);
+		if (ret)
+			wpas.printf(`Failed to create device ${ifname}: ${ret}`);
+	}
 
 	wpas.data.iface_phy[ifname] = phy;
-	wdev_remove(ifname);
-	let ret = phydev.wdev_add(ifname, wdev_config);
-	if (ret)
-		wpas.printf(`Failed to create device ${ifname}: ${ret}`);
 	wdev_set_up(ifname, true);
 	wpas.add_iface(iface.config);
 	iface.running = true;

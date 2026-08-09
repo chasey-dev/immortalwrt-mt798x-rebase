@@ -1,0 +1,62 @@
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -1323,14 +1323,21 @@ static int hostapd_config_check_bss(stru
+ 	}
+ 
+ #ifdef CONFIG_IEEE80211R_AP
+-	if (full_config && wpa_key_mgmt_ft(bss->wpa_key_mgmt) &&
+-	    (bss->nas_identifier == NULL ||
+-	     os_strlen(bss->nas_identifier) < 1 ||
+-	     os_strlen(bss->nas_identifier) > FT_R0KH_ID_MAX_LEN)) {
+-		wpa_printf(MSG_ERROR, "FT (IEEE 802.11r) requires "
+-			   "nas_identifier to be configured as a 1..48 octet "
+-			   "string");
+-		return -1;
++	if (full_config && wpa_key_mgmt_ft(bss->wpa_key_mgmt)) {
++		size_t nas_identifier_len = bss->nas_identifier ?
++			os_strlen(bss->nas_identifier) : 0;
++		bool has_valid_nas_identifier = nas_identifier_len >= 1 &&
++			nas_identifier_len <= FT_R0KH_ID_MAX_LEN;
++		bool can_derive_nas_identifier = !bss->nas_identifier &&
++			conf->use_driver_iface_addr &&
++			is_zero_ether_addr(bss->bssid);
++
++		if (!has_valid_nas_identifier && !can_derive_nas_identifier) {
++			wpa_printf(MSG_ERROR, "FT (IEEE 802.11r) requires "
++				   "nas_identifier to be configured as a 1..48 octet "
++				   "string");
++			return -1;
++		}
+ 	}
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -1552,6 +1552,27 @@ setup_mld:
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
++#ifdef CONFIG_IEEE80211R_AP
++	if (!conf->nas_identifier && wpa_key_mgmt_ft(conf->wpa_key_mgmt)) {
++		char nas_identifier[2 * ETH_ALEN + 1];
++		int ret;
++
++		ret = os_snprintf(nas_identifier, sizeof(nas_identifier),
++				  COMPACT_MACSTR, MAC2STR(hapd->own_addr));
++		if (is_zero_ether_addr(hapd->own_addr) ||
++		    os_snprintf_error(sizeof(nas_identifier), ret)) {
++			wpa_printf(MSG_ERROR,
++				   "FT: Failed to derive NAS identifier for %s",
++				   conf->iface);
++			return -1;
++		}
++
++		conf->nas_identifier = os_strdup(nas_identifier);
++		if (!conf->nas_identifier)
++			return -1;
++	}
++#endif /* CONFIG_IEEE80211R_AP */
++
+ 	hostapd_ucode_create_bss(hapd);
+ 
+ 	if (conf->wmm_enabled < 0)

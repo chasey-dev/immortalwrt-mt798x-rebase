@@ -67,8 +67,31 @@ function iface_remove(cfg)
 		return;
 
 	for (let bss in cfg.bss)
-		if (!bss.mld_ap)
+		if (!bss.mld_ap && !bss.existing_netdev)
 			wdev_remove(bss.ifname);
+}
+
+function resolve_existing_bss_macaddr(bss)
+{
+	let macaddr = readfile(`/sys/class/net/${bss.ifname}/address`);
+	if (!macaddr) {
+		hostapd.printf(`Could not read MAC address of existing BSS ${bss.ifname}`);
+		return false;
+	}
+
+	macaddr = lc(trim(macaddr));
+	if (macaddr == "00:00:00:00:00:00") {
+		hostapd.printf(`Existing BSS ${bss.ifname} has an invalid MAC address`);
+		return false;
+	}
+
+	if (!bss.default_macaddr && bss.bssid && bss.bssid != macaddr) {
+		hostapd.printf(`Configured BSSID ${bss.bssid} does not match ${bss.ifname} MAC address ${macaddr}`);
+		return false;
+	}
+
+	bss.bssid = macaddr;
+	return true;
 }
 
 function iface_gen_config(config, start_disabled)
@@ -81,15 +104,22 @@ channel=${config.radio.channel}
 	for (let i = 0; i < length(config.bss); i++) {
 		let bss = config.bss[i];
 		let type = i > 0 ? "bss" : "interface";
-		let nasid = bss.nasid ?? replace(bss.bssid, ":", "");
-		let bssid = bss.bssid;
-		if (bss.mld_ap)
-			bssid += "\nmld_addr=" + bss.mld_bssid;
 		str += `
 ${type}=${bss.ifname}
-bssid=${bssid}
-${join("\n", bss.data)}
-nas_identifier=${nasid}
+`;
+		if (bss.bssid) {
+			str += `bssid=${bss.bssid}
+`;
+			if (bss.mld_ap)
+				str += `mld_addr=${bss.mld_bssid}
+`;
+		}
+		str += `${join("\n", bss.data)}
+`;
+		let nasid = bss.nasid ??
+			(bss.bssid ? replace(bss.bssid, ":", "") : null);
+		if (nasid != null)
+			str += `nas_identifier=${nasid}
 `;
 		if (start_disabled)
 			str += `
@@ -136,7 +166,6 @@ function iface_add(phy, config, phy_status)
 {
 	let config_inline = iface_gen_config(config, !!phy_status);
 
-	let bss = config.bss[0];
 	let ret = hostapd.add_iface(`bss_config=${phy}:${config_inline}`);
 	if (ret < 0)
 		return false;
@@ -195,10 +224,11 @@ function __iface_pending_next(pending, state, ret, data)
 	delete pending.defer;
 	switch (state) {
 	case "init":
-		iface_update_supplicant_macaddr(phydev, config);
+		if (!bss.existing_netdev)
+			iface_update_supplicant_macaddr(phydev, config);
 		return "create_bss";
 	case "create_bss":
-		if (!bss.mld_ap) {
+		if (!bss.mld_ap && !bss.existing_netdev) {
 			let err = phydev.wdev_add(bss.ifname, {
 				mode: "ap",
 				radio: phydev.radio,
@@ -217,8 +247,11 @@ function __iface_pending_next(pending, state, ret, data)
 	case "check_phy":
 		let phy_status = data;
 		if (phy_status && phy_status.state == "COMPLETED") {
-			if (iface_add(phy, config, phy_status))
+			if (iface_add(phy, config, phy_status)) {
+				if (bss.existing_netdev)
+					iface_update_supplicant_macaddr(phydev, config);
 				return "done";
+			}
 
 			hostapd.printf(`Failed to bring up phy ${phy} ifname=${bss.ifname} with supplicant provided frequency`);
 		}
@@ -231,6 +264,8 @@ function __iface_pending_next(pending, state, ret, data)
 	case "wpas_stopped":
 		if (!iface_add(phy, config))
 			hostapd.printf(`hostapd.add_iface failed for phy ${phy} ifname=${bss.ifname}`);
+		else if (bss.existing_netdev)
+			iface_update_supplicant_macaddr(phydev, config);
 		pending.call("wpa_supplicant", "phy_set_state", {
 			phy: phydev.phy,
 			radio: phydev.radio ?? -1,
@@ -327,11 +362,13 @@ function iface_restart(phydev, config, old_config)
 		return;
 	}
 
-	iface_macaddr_init(phydev, config, iface_config_macaddr_list(config));
-	for (let i = 0; i < length(config.bss); i++) {
-		let bss = config.bss[i];
-		if (bss.default_macaddr)
-			bss.bssid = phydev.macaddr_next();
+	if (!config.bss[0].existing_netdev) {
+		iface_macaddr_init(phydev, config, iface_config_macaddr_list(config));
+		for (let i = 0; i < length(config.bss); i++) {
+			let bss = config.bss[i];
+			if (bss.default_macaddr)
+				bss.bssid = phydev.macaddr_next();
+		}
 	}
 
 	iface_pending_init(phydev, config);
@@ -357,6 +394,18 @@ function find_array_idx(arr, key, val)
 			return i;
 
 	return -1;
+}
+
+function bss_ifnames_match(config, old_config)
+{
+	if (!old_config?.bss || length(config.bss) != length(old_config.bss))
+		return false;
+
+	for (let i = 0; i < length(config.bss); i++)
+		if (config.bss[i].ifname != old_config.bss[i].ifname)
+			return false;
+
+	return true;
 }
 
 function bss_reload_psk(bss, config, old_config)
@@ -564,9 +613,13 @@ function iface_reload_config(name, phydev, config, old_config)
 	for (let i = 0; i < length(config.bss); i++) {
 		let prev;
 
-		// For fullmac devices, the first interface needs to be preserved,
-		// since it's treated as the master
-		if (!i && phy_is_fullmac(phy)) {
+		if (config.bss[0].existing_netdev) {
+			prev = find_array_idx(old_config.bss, "ifname",
+				config.bss[i].ifname);
+			if (prev >= 0)
+				prev_bss_hash[prev] = null;
+		} else if (!i && phy_is_fullmac(phy)) {
+			// Fullmac drivers treat the first interface as the master.
 			prev = 0;
 			prev_bss_hash[0] = null;
 		} else {
@@ -579,6 +632,8 @@ function iface_reload_config(name, phydev, config, old_config)
 		let prev_config = old_config.bss[prev];
 		if (prev_config.force_reload) {
 			delete prev_config.force_reload;
+			if (config.bss[0].existing_netdev)
+				return false;
 			continue;
 		}
 
@@ -639,7 +694,7 @@ function iface_reload_config(name, phydev, config, old_config)
 		let ifname = old_config.bss[i].ifname;
 		hostapd.printf(`Remove bss '${ifname}' on phy '${name}'`);
 		prev_bss.delete();
-		if (!old_config.bss[i].mld_ap)
+		if (!old_config.bss[i].mld_ap && !old_config.bss[i].existing_netdev)
 			wdev_remove(ifname);
 	}
 
@@ -858,16 +913,22 @@ function iface_set_config(name, config)
 	iface_check_mld(phydev, name, config);
 	if (!length(config.bss))
 		return iface_config_remove(name, old_config);
+	if (config.bss[0].existing_netdev &&
+	    !resolve_existing_bss_macaddr(config.bss[0]))
+		return false;
 
-	try {
-		let ret = iface_reload_config(name, phydev, config, old_config);
-		if (ret) {
-			iface_update_supplicant_macaddr(phydev, config);
-			hostapd.printf(`Reloaded settings for phy ${name}`);
-			return 0;
+	/* Preserve driver-assigned BSSIDs while the interface set is unchanged. */
+	if (!config.bss[0].existing_netdev || bss_ifnames_match(config, old_config)) {
+		try {
+			let ret = iface_reload_config(name, phydev, config, old_config);
+			if (ret) {
+				iface_update_supplicant_macaddr(phydev, config);
+				hostapd.printf(`Reloaded settings for phy ${name}`);
+				return 0;
+			}
+		} catch (e) {
+			hostapd.printf(`Error reloading config: ${e}\n${e.stacktrace[0].context}`);
 		}
-	} catch (e) {
-		hostapd.printf(`Error reloading config: ${e}\n${e.stacktrace[0].context}`);
 	}
 
 	hostapd.printf(`Restart interface for phy ${name}`);
@@ -940,6 +1001,8 @@ function iface_load_config(phy, radio, filename)
 			bss.default_macaddr = true;
 		if (line == "#random_macaddr")
 			bss.random_macaddr = true;
+		if (line == "#existing_netdev")
+			bss.existing_netdev = true;
 
 		let val = split(line, "=", 2);
 		if (!val[0])

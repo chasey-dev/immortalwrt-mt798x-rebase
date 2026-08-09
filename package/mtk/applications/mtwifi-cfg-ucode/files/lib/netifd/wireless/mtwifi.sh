@@ -500,6 +500,8 @@ function handle_setup(data) {
         // AP mode handling
         // mtwifi_vif_ap_set_data
         if (mode == "ap") {
+            config.dtim_period ??= int(defs.AP_CFGS.DtimPeriod);
+
             if (ap_idx <= MAX_AP_IDX) {
                 calc_ifname = ap_prefix + ap_idx;
                 ap_idx++;

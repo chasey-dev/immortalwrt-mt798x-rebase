@@ -1237,7 +1237,8 @@ let main_obj = {
 			}
 
 			let freq_info;
-			if (req.args.frequency) {
+			/* mtwifi reports the final shared channel state through nl80211. */
+			if (req.args.frequency && !config.bss[0].existing_netdev) {
 				freq_info = iface_freq_info(iface, config, req.args);
 				if (!freq_info)
 					return libubus.STATUS_UNKNOWN_ERROR;

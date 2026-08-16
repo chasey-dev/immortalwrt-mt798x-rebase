@@ -1,0 +1,229 @@
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -1553,8 +1553,8 @@ static int wpa_try_alt_snonce(struct wpa
+ #ifdef CONFIG_IEEE80211R_AP
+ 	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt) && !sm->ft_completed) {
+ 		wpa_printf(MSG_DEBUG, "FT: Store PMK-R0/PMK-R1");
+-		wpa_auth_ft_store_keys(sm, pmk_r0, pmk_r1, pmk_r0_name,
+-				       key_len);
++		wpa_auth_ft_store_keys(sm, wpa_auth_get_spa(sm), pmk_r0,
++				       pmk_r1, pmk_r0_name, key_len);
+ 	}
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+@@ -3092,7 +3092,9 @@ static int wpa_derive_ptk(struct wpa_sta
+ 						ptk_name, sm->wpa_key_mgmt,
+ 						sm->pairwise, kdk_len);
+ 		} else {
+-			ret = wpa_auth_derive_ptk_ft(sm, ptk, pmk_r0, pmk_r1,
++			ret = wpa_auth_derive_ptk_ft(sm, wpa_auth_get_spa(sm),
++						     wpa_auth_get_aa(sm), ptk,
++						     pmk_r0, pmk_r1,
+ 						     pmk_r0_name, key_len,
+ 						     kdk_len);
+ 		}
+@@ -4586,8 +4588,8 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
+ #ifdef CONFIG_IEEE80211R_AP
+ 	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt) && !sm->ft_completed) {
+ 		wpa_printf(MSG_DEBUG, "FT: Store PMK-R0/PMK-R1");
+-		wpa_auth_ft_store_keys(sm, pmk_r0, pmk_r1, pmk_r0_name,
+-				       key_len);
++		wpa_auth_ft_store_keys(sm, wpa_auth_get_spa(sm), pmk_r0,
++				       pmk_r1, pmk_r0_name, key_len);
+ 	}
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+@@ -5064,8 +5066,13 @@ static size_t wpa_auth_ml_kdes_len(struc
+ 
+ 		ie = get_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
+ 			    WLAN_EID_RSN);
+-		if (ie)
++		if (ie) {
+ 			kde_len += 2 + ie[1];
++#ifdef CONFIG_IEEE80211R_AP
++			if (wpa_key_mgmt_ft(sm->wpa_key_mgmt))
++				kde_len += 2 + PMKID_LEN;
++#endif /* CONFIG_IEEE80211R_AP */
++		}
+ 
+ 		ie = get_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
+ 			    WLAN_EID_RSNX);
+@@ -5119,6 +5126,9 @@ static u8 * wpa_auth_ml_kdes(struct wpa_
+ 		const u8 *rsne, *rsnxe, *rsnoe, *rsno2e, *rsnxoe;
+ 		size_t rsne_len, rsnxe_len, rsnoe_len, rsno2e_len, rsnxoe_len;
+ 		size_t kde_len;
++#ifdef CONFIG_IEEE80211R_AP
++		u8 *rsne_buf = NULL;
++#endif /* CONFIG_IEEE80211R_AP */
+ 
+ 		wpa_auth = wpa_get_link_auth(sm->wpa_auth, link_id);
+ 		if (!wpa_auth)
+@@ -5132,6 +5142,26 @@ static u8 * wpa_auth_ml_kdes(struct wpa_
+ 			       WLAN_EID_RSNX);
+ 		rsnxe_len = rsnxe ? 2 + rsnxe[1] : 0;
+ 
++#ifdef CONFIG_IEEE80211R_AP
++		if (rsne && wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
++			size_t len = rsne_len;
++
++			rsne_buf = os_malloc(rsne_len + 2 + PMKID_LEN);
++			if (!rsne_buf)
++				return NULL;
++			os_memcpy(rsne_buf, rsne, rsne_len);
++			if (wpa_insert_pmkid(rsne_buf, &len, sm->pmk_r1_name,
++					     true) < 0) {
++				wpa_printf(MSG_ERROR,
++					   "FT: Failed to insert PMKR1Name into MLO Link KDE");
++				os_free(rsne_buf);
++				return NULL;
++			}
++			rsne = rsne_buf;
++			rsne_len = len;
++		}
++#endif /* CONFIG_IEEE80211R_AP */
++
+ 		wpa_printf(MSG_DEBUG,
+ 			   "RSN: MLO Link: link=%u, len=%zu", link_id,
+ 			   RSN_SELECTOR_LEN + 1 + ETH_ALEN +
+@@ -5166,6 +5196,10 @@ static u8 * wpa_auth_ml_kdes(struct wpa_
+ 			pos += rsnxe_len;
+ 		}
+ 
++#ifdef CONFIG_IEEE80211R_AP
++		os_free(rsne_buf);
++#endif /* CONFIG_IEEE80211R_AP */
++
+ 		if (!rsn_is_snonce_cookie(sm->SNonce))
+ 			continue;
+ 
+@@ -5422,7 +5456,8 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
+ 		kde_len += 2 + RSN_SELECTOR_LEN + 2 + gtk_len;
+ #ifdef CONFIG_IEEE80211R_AP
+ 	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
+-		kde_len += 2 + PMKID_LEN; /* PMKR1Name into RSN IE */
++		if (!is_mld)
++			kde_len += 2 + PMKID_LEN; /* PMKR1Name into RSN IE */
+ 		kde_len += 300; /* FTIE + 2 * TIE */
+ 	}
+ #endif /* CONFIG_IEEE80211R_AP */
+@@ -5460,18 +5495,33 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
+ 	}
+ #ifdef CONFIG_IEEE80211R_AP
+ 	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
+-		int res;
+-		size_t elen;
++		if (is_mld) {
++			const u8 *mdie;
+ 
+-		elen = pos - kde;
+-		res = wpa_insert_pmkid(kde, &elen, sm->pmk_r1_name, true);
+-		if (res < 0) {
+-			wpa_printf(MSG_ERROR,
+-				   "FT: Failed to insert PMKR1Name into RSN IE in EAPOL-Key data");
+-			goto done;
++			mdie = get_ie(wpa_ie, wpa_ie_len,
++				      WLAN_EID_MOBILITY_DOMAIN);
++			if (!mdie) {
++				wpa_printf(MSG_ERROR,
++					   "FT: Failed to find MDIE for MLO EAPOL-Key data");
++				goto done;
++			}
++			os_memcpy(pos, mdie, 2 + mdie[1]);
++			pos += 2 + mdie[1];
++		} else {
++			int res;
++			size_t elen;
++
++			elen = pos - kde;
++			res = wpa_insert_pmkid(kde, &elen, sm->pmk_r1_name,
++					       true);
++			if (res < 0) {
++				wpa_printf(MSG_ERROR,
++					   "FT: Failed to insert PMKR1Name into RSN IE in EAPOL-Key data");
++				goto done;
++			}
++			pos -= wpa_ie_len;
++			pos += elen;
+ 		}
+-		pos -= wpa_ie_len;
+-		pos += elen;
+ 	}
+ #endif /* CONFIG_IEEE80211R_AP */
+ 	hdr[1] = 0;
+--- a/src/ap/wpa_auth_ft.c
++++ b/src/ap/wpa_auth_ft.c
+@@ -2112,7 +2112,8 @@ int wpa_ft_store_pmk_fils(struct wpa_sta
+ }
+ 
+ 
+-int wpa_auth_derive_ptk_ft(struct wpa_state_machine *sm, struct wpa_ptk *ptk,
++int wpa_auth_derive_ptk_ft(struct wpa_state_machine *sm, const u8 *spa,
++			   const u8 *aa, struct wpa_ptk *ptk,
+ 			   u8 *pmk_r0, u8 *pmk_r1, u8 *pmk_r0_name,
+ 			   size_t *key_len, size_t kdk_len)
+ {
+@@ -2151,23 +2152,23 @@ int wpa_auth_derive_ptk_ft(struct wpa_st
+ 	}
+ 
+ 	if (wpa_derive_pmk_r0(mpmk, mpmk_len, ssid, ssid_len, mdid,
+-			      r0kh, r0kh_len, sm->addr,
++			      r0kh, r0kh_len, spa,
+ 			      pmk_r0, pmk_r0_name,
+ 			      sm->wpa_key_mgmt) < 0 ||
+-	    wpa_derive_pmk_r1(pmk_r0, pmk_r0_len, pmk_r0_name, r1kh, sm->addr,
++	    wpa_derive_pmk_r1(pmk_r0, pmk_r0_len, pmk_r0_name, r1kh, spa,
+ 			      pmk_r1, sm->pmk_r1_name) < 0)
+ 		return -1;
+ 
+ 	return wpa_pmk_r1_to_ptk(pmk_r1, pmk_r1_len, sm->SNonce, sm->ANonce,
+-				 sm->addr, sm->wpa_auth->addr, sm->pmk_r1_name,
++				 spa, aa, sm->pmk_r1_name,
+ 				 ptk, ptk_name, sm->wpa_key_mgmt, sm->pairwise,
+ 				 kdk_len);
+ }
+ 
+ 
+-void wpa_auth_ft_store_keys(struct wpa_state_machine *sm, const u8 *pmk_r0,
+-			    const u8 *pmk_r1, const u8 *pmk_r0_name,
+-			    size_t key_len)
++void wpa_auth_ft_store_keys(struct wpa_state_machine *sm, const u8 *spa,
++			    const u8 *pmk_r0, const u8 *pmk_r1,
++			    const u8 *pmk_r0_name, size_t key_len)
+ {
+ 	int psk_local = sm->wpa_auth->conf.ft_psk_generate_local;
+ 	int expires_in = sm->wpa_auth->conf.r0_key_lifetime;
+@@ -2191,12 +2192,12 @@ void wpa_auth_ft_store_keys(struct wpa_s
+ 	session_timeout = wpa_ft_get_session_timeout(sm->wpa_auth, sm->addr);
+ 
+ 
+-	wpa_ft_store_pmk_r0(sm->wpa_auth, sm->addr, pmk_r0, key_len,
++	wpa_ft_store_pmk_r0(sm->wpa_auth, spa, pmk_r0, key_len,
+ 			    pmk_r0_name,
+ 			    sm->pairwise, &vlan, expires_in,
+ 			    session_timeout, identity, identity_len,
+ 			    radius_cui, radius_cui_len);
+-	wpa_ft_store_pmk_r1(sm->wpa_auth, sm->addr, pmk_r1, key_len,
++	wpa_ft_store_pmk_r1(sm->wpa_auth, spa, pmk_r1, key_len,
+ 			    sm->pmk_r1_name, sm->pairwise, &vlan,
+ 			    expires_in, session_timeout, identity,
+ 			    identity_len, radius_cui, radius_cui_len);
+--- a/src/ap/wpa_auth_i.h
++++ b/src/ap/wpa_auth_i.h
+@@ -340,12 +340,13 @@ int wpa_write_ftie(struct wpa_auth_confi
+ 		   const u8 *anonce, const u8 *snonce,
+ 		   u8 *buf, size_t len, const u8 *subelem,
+ 		   size_t subelem_len, int rsnxe_used);
+-int wpa_auth_derive_ptk_ft(struct wpa_state_machine *sm, struct wpa_ptk *ptk,
++int wpa_auth_derive_ptk_ft(struct wpa_state_machine *sm, const u8 *spa,
++			   const u8 *aa, struct wpa_ptk *ptk,
+ 			   u8 *pmk_r0, u8 *pmk_r1, u8 *pmk_r0_name,
+ 			   size_t *key_len, size_t kdk_len);
+-void wpa_auth_ft_store_keys(struct wpa_state_machine *sm, const u8 *pmk_r0,
+-			    const u8 *pmk_r1, const u8 *pmk_r0_name,
+-			    size_t key_len);
++void wpa_auth_ft_store_keys(struct wpa_state_machine *sm, const u8 *spa,
++			    const u8 *pmk_r0, const u8 *pmk_r1,
++			    const u8 *pmk_r0_name, size_t key_len);
+ struct wpa_ft_pmk_cache * wpa_ft_pmk_cache_init(void);
+ void wpa_ft_pmk_cache_deinit(struct wpa_ft_pmk_cache *cache);
+ void wpa_ft_install_ptk(struct wpa_state_machine *sm, int retry);

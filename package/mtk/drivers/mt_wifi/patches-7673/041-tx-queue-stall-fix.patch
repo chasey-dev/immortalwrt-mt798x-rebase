@@ -1,0 +1,156 @@
+Fix TX queue stall when a pending management frame sits at the head of
+the post queue while the per-band token limit is exceeded: the allocation
+path returns ERROR_NO_TOKEN without arming the TX_TOKEN_LOW state, so the
+MAC TX-free handler gated on token_tx_get_state() never wakes the dequeue
+task and the queue stalls until an unrelated wakeup happens.
+
+The dequeue now records a per-band pending request instead of re-scheduling
+itself, and the TX-free path (token_tx_deq()) reschedules the dequeue task
+once the band token usage drops below its high watermark. The dequeue
+tasklet never reschedules itself while the resource condition is unchanged.
+
+---
+diff --git a/mt_wifi/embedded/include/token.h b/mt_wifi/embedded/include/token.h
+--- a/mt_wifi/embedded/include/token.h
++++ b/mt_wifi/embedded/include/token.h
+@@ -108,6 +108,10 @@ struct token_tx_pkt_queue {
+ 	UINT32 low_water_mark;
+ 	UINT32 high_water_mark;
+ 	ULONG token_state;
++	/* Per-band pending dequeue request, armed when fp dequeue bailed on the
++	   per-band token limit and cleared again when tokens recover or the
++	   dequeue makes progress. See token_tx_deq()/mt_ct_get_hw_resource_state(). */
++	ULONG tx_deq_pending;
+ 	UINT32 token_full_cnt;
+ 	atomic_t free_token_cnt;
+ 	UINT32 total_enq_cnt;
+@@ -186,6 +190,9 @@ UINT16 token_tx_enq(
+ 
+ BOOLEAN token_tx_get_state(struct token_tx_pkt_queue *que);
+ INT token_tx_set_state(struct token_tx_pkt_queue *que, BOOLEAN state);
++VOID token_tx_set_deq_pending(struct token_tx_pkt_queue *que, UINT32 band_idx);
++VOID token_tx_clear_deq_pending(struct token_tx_pkt_queue *que, UINT32 band_idx);
++BOOLEAN token_tx_test_deq_pending(struct token_tx_pkt_queue *que, UINT32 band_idx);
+ VOID token_tx_inc_full_cnt(struct token_tx_pkt_queue *que);
+ struct token_tx_pkt_queue *token_tx_get_queue_by_band(struct _PKT_TOKEN_CB *cb, UINT32 band_idx);
+ struct token_tx_pkt_queue *token_tx_get_queue_by_token_id(PKT_TOKEN_CB *cb, UINT32 token_id);
+diff --git a/mt_wifi/embedded/common/token.c b/mt_wifi/embedded/common/token.c
+--- a/mt_wifi/embedded/common/token.c
++++ b/mt_wifi/embedded/common/token.c
+@@ -148,6 +148,7 @@ static INT token_tx_two_queues_init(
+ 		que->high_water_mark_per_band[qidx] = que->pkt_tkid_cnt;
+ 		token_tx_set_hwmark(que, token_tx_get_lwmark(que) + 10);
+ 		clear_bit(TX_TOKEN_LOW, &que->token_state);
++		que->tx_deq_pending = 0;
+ 
+ 		for (idx = 0; idx < TX_FREE_NOTIFY_DEEP_STAT_SIZE; idx++) {
+ 			que->deep_stat[idx].boundary = tx_free_notify_record_boundary[idx];
+@@ -255,6 +256,7 @@ static INT token_tx_queue_init(
+ 
+ 		token_tx_set_hwmark(que, token_tx_get_lwmark(que) + 10);
+ 		clear_bit(TX_TOKEN_LOW, &que->token_state);
++		que->tx_deq_pending = 0;
+ 
+ 		for (idx = 0; idx < TX_FREE_NOTIFY_DEEP_STAT_SIZE; idx++) {
+ 			que->deep_stat[idx].boundary = tx_free_notify_record_boundary[idx];
+@@ -347,6 +349,26 @@ PNDIS_PACKET token_tx_deq(
+ 					atomic_dec(&que->used_token_per_band[band_idx]);
+ 				else
+ 					MTWF_DBG(pAd, DBG_CAT_TOKEN, TOKEN_INFO, DBG_LVL_ERROR, "%s(): enq cnt error, token ID(%d)\n", __func__, token);
++
++				/*
++				 * Per-band token-limit exhaustion (mt_ct_get_hw_resource_state())
++				 * arms no TX_TOKEN_LOW state, so a MAC TX-free handler gated on
++				 * token_tx_get_state() would never wake the dequeue task and the
++				 * tx queue could stall.  If the dequeue recorded a pending request
++				 * for this band, reschedule it once the band token usage dropped
++				 * back below its high watermark.  This is event-driven: the dequeue
++				 * task itself never reschedules while the resource condition is
++				 * unchanged.
++				 */
++				if (token_tx_test_deq_pending(que, band_idx) &&
++				    (token_tx_get_used_cnt_per_band(que, band_idx)
++				     <= token_tx_get_hwmark_per_band(que, band_idx))) {
++					struct tm_ops *tm_ops = pAd->tm_qm_ops;
++
++					token_tx_clear_deq_pending(que, band_idx);
++					tm_ops->schedule_task(pAd, TX_DEQ_TASK,
++						cap->multi_token_ques_per_band ? band_idx : 0);
++				}
+ 			} else {
+ 				MTWF_DBG(pAd, DBG_CAT_TOKEN, TOKEN_INFO, DBG_LVL_ERROR,
+                                          "%s(): Invalid token ID(%d)\n", __func__, token);
+@@ -556,6 +578,21 @@ inline INT token_tx_set_state(struct token_tx_pkt_queue *que, BOOLEAN state)
+ 	return NDIS_STATUS_SUCCESS;
+ }
+ 
++inline VOID token_tx_set_deq_pending(struct token_tx_pkt_queue *que, UINT32 band_idx)
++{
++	set_bit(band_idx, &que->tx_deq_pending);
++}
++
++inline VOID token_tx_clear_deq_pending(struct token_tx_pkt_queue *que, UINT32 band_idx)
++{
++	clear_bit(band_idx, &que->tx_deq_pending);
++}
++
++inline BOOLEAN token_tx_test_deq_pending(struct token_tx_pkt_queue *que, UINT32 band_idx)
++{
++	return test_bit(band_idx, &que->tx_deq_pending);
++}
++
+ inline VOID token_tx_inc_full_cnt(struct token_tx_pkt_queue *que)
+ {
+ 	que->token_full_cnt++;
+diff --git a/mt_wifi/embedded/common/fp_qm.c b/mt_wifi/embedded/common/fp_qm.c
+--- a/mt_wifi/embedded/common/fp_qm.c
++++ b/mt_wifi/embedded/common/fp_qm.c
+@@ -404,6 +404,10 @@ VOID fp_tx_pkt_deq_func(RTMP_ADAPTER *pAd, UINT8 idx)
+ #else /* SW_CONNECT_SUPPORT */
+ 	UINT16 wtbl_max_num = WTBL_MAX_NUM(pAd);
+ #endif /* !SW_CONNECT_SUPPORT */
++#ifdef RTMP_MAC_PCI
++	UINT8 band_idx = 0;
++	struct token_tx_pkt_queue *que = NULL;
++#endif
+ 
+ 	if (RTMP_TEST_FLAG(pAd, TX_FLAG_STOP_DEQUEUE)) {
+ 		return;
+@@ -437,11 +441,36 @@ VOID fp_tx_pkt_deq_func(RTMP_ADAPTER *pAd, UINT8 idx)
+ 
+ 			wdev_ops = wdev->wdev_ops;
+ 			tx_blk->resource_idx = hif_get_resource_idx(pAd->hdev_ctrl, wdev, 0, 0);
++#ifdef RTMP_MAC_PCI
++			band_idx = HcGetBandByWdev(wdev);
++			que = token_tx_get_queue_by_band(hc_get_hif_ctrl(pAd->hdev_ctrl)->PktTokenCb,
++							 band_idx);
++#endif
+ 
+ 			ret = fp_check_tx_resource(pAd, wdev, tx_blk->resource_idx);
+ 
+-			if (ret == ERROR_NO_TX_RESOURCE)
++			if (ret == ERROR_NO_TX_RESOURCE) {
++#ifdef RTMP_MAC_PCI
++				/*
++				 * Per-band token-limit exhaustion arms no TX_TOKEN_LOW state,
++				 * hence the MAC TX-free handler gated on token_tx_get_state()
++				 * never wakes the dequeue task and the queue could stall.
++				 * Record a pending request instead: token_tx_deq() reschedules
++				 * the dequeue once this band's token usage drops back below its
++				 * high watermark.  The dequeue task must not reschedule itself,
++				 * otherwise a prolonged resource shortage would spin the
++				 * high-priority tasklet.
++				 */
++				if (token_tx_get_used_cnt_per_band(que, band_idx) >
++				    token_tx_get_hwmark_per_band(que, band_idx))
++					token_tx_set_deq_pending(que, band_idx);
++#endif
+ 				break;
++			}
++#ifdef RTMP_MAC_PCI
++			/* The dequeue will make progress: cancel pending request, if any. */
++			token_tx_clear_deq_pending(que, band_idx);
++#endif
+ 
+ 			pkt = fp_get_tx_element(pAd, idx);
+ 			if (!pkt)

@@ -49,6 +49,11 @@ config MTK_HWIFI_TDMA_SW_ACK_SUPPORT
     depends on PACKAGE_kmod-mt_hwifi
     default n
 
+config MTK_HWIFI_FW_HDR_SUPPORT
+	bool "HWIFI built-in firmware header support"
+	depends on PACKAGE_kmod-mt_hwifi
+	default n
+
 menu "HWIFI Chips Support"
 	config MTK_HWIFI_MT7915
 		bool "mt7915"

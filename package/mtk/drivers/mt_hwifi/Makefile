@@ -349,6 +349,10 @@ ifeq ($(CONFIG_MTK_HWIFI_MEM_SHRINK),y)
 	MTK_HWIFI_C_FLAGS+=CONFIG_HWIFI_MEM_SHRINK=y
 endif
 
+ifeq ($(CONFIG_MTK_HWIFI_FW_HDR_SUPPORT),y)
+	MTK_HWIFI_C_FLAGS+=CONFIG_HWIFI_FW_HDR_SUPPORT=y
+endif
+
 ifeq ($(CONFIG_PACKAGE_kmod-mt_wifi_cmn),y)
 KCFLAGS += \
 	-DMT_WIFI_COMMON_SUPPORT
@@ -607,6 +611,7 @@ endef
 
 define Build/Compile/mt7992
 #Copy Kite FW header for differnet SKUs
+ifeq ($(CONFIG_MTK_HWIFI_FW_HDR_SUPPORT),y)
 ifeq ($(CONFIG_MTK_WIFI7_CHIP_MT7992),y)
 	[ -x $(PKG_BUILD_DIR)/mt_wifi/tools/bin2h ] || $(MAKE) -C $(PKG_BUILD_DIR)/mt_wifi/tools
 	TOP_DIR="$(PKG_BUILD_DIR)/mt_wifi" \
@@ -709,10 +714,12 @@ endif
 		$(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_MT7992_WACPU_RAM_CODE_1_1_sdb.h > $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_MT7992_WACPU_RAM_CODE_1_1.h
 endif
 endif
+endif
 endef
 
 define Build/Compile/mt7990
 #Copy Eagle FW header for differnet SKUs
+ifeq ($(CONFIG_MTK_HWIFI_FW_HDR_SUPPORT),y)
 ifeq ($(CONFIG_MTK_HWIFI_MT7990),y)
 ifeq ($(CONFIG_MTK_WIFI7_2ADIE_TRIBAND),y)
 	cp -rf $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_MT7990_PATCH_MCU_1_1_hdr_2adie.h $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_MT7990_PATCH_MCU_1_1_hdr.h
@@ -724,6 +731,7 @@ else
 	cp -rf $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_MT7990_WACPU_RAM_CODE_1_1_.h $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_MT7990_WACPU_RAM_CODE_1_1.h
 	cp -rf $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_RAM_CODE_MT7990_1_1_.h $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_RAM_CODE_MT7990_1_1.h
 	cp -rf $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_RAM_CODE_MT7990_1_1_TESTMODE_.h $(PKG_BUILD_DIR)/mt_wifi/include/hw_ctrl/mcu_hdr/WIFI_RAM_CODE_MT7990_1_1_TESTMODE.h
+endif
 endif
 endif
 endef

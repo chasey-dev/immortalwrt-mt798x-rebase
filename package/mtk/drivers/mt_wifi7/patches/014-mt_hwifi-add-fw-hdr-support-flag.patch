@@ -1,0 +1,22 @@
+--- a/wlan_hwifi/Makefile
++++ b/wlan_hwifi/Makefile
+@@ -79,7 +79,9 @@ ifeq ($(CONFIG_HWIFI_ARCH_NEW_FWDL), y)
+ 	ccflags-y += -DCONFIG_HWIFI_ARCH_NEW_FWDL
+ endif
+ 
+-ccflags-y += -DCONFIG_HWIFI_FW_HDR_SUPPORT
++ifeq ($(CONFIG_HWIFI_FW_HDR_SUPPORT), y)
++	ccflags-y += -DCONFIG_HWIFI_FW_HDR_SUPPORT
++endif
+ 
+ obj-$(CONFIG_HWIFI) += mtk_hwifi.o
+ mtk_hwifi-y := main.o bus.o mac_if.o chips.o utility.o
+--- a/wlan_hwifi/config.mk
++++ b/wlan_hwifi/config.mk
+@@ -45,3 +45,6 @@ CONFIG_HWIFI_USE_PCIE0_TXRING21=n
+ 
+ #HWIFI SW Path Rx process
+ CONFIG_HWIFI_RX_PROCESS_WORKQUEUE=n
++
++#HWIFI FW header support
++CONFIG_HWIFI_FW_HDR_SUPPORT=n

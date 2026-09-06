@@ -984,6 +984,35 @@ define Device/cmcc_rax3000m_common
   ARTIFACT/emmc-gpt.bin := mt798x-gpt emmc
 endef
 
+define Device/cmcc_rax3000m-emmc-mtk
+  DEVICE_VENDOR := CMCC
+  DEVICE_MODEL := RAX3000M EMMC
+  DEVICE_VARIANT := (MTK layout)
+  DEVICE_DTS := mt7981b-cmcc-rax3000m-emmc-mtk
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_PACKAGES := kmod-usb3 f2fsck mkf2fs
+  SUPPORTED_DEVICES += cmcc,rax3000m-emmc
+  KERNEL := kernel-bin | lzma | fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
+  KERNEL_INITRAMFS := kernel-bin | lzma | \
+	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += cmcc_rax3000m-emmc-mtk
+
+define Device/cmcc_rax3000m-nand-mtk
+  DEVICE_VENDOR := CMCC
+  DEVICE_MODEL := RAX3000M NAND
+  DEVICE_VARIANT := (MTK layout)
+  DEVICE_DTS := mt7981b-cmcc-rax3000m-nand-mtk
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_PACKAGES := kmod-usb3 f2fsck mkf2fs
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE_SIZE := 116736k
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += cmcc_rax3000m-nand-mtk
+
 define Device/cmcc_rax3000m
   DEVICE_VENDOR := CMCC
   DEVICE_MODEL := RAX3000M

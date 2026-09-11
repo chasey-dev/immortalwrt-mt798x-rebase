@@ -1,0 +1,51 @@
+---
+[v1] net: ethernet: mtk_eth_soc: add MT7988 L4S support
+
+Add Low Latency, Low Loss, Scalable Throughput (L4S) support for MT7988. This
+enables TDMA path for L4S traffic when toggle is enabled, providing improved
+Quality of Experience for latency-sensitive applications.
+---
+v1: Add L4S support for MT7988.
+---
+
+From b15180131e3f90773dc9760c87780f6c4d447093 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 3 Mar 2026 14:10:24 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add mt7988 l4s support
+
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 4 ++++
+ drivers/net/ethernet/mediatek/mtk_eth_soc.h | 2 ++
+ 2 files changed, 6 insertions(+)
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -4508,6 +4508,10 @@ static int mtk_open(struct net_device *d
+ 				target_mac->ppe_idx = 0;
+ 				gdm_config = soc->reg_map->gdma_to_ppe[0];
+ 			}
++
++			if (eth->l4s_toggle)
++				gdm_config = MTK_GDMA_TO_TDMA;
++
+ 			mtk_gdm_config(eth, target_mac->id, gdm_config);
+ 		}
+ 
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -152,6 +152,7 @@
+ #define MTK_GDMA_STRP_CRC	BIT(16)
+ #define MTK_GDMA_TO_PDMA	0x0
+ #define MTK_GDMA_DROP_ALL       0x7777
++#define MTK_GDMA_TO_TDMA	0xaaaa
+ 
+ /* GDM Egress Control Register */
+ #define MTK_GDMA_EG_CTRL(x)	({ typeof(x) _x = (x); (_x == MTK_GMAC3_ID) ?	\
+@@ -1743,6 +1744,7 @@ struct mtk_eth {
+ 	struct metadata_dst		*dsa_meta[MTK_MAX_DSA_PORTS];
+ 
+ 	u8				debug_level;
++	u8				l4s_toggle;
+ 	struct mtk_ppe			*ppe[3];
+ 	struct rhashtable		flow_table;
+ 

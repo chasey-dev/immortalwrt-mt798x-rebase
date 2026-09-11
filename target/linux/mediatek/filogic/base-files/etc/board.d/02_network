@@ -12,7 +12,9 @@ mediatek_setup_interfaces()
 	buffalo,wsr-6000ax8|\
 	cmcc,rax3000m|\
 	cmcc,rax3000me|\
+	cmcc,xr30-mtkuboot|\
 	h3c,magic-nx30-pro|\
+	h3c,magic-nx30-pro-mtkuboot|\
 	imou,hx21|\
 	konka,komi-a31|\
 	netis,nx30v2|\
@@ -21,6 +23,7 @@ mediatek_setup_interfaces()
 	mercusys,mr80x-v3|\
 	routerich,ax3000-v1|\
 	ruijie,rg-x60|\
+	ruijie,rg-x60-new*|\
 	zbtlink,zbt-z8103ax|\
 	zbtlink,zbt-z8103ax-c)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" eth1
@@ -42,6 +45,9 @@ mediatek_setup_interfaces()
 		;;
 	arcadyan,mozart)
 		ucidef_set_interfaces_lan_wan "lan0 eth1" eth2
+		;;
+	aigo,ags21)
+		ucidef_set_interfaces_lan_wan "lan1 lan2" eth1
 		;;
 	asus,rt-ax52|\
 	asus,rt-ax59u|\
@@ -71,9 +77,12 @@ mediatek_setup_interfaces()
 	routerich,ax3000|\
 	routerich,ax3000-ubootmod|\
 	routerich,be7200|\
+	ruijie,rg-x30e-pro|\
+	sl,3000-emmc|\
 	tenbay,wr3000k|\
 	teralink,tl3020-256mb|\
-	tplink,tl-7dr7250-v1)
+	tplink,tl-7dr7250-v1|\
+	viettel,nr3053)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" wan
 		;;
 	asus,tuf-ax4200|\
@@ -83,6 +92,7 @@ mediatek_setup_interfaces()
 	mediatek,mt7981-rfb|\
 	netcore,n60|\
 	netcore,n60-pro|\
+	netcore,n60-pro-mtkuboot|\
 	nradio,c8-668gl|\
 	ruijie,rg-x60-pro|\
 	unielec,u7981-01*|\
@@ -103,6 +113,9 @@ mediatek_setup_interfaces()
 	tplink,tl-xdr6088|\
 	tplink,tl-xtr8488)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5" eth1
+		;;
+	clx,s20p)
+		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5 lan6" eth1
 		;;
 	bananapi,bpi-r3)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 sfp2" "sfp1 wan"
@@ -139,6 +152,10 @@ mediatek_setup_interfaces()
 	zyxel,nwa50ax-pro)
 		ucidef_set_interface_lan "eth0"
 		;;
+	viettel,32x6|\
+	wirelesstag,zx7981pd-ubootmod)
+		ucidef_set_interfaces_lan_wan "lan1 lan2" wan
+		;;
 	airpi,ap3000m|\
 	bananapi,bpi-r3-mini|\
 	edgecore,eap111|\
@@ -158,6 +175,7 @@ mediatek_setup_interfaces()
 	cudy,tr3000-256mb-v1|\
 	cudy,tr3000-v1|\
 	cudy,tr3000-v1-ubootmod|\
+	cudy,tr3000-v1-mtkuboot|\
 	glinet,gl-mt2500|\
 	glinet,gl-mt2500-airoha|\
 	glinet,gl-mt3000|\
@@ -212,7 +230,8 @@ mediatek_setup_interfaces()
 	tplink,tl-xdr6086|\
 	wavlink,wl-wn551x3|\
 	wavlink,wl-wn586x3|\
-	wavlink,wl-wn586x3b)
+	wavlink,wl-wn586x3b|\
+	zhao,7981r128)
 		ucidef_set_interfaces_lan_wan "lan1 lan2" eth1
 		;;
 	tplink,archer-ax80-v1|\
@@ -231,9 +250,12 @@ mediatek_setup_interfaces()
 		;;
 	xiaomi,mi-router-ax3000t|\
 	xiaomi,mi-router-ax3000t-ubootmod|\
+	xiaomi,mi-router-ax3000t-mtkuboot|\
 	xiaomi,mi-router-wr30u-stock|\
 	xiaomi,mi-router-wr30u-ubootmod|\
+	xiaomi,mi-router-wr30u-mtkuboot|\
 	xiaomi,redmi-router-ax6000-stock|\
+	xiaomi,redmi-router-ax6000-mtkuboot|\
 	xiaomi,redmi-router-ax6000-ubootmod)
 		ucidef_set_interfaces_lan_wan "lan2 lan3 lan4" wan
 		;;
@@ -277,7 +299,8 @@ mediatek_setup_macs()
 	bananapi,bpi-r4-lite)
 		wan_mac=$(macaddr_add $(cat /sys/class/net/eth0/address) 1)
 		;;
-	h3c,magic-nx30-pro)
+	h3c,magic-nx30-pro|\
+	h3c,magic-nx30-pro-mtkuboot)
 		wan_mac=$(mtd_get_mac_ascii pdt_data_1 ethaddr)
 		lan_mac=$(macaddr_add "$wan_mac" 1)
 		label_mac=$wan_mac
@@ -298,6 +321,11 @@ mediatek_setup_macs()
 		label_mac=$(macaddr_canonicalize "$mac_dirty")
 		lan_mac=$label_mac
 		wan_mac=$(macaddr_add "$lan_mac" 1)
+		;;
+	mediatek,mt7987*|\
+	mediatek,mt7988*)
+		lan_mac=$(mtd_get_mac_binary "Factory" "0xFFFF4")
+		wan_mac=$(mtd_get_mac_binary "Factory" "0xFFFFA")
 		;;
 	mercusys,mr90x-v1|\
 	tplink,archer-ax80-v1|\
@@ -320,6 +348,7 @@ mediatek_setup_macs()
 		wan_mac=$(macaddr_add "$lan_mac" 1)
 		label_mac=$wan_mac
 		;;
+	ruijie,rg-x30e-pro|\
 	ruijie,rg-x60-pro)
 		label_mac=$(mtd_get_mac_ascii product_info ethaddr)
 		wan_mac=$label_mac
@@ -338,13 +367,25 @@ mediatek_setup_macs()
 	xiaomi,mi-router-ax3000t-ubootmod|\
 	xiaomi,mi-router-wr30u-stock|\
 	xiaomi,mi-router-wr30u-ubootmod|\
+	xiaomi,mi-router-wr30u-mtkuboot|\
 	xiaomi,redmi-router-ax6000-stock|\
+	xiaomi,redmi-router-ax6000-mtkuboot|\
 	xiaomi,redmi-router-ax6000-ubootmod)
 		wan_mac=$(mtd_get_mac_ascii Bdata ethaddr_wan)
 		label_mac=$wan_mac
 		;;
+	wirelesstag,zx7981pd-ubootmod)
+		label_mac=$(mtd_get_mac_binary wtinfo 10)
+		lan_mac=$label_mac
+		wan_mac=$(macaddr_add "$label_mac" 1)
+		;;
 	yuncore,ax835)
 		label_mac=$(mtd_get_mac_binary "Factory" 0x4)
+		;;
+	zhao,7981r128)
+		lan_mac=$(mtd_get_mac_binary "Factory" 0x04)
+		wan_mac=$(macaddr_add "$lan_mac" 1)
+		label_mac=$lan_mac
 		;;
 	esac
 

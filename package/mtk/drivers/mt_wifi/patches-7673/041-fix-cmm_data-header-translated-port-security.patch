@@ -1,0 +1,49 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] mtk: mt_wifi: fix header-translated RX port security
+
+The 7.6.7.3 header-translated receive path looks up the reconstructed
+Addr2 source address and dereferences the result without checking for
+a miss. This can crash in rx_802_3_data_frm_announce() while receiving
+data after association.
+
+Use the station entry already resolved by the RX-WCID path to read
+PortSecured. This keeps the port state tied to the same peer used by
+the rest of the receive path and avoids the fallible second hash
+lookup.
+
+Link: https://github.com/chasey-dev/immortalwrt-mt798x-rebase/issues/94
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/mt_wifi/embedded/common/cmm_data.c
++++ b/mt_wifi/embedded/common/cmm_data.c
+@@ -6755,18 +6755,23 @@ VOID rx_802_3_data_frm_announce(RTMP_ADA
+ 	UCHAR *pData = pRxBlk->pData;
+ 	UINT data_len = pRxBlk->DataSize;
+ 	UCHAR wdev_idx = wdev->wdev_idx;
+-	MAC_TABLE_ENTRY *pSrcEntry = NULL;
+ 	FRAME_CONTROL *FC = (FRAME_CONTROL *)pRxBlk->FC;
+ 
+ 	if (pEntry && pEntry->Sst == SST_ASSOC) {
+ 		struct tx_rx_ctl *tr_ctl = &pAd->tr_ctl;
+-		pSrcEntry = MacTableLookup(pAd, pRxBlk->Addr2);
+-		STA_TR_ENTRY *tr_entry = &tr_ctl->tr_entry[pSrcEntry->tr_tb_idx];
+-		if (tr_entry && (tr_entry->PortSecured != WPA_802_1X_PORT_SECURED)) {
+-			if (!RTMPCheckWPAframe(pAd, pEntry, pData, data_len, wdev_idx, eth_frame)) {
+-				RELEASE_NDIS_PACKET(pAd, pRxBlk->pRxPacket, NDIS_STATUS_FAILURE);
+-				return;
+-			}
++		STA_TR_ENTRY *tr_entry;
++
++		/*
++		 * Header translation reconstructs Addr2 as the frame source, so the old
++		 * code used it to look up the source STA. That hash lookup can miss and
++		 * duplicates the RX-WCID lookup. pEntry is already the peer selected for
++		 * this RX WCID, so use it to keep port security bound to the RX peer.
++		 */
++		tr_entry = &tr_ctl->tr_entry[pEntry->wcid];
++		if ((tr_entry->PortSecured != WPA_802_1X_PORT_SECURED) &&
++			!RTMPCheckWPAframe(pAd, pEntry, pData, data_len, wdev_idx, eth_frame)) {
++			RELEASE_NDIS_PACKET(pAd, pRxBlk->pRxPacket, NDIS_STATUS_FAILURE);
++			return;
+ 		}
+ 	}
+ 	if (RX_BLK_TEST_FLAG(pRxBlk, fRX_CM) && FC   &&	(FC->Type == FC_TYPE_DATA)) {

@@ -1,0 +1,61 @@
+---
+[v1] arm64: dts: mediatek: mt7988: Add mtd partition extend to end support
+Add "mtd-extend-to-end" in mt7988 spim nand/nor related dts.
+Partition with "mtd-extend-to-end" will extend to the end of
+parent partiton and note that the size of partition in reg must be
+set to 0 like reg = <0x0200000 0x0>.
+---
+v1: Add mtd partition extend to end support.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-snfi-nand.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-snfi-nand.dtso
+@@ -36,8 +36,9 @@
+ 
+ 					ubi_part: partition@200000 {
+ 						label = "ubi";
+-						reg = <0x0200000 0x7e00000>;
++						reg = <0x0200000 0x0>;
+ 						compatible = "linux,ubi";
++						mtd-extend-to-end;
+ 
+ 						volumes {
+ 							ubi-volume-ubootenv {
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nand-nmbm.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nand-nmbm.dtso
+@@ -73,8 +73,9 @@
+ 
+ 					partition@780000 {
+ 						label = "ubi";
+-						reg = <0x780000 0x7080000>;
++						reg = <0x780000 0x0>;
+ 						compatible = "linux,ubi";
++						mtd-extend-to-end;
+ 
+ 						volumes {
+ 							ubi_rootfs: ubi-volume-fit {
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nand.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nand.dtso
+@@ -39,8 +39,9 @@
+ 
+ 					ubi_part: partition@200000 {
+ 						label = "ubi";
+-						reg = <0x0200000 0x7e00000>;
++						reg = <0x0200000 0x0>;
+ 						compatible = "linux,ubi";
++						mtd-extend-to-end;
+ 
+ 						volumes {
+ 							ubi-volume-ubootenv {
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nor.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nor.dtso
+@@ -53,7 +53,8 @@
+ 				};
+ 				nor_root: partition@2D0000 {
+ 					label = "firmware";
+-					reg = <0x2d0000 0x1d30000>;
++					reg = <0x2d0000 0x0>;
++					mtd-extend-to-end;
+ 				};
+ 			};
+ 		};

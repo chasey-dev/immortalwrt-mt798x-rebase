@@ -1,0 +1,27 @@
+From 0ac69abdc5ae24353157ec1c8fb41c051bf0da85 Mon Sep 17 00:00:00 2001
+From: Rex Lu <rex.lu@mediatek.com>
+Date: Mon, 1 Jun 2026 13:47:30 +0800
+Subject: [PATCH] refactor check wed module busy time
+
+change timeout from 1.5s to 100ms. Without this patch, L1 SER may spend 5s in heavy bi-di traffic and wed module can not go back to the idle state.
+It will cause some stations disconnect.
+---
+ drivers/net/ethernet/mediatek/mtk_wed.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_wed.c b/drivers/net/ethernet/mediatek/mtk_wed.c
+index 8b9243f..0c2bb61 100644
+--- a/drivers/net/ethernet/mediatek/mtk_wed.c
++++ b/drivers/net/ethernet/mediatek/mtk_wed.c
+@@ -300,7 +300,7 @@ mtk_wed_check_busy(struct mtk_wed_device *dev, u32 reg, u32 mask)
+ static int
+ mtk_wed_poll_busy(struct mtk_wed_device *dev, u32 reg, u32 mask)
+ {
+-	int sleep = 15000;
++	int sleep = 1000;
+ 	int timeout = 100 * sleep;
+ 	u32 val;
+ 
+-- 
+2.45.2
+

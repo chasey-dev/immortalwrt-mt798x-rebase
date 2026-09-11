@@ -1,0 +1,11 @@
+--- a/mt_wifi/embedded/mcu/andes_mt.c
++++ b/mt_wifi/embedded/mcu/andes_mt.c
+@@ -1355,7 +1355,7 @@ VOID ExtEventPhyIcsUnSolicitDataHandler(
+ 	msg_len = pIcsEvent->u4DataLen * sizeof(UINT32) + sizeof(FW_BIN_LOG_HDR_T);
+ 
+ 	if (os_alloc_mem(pAd, (UCHAR **)&buffer, msg_len) != NDIS_STATUS_SUCCESS)
+-		return NDIS_STATUS_FAILURE;
++		return;
+ 	log_hdr = (P_FW_BIN_LOG_HDR_T)buffer;
+ 
+ 	/* prepare ICS header */

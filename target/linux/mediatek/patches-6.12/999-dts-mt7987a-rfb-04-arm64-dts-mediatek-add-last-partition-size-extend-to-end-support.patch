@@ -1,0 +1,74 @@
+---
+[v1] arm64: dts: mediatek: mt7987: Add mtd partition extend to end support
+Add "mtd-extend-to-end" in mt7987 spim nand/nor related dts.
+Partition with "mtd-extend-to-end" will extend to the end of
+parent partiton and note that the size of partition in reg must be
+set to 0 like reg = <0x0200000 0x0>.
+---
+v1: Add mtd partition extend to end support.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7987-spim-nand-nmbm.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spim-nand-nmbm.dtso
+@@ -67,8 +67,9 @@
+ 
+ 					partition@780000 {
+ 						label = "ubi";
+-						reg = <0x780000 0x7080000>;
++						reg = <0x780000 0x0>;
+ 						compatible = "linux,ubi";
++						mtd-extend-to-end;
+ 
+ 						volumes {
+ 							ubi_rootfs: ubi-volume-fit {
+--- a/arch/arm64/boot/dts/mediatek/mt7987-spim-nand.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spim-nand.dtso
+@@ -31,8 +31,9 @@
+ 
+ 					partition@200000 {
+ 						label = "ubi";
+-						reg = <0x0200000 0x7e00000>;
++						reg = <0x0200000 0x0>;
+ 						compatible = "linux,ubi";
++						mtd-extend-to-end;
+ 
+ 						volumes {
+ 							ubi-volume-ubootenv {
+--- a/arch/arm64/boot/dts/mediatek/mt7987-spim-nor.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spim-nor.dtso
+@@ -45,7 +45,8 @@
+ 				};
+ 				nor_rootdisk: partition@2D0000 {
+ 					label = "firmware";
+-					reg = <0x2D0000 0x1D30000>;
++					reg = <0x2D0000 0x0>;
++					mtd-extend-to-end;
+ 				};
+ 			};
+ 		};
+--- a/arch/arm64/boot/dts/mediatek/mt7987-spim2-nand-nmbm.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spim2-nand-nmbm.dtso
+@@ -67,8 +67,9 @@
+ 
+ 					partition@780000 {
+ 						label = "ubi";
+-						reg = <0x780000 0x7080000>;
++						reg = <0x780000 0x0>;
+ 						compatible = "linux,ubi";
++						mtd-extend-to-end;
+ 
+ 						volumes {
+ 							ubi_rootfs: ubi-volume-fit {
+--- a/arch/arm64/boot/dts/mediatek/mt7987-spim2-nand.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-spim2-nand.dtso
+@@ -31,8 +31,9 @@
+ 
+ 					partition@200000 {
+ 						label = "ubi";
+-						reg = <0x0200000 0x7e00000>;
++						reg = <0x0200000 0x0>;
+ 						compatible = "linux,ubi";
++						mtd-extend-to-end;
+ 
+ 						volumes {
+ 							ubi-volume-ubootenv {

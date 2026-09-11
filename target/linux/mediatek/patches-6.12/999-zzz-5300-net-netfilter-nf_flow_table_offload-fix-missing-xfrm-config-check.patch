@@ -1,0 +1,11 @@
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -659,7 +659,7 @@ static int flow_offload_encap_tunnel(con
+ 	if (dst && dst_xfrm(dst)) {
+ 		entry = flow_action_entry_next(flow_rule);
+ 		entry->id = FLOW_ACTION_IPSEC_PUSH;
+-		memcpy(&entry->ipsec.xs, dst->xfrm, sizeof(struct xfrm_state));
++		memcpy(&entry->ipsec.xs, dst_xfrm(dst), sizeof(struct xfrm_state));
+ 	}
+ 
+ 	return 0;

@@ -6,6 +6,11 @@ board=$(board_name)
 board_config_update
 
 case $board in
+clx,s20p)
+	ucidef_set_led_netdev "wlan5g" "5G" "blue:wlan-5ghz" "rax0"
+	ucidef_set_led_netdev "wlan2g" "2.4G" "blue:wlan-2ghz" "ra0"
+	ucidef_set_led_timer "sys" "SYS" "blue:status" "1000" "2000"
+	;;
 airpi,ap3000m)
 	ucidef_set_led_netdev "wlan2g" "WLAN2G" "orange:wlan-2ghz" "phy0-ap0" "link tx rx"
 	ucidef_set_led_netdev "wlan5g" "WLAN5G" "white:wlan-5ghz" "phy1-ap0" "link tx rx"
@@ -24,6 +29,10 @@ acer,predator-w6x-stock|\
 acer,predator-w6x-ubootmod)
 	ucidef_set_led_netdev "wan" "wan" "rgb:status" "eth1"
 	;;
+aigo,ags21)
+    ucidef_set_led_netdev "wlan" "WLAN" "white:wlan" "rax0" "link"
+    ucidef_set_led_netdev "wan" "WAN" "white:wan" "eth1" "link"
+    ;;
 asus,rt-ax52|\
 asus,rt-ax57m|\
 snr,snr-cpe-ax2)
@@ -185,10 +194,11 @@ mercusys,mr90x-v1-ubi)
 netcore,n60)
 	ucidef_set_led_netdev "wan" "WAN" "mdio-bus:06:green:wan" "eth1" "link tx rx"
 	;;
-netcore,n60-pro)
-	ucidef_set_led_netdev "lan1" "LAN1" "mdio-bus:05:green:lan" "lan1" "link tx rx"
-	ucidef_set_led_netdev "wanact" "WANACT" "mdio-bus:06:green:wan" "eth1" "tx rx"
-	ucidef_set_led_netdev "wanlink" "WANLINK" "blue:wan" "eth1" "link"
+netcore,n60-pro|\
+netcore,n60-pro-mtkuboot)
+	ucidef_set_led_netdev "wlan5g" "WLAN_5G" "blue:wlan" "rax0" "link"
+	ucidef_set_led_netdev "wan" "WAN" "blue:wan" "eth1" "link"
+	ucidef_set_led_usbport "usb" "USB" "blue:usb" "usb2-port1"
 	;;
 netgear,eax17)
 	ucidef_set_led_default power_green "Power (green)" green:power 1
@@ -361,11 +371,18 @@ wavlink,wl-wn586x3b)
 	ucidef_set_led_netdev "lan-2" "lan-2" "blue:lan-2" "lan2" "link tx rx"
 	ucidef_set_led_netdev "wan" "wan" "blue:wan" "eth1" "link tx rx"
 	;;
+wirelesstag,zx7981pd-ubootmod)
+	ucidef_set_led_default "power" "POWER" "wt:power:blue" "1"
+	ucidef_set_led_netdev "wlan2g" "WLAN2G" "wt:wifi:blue" "ra0" "link tx rx"
+	ucidef_set_led_netdev "wlan5g" "WLAN5G" "wt:5g:blue" "rai0" "link tx rx"
+	;;
 xiaomi,mi-router-wr30u-stock|\
+xiaomi,mi-router-wr30u-mtkuboot|\
 xiaomi,mi-router-wr30u-ubootmod)
 	ucidef_set_led_netdev "wan" "wan" "blue:wan" "wan" "link tx rx"
 	;;
 xiaomi,redmi-router-ax6000-stock|\
+xiaomi,redmi-router-ax6000-mtkuboot|\
 xiaomi,redmi-router-ax6000-ubootmod)
 	ucidef_set_led_netdev "wan" "wan" "rgb:network" "wan" "link"
 	;;
@@ -377,6 +394,12 @@ zbtlink,zbt-z8106ax-s|\
 zbtlink,zbt-z8106ax-t)
 	ucidef_set_led_netdev "wan" "wan" "amber:wan" "eth1" "link tx rx"
 	ucidef_set_led_netdev "mobile" "mobile" "green:mobile" "wwan" "link tx rx"
+	;;
+zhao,7981r128)
+	ucidef_set_led_netdev "lan" "LAN" "LAN" "lan2"
+	ucidef_set_led_netdev "sfp" "SFP" "SFP" "eth1"
+	ucidef_set_led_netdev "wlan2g" "WIFI2G" "WIFI2G" "ra0"
+	ucidef_set_led_netdev "wlan5g" "WIFI5G" "WIFI5G" "rax0"
 	;;
 zyxel,ex5601-t0-stock|\
 zyxel,ex5601-t0-ubootmod)

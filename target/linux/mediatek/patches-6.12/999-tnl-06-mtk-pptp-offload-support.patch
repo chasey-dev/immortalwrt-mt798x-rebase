@@ -1,0 +1,47 @@
+--- a/drivers/net/ppp/pptp.c
++++ b/drivers/net/ppp/pptp.c
+@@ -34,6 +34,7 @@
+ #include <net/route.h>
+ #include <net/gre.h>
+ #include <net/pptp.h>
++#include <net/netfilter/nf_flow_table.h>
+ 
+ #include <linux/uaccess.h>
+ 
+@@ -149,6 +150,26 @@ static struct rtable *pptp_route_output(
+ 	return ip_route_output_flow(net, fl4, sk);
+ }
+ 
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++static int pptp_flow_offload_check(struct ppp_channel *chan,
++				   struct flow_offload_hw_path *path)
++{
++	struct sock *sk = (struct sock *)chan->private;
++	struct pppox_sock *po = pppox_sk(sk);
++
++	if (path->flags & BIT(DEV_PATH_TNL))
++		return -EEXIST;
++
++	if (sk_pppox(po)->sk_state & PPPOX_DEAD)
++		return -EINVAL;
++
++	path->flags |= BIT(DEV_PATH_TNL);
++	path->tnl_type = FLOW_OFFLOAD_TNL_PPTP;
++
++	return 0;
++}
++#endif /* IS_ENABLED(CONFIG_NF_FLOW_TABLE) */
++
+ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
+ {
+ 	struct sock *sk = chan->private;
+@@ -622,6 +643,9 @@ static int pptp_ppp_ioctl(struct ppp_cha
+ static const struct ppp_channel_ops pptp_chan_ops = {
+ 	.start_xmit = pptp_xmit,
+ 	.ioctl      = pptp_ppp_ioctl,
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++	.flow_offload_check = pptp_flow_offload_check,
++#endif /* IS_ENABLED(CONFIG_NF_FLOW_TABLE) */
+ };
+ 
+ static struct proto pptp_sk_proto __read_mostly = {

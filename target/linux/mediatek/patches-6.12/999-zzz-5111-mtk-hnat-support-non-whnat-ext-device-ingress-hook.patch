@@ -1,0 +1,112 @@
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
+@@ -35,11 +35,11 @@
+ #include "../mtk_eth_reset.h"
+ 
+ #define do_ge2ext_fast(dev, skb)                                               \
+-	((IS_LAN_GRP(dev) || IS_WAN(dev) || IS_PPD(dev)) && \
++	((IS_LAN_GRP(dev) || IS_WAN(dev) || IS_PPD(dev) || IS_RX_PPD(dev)) && \
+ 	 skb_hnat_is_hashed(skb) && \
+ 	 skb_hnat_reason(skb) == HIT_BIND_FORCE_TO_CPU)
+ #define do_ext2ge_fast_learn(dev, skb)                                         \
+-	(IS_PPD(dev) &&                                                        \
++	((IS_PPD(dev) || IS_RX_PPD(dev)) &&                                                        \
+ 	 (skb_hnat_sport(skb) == NR_PDMA_PORT ||                           \
+ 	  skb_hnat_sport(skb) == NR_QDMA_PORT) &&                       \
+ 	  ((get_dev_from_index(skb->vlan_tci & VLAN_VID_MASK)) ||   \
+@@ -961,7 +961,7 @@ static inline void hnat_set_iif(const st
+ 		skb_hnat_iface(skb) = FOE_MAGIC_GE_LAN;
+ 	} else if (IS_LAN2(state->in)) {
+ 		skb_hnat_iface(skb) = FOE_MAGIC_GE_LAN2;
+-	} else if (IS_PPD(state->in)) {
++	} else if (IS_PPD(state->in) || IS_RX_PPD(state->in)) {
+ 		skb_hnat_iface(skb) = FOE_MAGIC_GE_PPD;
+ 	} else if (IS_EXT(state->in)) {
+ 		skb_hnat_iface(skb) = FOE_MAGIC_EXT;
+@@ -1261,6 +1261,25 @@ mtk_hnat_ipv6_nf_pre_routing(void *priv,
+ 	if (!skb)
+ 		goto drop;
+ 
++	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in))) {
++		if (unlikely(!(g_rx_ppdev && g_rx_ppdev->flags & IFF_UP))) {
++			if (debug_level >= 7)
++				pr_debug("%s:from %s, but g_rx_ppdev not ready!", __func__, state->in->name);
++			return NF_ACCEPT;
++		}
++
++		if (unlikely(skb_shinfo(skb)->frag_list))
++			return NF_ACCEPT;
++
++		if (unlikely(skb_headroom(skb) < (FOE_INFO_LEN + ETH_HLEN)) &&
++			 unlikely(skb_cow(skb, FOE_INFO_LEN + ETH_HLEN)))
++			return NF_ACCEPT;
++
++		skb_hnat_alg(skb) = 0;
++		skb_hnat_filled(skb) = 0;
++		skb_hnat_magic_tag(skb) = HNAT_MAGIC_TAG;
++	}
++
+ 	if (!is_magic_tag_valid(skb))
+ 		return NF_ACCEPT;
+ 
+@@ -1345,6 +1364,25 @@ mtk_hnat_ipv4_nf_pre_routing(void *priv,
+ 	if (!skb)
+ 		goto drop;
+ 
++	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in))) {
++		if (unlikely(!(g_rx_ppdev && g_rx_ppdev->flags & IFF_UP))) {
++			if (debug_level >= 7)
++				pr_debug("%s:from %s, but g_rx_ppdev not ready!", __func__, state->in->name);
++			return NF_ACCEPT;
++		}
++
++		if (unlikely(skb_shinfo(skb)->frag_list))
++			return NF_ACCEPT;
++
++		if (unlikely(skb_headroom(skb) < (FOE_INFO_LEN + ETH_HLEN)) &&
++			 unlikely(skb_cow(skb, FOE_INFO_LEN + ETH_HLEN)))
++			return NF_ACCEPT;
++
++		skb_hnat_alg(skb) = 0;
++		skb_hnat_filled(skb) = 0;
++		skb_hnat_magic_tag(skb) = HNAT_MAGIC_TAG;
++	}
++
+ 	if (!is_magic_tag_valid(skb))
+ 		return NF_ACCEPT;
+ 
+@@ -1476,6 +1514,25 @@ mtk_hnat_br_nf_local_in(void *priv, stru
+ 	if (!skb)
+ 		goto drop;
+ 
++	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in))) {
++		if (unlikely(!(g_rx_ppdev && g_rx_ppdev->flags & IFF_UP))) {
++			if (debug_level >= 7)
++				pr_debug("%s:from %s, but g_rx_ppdev not ready!", __func__, state->in->name);
++			return NF_ACCEPT;
++		}
++
++		if (unlikely(skb_shinfo(skb)->frag_list))
++			return NF_ACCEPT;
++
++		if (unlikely(skb_headroom(skb) < (FOE_INFO_LEN + ETH_HLEN)) &&
++			 unlikely(skb_cow(skb, FOE_INFO_LEN + ETH_HLEN)))
++			return NF_ACCEPT;
++
++		skb_hnat_alg(skb) = 0;
++		skb_hnat_filled(skb) = 0;
++		skb_hnat_magic_tag(skb) = HNAT_MAGIC_TAG;
++	}
++
+ 	if (!is_magic_tag_valid(skb))
+ 		return NF_ACCEPT;
+ 
+@@ -2818,7 +2875,7 @@ hnat_entry_bind:
+ 			entry.ipv4_hnapt.act_dp |= dev->ifindex & UDF_PINGPONG_IFIDX;
+ 		}
+ 	} else if (IS_EXT(dev) && (FROM_GE_PPD(skb) || FROM_GE_LAN_GRP(skb) ||
+-		   FROM_GE_WAN(skb) || FROM_GE_VIRTUAL(skb) || FROM_WED(skb))) {
++		   FROM_GE_WAN(skb) || FROM_GE_VIRTUAL(skb) || FROM_WED(skb) || FROM_EXT(skb))) {
+ 		if (!hnat_priv->data->whnat && IS_GMAC1_MODE) {
+ 			entry.bfib1.vpm = 1;
+ 			entry.bfib1.vlan_layer = 1;

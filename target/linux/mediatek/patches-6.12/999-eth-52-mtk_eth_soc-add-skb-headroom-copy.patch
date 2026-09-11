@@ -1,0 +1,141 @@
+---
+[v1] mtk_eth_soc: Add SKB headroom copy support
+
+Support IPv4 network stack to preserve SKB headroom data during packet
+fragmentation and GSO (Generic Segmentation Offload) processing. The implementation
+adds mtk_skb_headroom_copy hook to ensure tunnel descriptor information is
+correctly copied to new SKB fragments, maintaining hardware offload metadata
+for MediaTek tunnel and encryption features.
+
+Ethernet driver implements mtk_hnat_skb_headroom_copy to preserve tunnel descriptor
+information in the SKB headroom during packet processing, ensuring correct handling
+of TOPS and CDRT fields for tunnel offload features.
+
+---
+v1: Add SKB headroom copy support for tunnel packets
+---
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -5298,4 +5298,5 @@ extern struct net_device *blackhole_netd
+ 		atomic_long_add((VAL), &(DEV)->stats.__##FIELD)
+ #define DEV_STATS_READ(DEV, FIELD) atomic_long_read(&(DEV)->stats.__##FIELD)
+ 
++extern int (*mtk_skb_headroom_copy)(struct sk_buff *new, struct sk_buff *old);
+ #endif	/* _LINUX_NETDEVICE_H */
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -182,6 +182,9 @@ static DEFINE_READ_MOSTLY_HASHTABLE(napi
+ 
+ static DECLARE_RWSEM(devnet_rename_sem);
+ 
++int (*mtk_skb_headroom_copy)(struct sk_buff *new, struct sk_buff *old) = NULL;
++EXPORT_SYMBOL(mtk_skb_headroom_copy);
++
+ static inline void dev_base_seq_inc(struct net *net)
+ {
+ 	unsigned int val = net->dev_base_seq + 1;
+@@ -3759,6 +3762,9 @@ static struct sk_buff *validate_xmit_skb
+ 		if (IS_ERR(segs)) {
+ 			goto out_kfree_skb;
+ 		} else if (segs) {
++			if (mtk_skb_headroom_copy)
++				mtk_skb_headroom_copy(segs, skb);
++
+ 			consume_skb(skb);
+ 			skb = segs;
+ 		}
+--- a/net/ipv4/ip_output.c
++++ b/net/ipv4/ip_output.c
+@@ -698,7 +698,7 @@ struct sk_buff *ip_frag_next(struct sk_b
+ 	}
+ 
+ 	/* Allocate buffer */
+-	skb2 = alloc_skb(len + state->hlen + state->ll_rs, GFP_ATOMIC);
++	skb2 = alloc_skb(len + state->hlen + state->ll_rs + NET_SKB_PAD + NET_IP_ALIGN, GFP_ATOMIC);
+ 	if (!skb2)
+ 		return ERR_PTR(-ENOMEM);
+ 
+@@ -707,7 +707,7 @@ struct sk_buff *ip_frag_next(struct sk_b
+ 	 */
+ 
+ 	ip_copy_metadata(skb2, skb);
+-	skb_reserve(skb2, state->ll_rs);
++	skb_reserve(skb2, state->ll_rs + NET_SKB_PAD + NET_IP_ALIGN);
+ 	skb_put(skb2, len + state->hlen);
+ 	skb_reset_network_header(skb2);
+ 	skb2->transport_header = skb2->network_header + state->hlen;
+--- a/drivers/net/ethernet/mediatek/mtk_tnl.h
++++ b/drivers/net/ethernet/mediatek/mtk_tnl.h
+@@ -6,6 +6,8 @@
+ #ifndef MTK_TNL_H
+ #define MTK_TNL_H
+ 
++#include <linux/skbuff.h>
++
+ struct mtk_tnl_desc {
+ 	u32 entry : 15;
+ 	u32 filled : 3;
+@@ -34,9 +36,42 @@ struct mtk_tnl_desc {
+ } __packed;
+ 
+ #define TNL_MAGIC_TAG 0x6789
++#define skb_tnl_tops(skb) (((struct mtk_tnl_desc *)((skb)->head))->tops)
+ #define skb_tnl_cdrt(skb) (((struct mtk_tnl_desc *)((skb)->head))->cdrt)
+ #define skb_tnl_set_cdrt(skb, cdrt) ((skb_tnl_cdrt(skb)) = (cdrt))
+ #define skb_tnl_magic_tag(skb) (((struct mtk_tnl_desc *)((skb)->head))->magic_tag_protect)
+ #define is_tnl_tag_valid(skb) (skb_tnl_magic_tag(skb) == TNL_MAGIC_TAG)
+ 
++static inline int
++mtk_hnat_skb_headroom_copy(struct sk_buff *new, struct sk_buff *old)
++{
++	struct sk_buff *temp = new;
++	int need_copy = 0;
++	int is_esp = 0;
++
++	if (skb_tnl_tops(old))
++		need_copy = 1;
++
++	if (old->inner_protocol == IPPROTO_ESP &&
++	    skb_tnl_cdrt(old) && is_tnl_tag_valid(old)) {
++		need_copy = 1;
++		is_esp = 1;
++	}
++
++	while (temp) {
++		if (skb_cow_head(temp, skb_headroom(old)))
++			return -ENOMEM;
++
++		if (need_copy) {
++			memcpy(temp->head, old->head, skb_headroom(old));
++			if (is_esp)
++				temp->inner_protocol = IPPROTO_ESP;
++		}
++
++		temp = temp->next;
++	}
++
++ 	return 0;
++}
++
+ #endif /* MTK_TNL_H */
+\ No newline at end of file
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -7471,6 +7471,8 @@ static int mtk_probe(struct platform_dev
+ 	schedule_delayed_work(&eth->reset.monitor_work,
+ 			      MTK_DMA_MONITOR_TIMEOUT);
+ 
++	mtk_skb_headroom_copy = mtk_hnat_skb_headroom_copy;
++
+ 	return 0;
+ 
+ err_unreg_netdev:
+@@ -7499,6 +7501,8 @@ static void mtk_remove(struct platform_d
+ 	struct mtk_mac *mac;
+ 	int i;
+ 
++	mtk_skb_headroom_copy = NULL;
++
+ 	if (eth->esw_base)
+ 		iounmap(eth->esw_base);
+ 

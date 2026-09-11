@@ -1,0 +1,39 @@
+---
+[v2] arm64: dts: mt7988: fix topmisc base addr
+
+Change the topmisc base address from 0x11d10084 to 0x11d10000 and expand the
+register range to 0x10000 to allow other modules to access a wider range,
+enabling some power-domain management.
+
+---
+v2: Fix xsphy base address issue introduced by this patch
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -845,10 +845,10 @@
+ 		};
+ 
+ 
+-		topmisc: system-controller@11d10084 {
+-			compatible = "mediatek,mt7988-topmisc",
+-				     "syscon";
+-			reg = <0 0x11d10084 0 0xff80>;
++		topmisc: system-controller@11d10000 {
++			compatible = "mediatek,mt7988-topmisc", "syscon",
++				     "mediatek,mt7988-power-controller";
++			reg = <0 0x11d10000 0 0x10000>;
+ 		};
+ 
+ 		xsphy: xs-phy@11e10000 {
+@@ -871,7 +871,7 @@
+ 				clocks = <&infracfg CLK_INFRA_USB_PIPE>;
+ 				clock-names = "ref";
+ 				#phy-cells = <1>;
+-				mediatek,syscon-type = <&topmisc 0x194 0>;
++				mediatek,syscon-type = <&topmisc 0x218 0>;
+ 			};
+ 		};
+ 

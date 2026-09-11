@@ -1,0 +1,300 @@
+---
+[v2] net: ethernet: mtk_ppe: add roaming handler
+
+Without this patch, the traffic may stop over 30 seconds when the
+WiFi roams.
+---
+v2: Replace mtk_flow_offload_teardown_by_roaming() with
+    flow_offload_teardown_by_mac(). The old helper derived the 5-tuples from
+    the PPE bind entries, so flows that were never bound to hardware were
+    left behind and kept using the client's previous output port. Walking the
+    software flowtables by destination MAC instead covers both bound and
+    unbound flows.
+v1: Add PPE roaming handler to delete the PPE BIND entry related to the
+    WiFi roaming station.
+---
+
+From 79ba7f4667a0848dbdf4546a361f8f74cdf1e6da Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Wed, 24 Sep 2025 12:52:33 +0800
+Subject: [PATCH] net: ethernet: mtk_ppe: add roaming handler
+
+Without this patch, the traffic may stop over 30 seconds when the
+WiFi roams.
+---
+ drivers/net/ethernet/mediatek/mtk_ppe.c       | 115 +++++++++++++++++++
+ drivers/net/ethernet/mediatek/mtk_ppe.h       |   2 +
+ .../net/ethernet/mediatek/mtk_ppe_debugfs.c   |  56 +++++++++
+ include/net/netfilter/nf_flow_table.h         |   1 +
+ net/netfilter/nf_flow_table_core.c            |  39 +++++++
+ 5 files changed, 213 insertions(+)
+
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
+@@ -12,6 +12,7 @@
+ #include <net/dst_metadata.h>
+ #include <net/dsa.h>
+ #include <net/ipv6.h>
++#include <net/netfilter/nf_flow_table.h>
+ 
+ #include "mtk_eth_soc.h"
+ #include "mtk_ppe.h"
+@@ -1164,3 +1165,117 @@ int mtk_ppe_stop(struct mtk_ppe *ppe)
+ 
+ 	return 0;
+ }
++
++static void mtk_ppe_roam_handler(struct work_struct *work)
++{
++	struct mtk_eth *eth = container_of(work, struct mtk_eth, ppe_roam_work);
++	struct net_device *dev = NULL;
++	struct kvec iov;
++	struct msghdr msg;
++	struct nlmsghdr *nlh;
++	struct ndmsg *ndm;
++	struct nlattr *nla;
++	int len, ifindex;
++	u8 mac[ETH_ALEN];
++
++	if (!eth->ppe_roam_sock)
++		return;
++
++	iov.iov_base = eth->ppe_roam_buf;
++	iov.iov_len = sizeof(eth->ppe_roam_buf);
++	memset(&msg, 0, sizeof(msg));
++	msg.msg_namelen = sizeof(struct sockaddr_nl);
++
++	len = kernel_recvmsg(eth->ppe_roam_sock, &msg, &iov, 1, iov.iov_len, 0);
++	if (len <= 0)
++		goto out;
++
++	nlh = (struct nlmsghdr*)eth->ppe_roam_buf;
++	if (!NLMSG_OK(nlh, len) || nlh->nlmsg_type != RTM_NEWNEIGH)
++		goto out;
++
++	len = nlh->nlmsg_len - NLMSG_HDRLEN;
++	ndm = (struct ndmsg *)NLMSG_DATA(nlh);
++	if (ndm->ndm_family != PF_BRIDGE)
++		goto out;
++
++	ifindex = ndm->ndm_ifindex;
++	dev = dev_get_by_index(&init_net, ifindex);
++	if (!dev)
++		goto out;
++
++	if (!dev->ieee80211_ptr)
++		goto out;
++
++	nla = (struct nlattr *)((unsigned char *)ndm + sizeof(struct ndmsg));
++	len -= NLMSG_LENGTH(sizeof(struct ndmsg));
++	while (nla_ok(nla, len)) {
++		if (nla_type(nla) == NDA_LLADDR) {
++			memcpy(mac, nla_data(nla), ETH_ALEN);
++			flow_offload_teardown_by_mac(mac);
++			if (eth->debug_level >= 6)
++				pr_info("mtk_ppe: the neighbor (%pM) has been updated\n", mac);
++		}
++		nla = nla_next(nla, &len);
++	}
++
++out:
++	if (dev)
++		dev_put(dev);
++	if (!work_pending(&eth->ppe_roam_work))
++		schedule_work(&eth->ppe_roam_work);
++}
++
++int mtk_ppe_roaming_start(struct mtk_eth *eth)
++{
++	struct socket *sock = NULL;
++	struct sockaddr_nl addr;
++	int ret;
++
++	INIT_WORK(&eth->ppe_roam_work, mtk_ppe_roam_handler);
++
++	ret = sock_create_kern(&init_net, AF_NETLINK, SOCK_RAW, NETLINK_ROUTE, &sock);
++	if (ret < 0) {
++		pr_warn("mtk_ppe: roaming work is unable to create socket\n");
++		goto out;
++	}
++
++	addr.nl_family = AF_NETLINK;
++	addr.nl_pad = 0;
++	addr.nl_pid = 65534;
++	addr.nl_groups = 1 << (RTNLGRP_NEIGH - 1);
++	ret = kernel_bind(sock, (struct sockaddr *)&addr, sizeof(addr));
++	if (ret < 0) {
++		pr_warn("mtk_ppe: roaming work is unable to bind socket\n");
++		goto out;
++	}
++
++	eth->ppe_roam_sock = sock;
++	eth->ppe_roam_sock->sk->sk_rcvtimeo = msecs_to_jiffies(100);
++
++	schedule_work(&eth->ppe_roam_work);
++
++	pr_info("mtk_ppe: roaming work has been activated\n");
++
++	return 0;
++
++out:
++	if (sock)
++		sock_release(sock);
++
++	return ret;
++}
++
++int mtk_ppe_roaming_stop(struct mtk_eth *eth)
++{
++	if (!eth->ppe_roam_sock)
++		return -ENOENT;
++
++	cancel_work_sync(&eth->ppe_roam_work);
++	sock_release(eth->ppe_roam_sock);
++	eth->ppe_roam_sock = NULL;
++
++	pr_info("mtk_ppe: roaming work has been deactivated\n");
++
++	return 0;
++}
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.h
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.h
+@@ -349,6 +349,8 @@ struct mtk_ppe {
+ struct mtk_ppe *mtk_ppe_init(struct mtk_eth *eth, void __iomem *base, int index);
+ 
+ void mtk_ppe_deinit(struct mtk_eth *eth);
++int mtk_ppe_roaming_start(struct mtk_eth *eth);
++int mtk_ppe_roaming_stop(struct mtk_eth *eth);
+ void mtk_ppe_update_mtu(struct mtk_ppe *ppe, int mtu);
+ void mtk_ppe_start(struct mtk_ppe *ppe);
+ int mtk_ppe_stop(struct mtk_ppe *ppe);
+--- a/drivers/net/ethernet/mediatek/mtk_ppe_debugfs.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe_debugfs.c
+@@ -253,6 +253,60 @@ static const struct file_operations mtk_
+ };
+ 
+ static int
++mtk_ppe_internal_debugfs_level_show(struct seq_file *m, void *private)
++{
++	struct mtk_eth *eth = m->private;
++
++	seq_printf(m, "PPE debug level=%d\n", eth->debug_level);
++
++	return 0;
++}
++
++static int
++mtk_ppe_internal_debugfs_level_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, mtk_ppe_internal_debugfs_level_show,
++			   inode->i_private);
++}
++
++static ssize_t
++mtk_ppe_internal_debugfs_level_write(struct file *file, const char __user *buf,
++				     size_t count, loff_t *offset)
++{
++	struct seq_file *m = file->private_data;
++	struct mtk_eth *eth = (struct mtk_eth *)m->private;
++	char tmp[8] = {0};
++	u32 level;
++
++	if ((count > sizeof(tmp)))
++		return -EFAULT;
++
++	if (copy_from_user(tmp, buf, count))
++		return -EFAULT;
++
++	if (sscanf(tmp, "%d", &level) != 1)
++		return -EFAULT;
++
++	if (level < 0 || level > 7) {
++		pr_warn("The input debug level is invalid, "
++			"it should range from 0 to 7.\n");
++		return -EINVAL;
++	}
++
++	eth->debug_level = level;
++
++	return count;
++}
++
++static const struct file_operations mtk_ppe_internal_debugfs_level_fops = {
++	.open = mtk_ppe_internal_debugfs_level_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.write = mtk_ppe_internal_debugfs_level_write,
++	.release = single_release,
++};
++
++static int
+ mtk_ppe_internal_debugfs_foe_all_show(struct seq_file *m, void *private)
+ {
+ 	struct mtk_eth *eth = m->private;
+@@ -311,6 +365,8 @@ int mtk_ppe_internal_debugfs_init(struct
+ 			    &mtk_ppe_internal_debugfs_foe_bind_fops);
+ 	debugfs_create_file("qos_toggle", S_IRUGO, root, eth,
+ 			    &mtk_ppe_internal_debugfs_qos_fops);
++	debugfs_create_file("debug_level", S_IRUGO, root, eth,
++			    &mtk_ppe_internal_debugfs_level_fops);
+ 
+ 	for (i = 0; i < (mtk_is_netsys_v2_or_greater(eth) ? 4 : 2); i++) {
+ 		ret = snprintf(name, sizeof(name), "qdma_sch%ld", i);
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -372,6 +372,45 @@ void flow_offload_teardown_by_tuple(stru
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_teardown_by_tuple);
+ 
++static void nf_flow_teardown_by_mac(struct nf_flowtable *flowtable,
++				    struct flow_offload *flow, void *data)
++{
++	const u8 *mac = data;
++	int dir;
++
++	if (test_bit(NF_FLOW_TEARDOWN, &flow->flags))
++		return;
++
++	for (dir = 0; dir < FLOW_OFFLOAD_DIR_MAX; dir++) {
++		const struct flow_offload_tuple *t = &flow->tuplehash[dir].tuple;
++
++		/* out unions with dst_cache, only valid for XMIT_DIRECT */
++		if (t->xmit_type != FLOW_OFFLOAD_XMIT_DIRECT)
++			continue;
++
++		if (ether_addr_equal(t->out.h_dest, mac)) {
++			flow_offload_teardown(flow);
++			return;
++		}
++	}
++}
++
++/* Tear down every offloaded flow destined to @mac, so the software shortcut and
++ * any hardware offload get rebuilt for the port the client has roamed to.
++ * Sleeps on flowtable_lock: process context only.
++ */
++void flow_offload_teardown_by_mac(const u8 *mac)
++{
++	struct nf_flowtable *flowtable;
++
++	mutex_lock(&flowtable_lock);
++	list_for_each_entry(flowtable, &flowtables, list)
++		nf_flow_table_iterate(flowtable, nf_flow_teardown_by_mac,
++				      (void *)mac);
++	mutex_unlock(&flowtable_lock);
++}
++EXPORT_SYMBOL_GPL(flow_offload_teardown_by_mac);
++
+ struct flow_offload_tuple_rhash *
+ flow_offload_lookup(struct nf_flowtable *flow_table,
+ 		    struct flow_offload_tuple *tuple)
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -296,6 +296,7 @@ void nf_flow_table_free(struct nf_flowta
+ 
+ void flow_offload_teardown(struct flow_offload *flow);
+ void flow_offload_teardown_by_tuple(struct flow_offload_tuple *tuple);
++void flow_offload_teardown_by_mac(const u8 *mac);
+ 
+ int nf_flow_table_iterate(struct nf_flowtable *flow_table,
+                       void (*iter)(struct nf_flowtable *flowtable,

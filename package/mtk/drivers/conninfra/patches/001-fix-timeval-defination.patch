@@ -1,0 +1,16 @@
+--- a/base/include/osal.h
++++ b/base/include/osal.h
+@@ -146,6 +146,13 @@ typedef int MTK_CONN_BOOL;
+ 
+ typedef int(*P_COND) (void *);
+ 
++typedef long __kernel_time_t;
++
++struct timeval {
++	__kernel_time_t		tv_sec;		/* seconds */
++	__kernel_suseconds_t	tv_usec;	/* microseconds */
++};
++
+ typedef struct _OSAL_UNSLEEPABLE_LOCK_ {
+ 	spinlock_t lock;
+ 	unsigned long flag;

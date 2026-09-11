@@ -1,0 +1,26 @@
+---
+[v2] arch: arm64: dts: mt7988: extend WiFi wmcpu reserved memory to 10M
+
+Update and extend the wmcpu WiFi reserved memory to 10MB in the mt7988 DTS
+to support new firmware design improvements and enhanced WiFi firmware
+EMI (External Memory Interface) applications.
+
+---
+v2: Change the base address of wmcpu-reserved to 0x4e600000
+v1: Update mt7988.dtsi to extend WiFi reserved memory to 10M
+---
+
+
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -157,8 +157,8 @@
+ 			no-map;
+ 		};
+ 
+-		wmcpu_emi: wmcpu-reserved@47cc0000 {
+-			reg = <0 0x47cc0000 0 0x00100000>;
++		wmcpu_emi: wmcpu-reserved@4e600000 {
++			reg = <0 0x4e600000 0 0xa00000>;
+ 			no-map;
+ 		};
+ 

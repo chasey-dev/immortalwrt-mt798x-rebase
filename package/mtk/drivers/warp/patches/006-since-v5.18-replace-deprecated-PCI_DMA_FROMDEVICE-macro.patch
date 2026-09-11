@@ -1,0 +1,11 @@
+--- a/warp_bm_v2.c
++++ b/warp_bm_v2.c
+@@ -1169,7 +1169,7 @@ wed_rx_budget_ring_exit(
+ 	for (i = 0; i < ring_len; i++)
+ 		wed_rx_bm_dma_cb_exit(wed, &ring->cell[i]);
+ 
+-	dma_unmap_single(&wed->pdev->dev, desc->alloc_pa, desc->alloc_size, PCI_DMA_FROMDEVICE);
++	dma_unmap_single(&wed->pdev->dev, desc->alloc_pa, desc->alloc_size, DMA_FROM_DEVICE);
+ 	warp_os_free_mem(desc->alloc_va);
+ 	memset(desc, 0, sizeof(*desc));
+ 

@@ -97,7 +97,7 @@ return view.extend({
 		m = new form.Map('eqos', _('EQoS'),
 			_('Network speed control service for MediaTek HNAT.'));
 
-		s = m.section(form.NamedSection, 'config', 'eqos', _('Settings'));
+		s = m.section(form.NamedSection, 'config', 'eqos', _('HQoS Settings'));
 		s.anonymous = true;
 
 		o = s.option(form.Flag, 'enabled', _('Enable'));

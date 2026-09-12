@@ -1,0 +1,141 @@
+hnat: add short-packet QoS debugfs knobs
+
+Add short_pkt_toggle / short_pkt_qid / short_pkt_len debugfs nodes
+under /sys/kernel/debug/hnat so userspace can enable per-flow short
+packet detection and select the target hardware queue.
+
+Also fix hnat_qos_toggle_read to print the value via seq_printf
+instead of pr_info so `cat qos_toggle` works, and include the entry
+qid in the all_entry dump for easier debugging.
+
+Signed-off-by: hxlls <hxlls@users.noreply.github.com>
+---
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
+index 2be5d44304..57b5d46264 100644
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat.h
+@@ -1509,6 +1509,9 @@ extern int qos_toggle;
+ extern int l2br_toggle;
+ extern int l4s_toggle;
+ extern int tnl_toggle;
++extern int short_pkt_toggle;
++extern int short_pkt_qid;
++extern int short_pkt_len;
+ extern int (*mtk_tnl_encap_offload)(struct sk_buff *skb, struct ethhdr *eth);
+ extern int (*mtk_tnl_decap_offload)(struct sk_buff *skb);
+ extern bool (*mtk_tnl_decap_offloadable)(struct sk_buff *skb);
+diff --git a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
+index 322ce50dcb..1f41055517 100644
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
+@@ -44,6 +44,9 @@ int tnl_toggle;
+ int xlat_toggle;
+ int l2br_toggle;
+ int l4s_toggle;
++int short_pkt_toggle;
++int short_pkt_qid = 14;
++int short_pkt_len = 64;
+ struct hnat_desc headroom[DEF_ETRY_NUM];
+ unsigned int dbg_cpu_reason_cnt[MAX_CRSN_NUM];
+ 
+@@ -1927,14 +1930,15 @@ static void dbg_dump_entry(struct seq_file *m, struct foe_entry *entry,
+ 
+ 	if (IS_IPV4_HNAPT(entry)) {
+ 		seq_printf(m,
+-			   "NAPT(%d): %pI4:%d->%pI4:%d => %pI4:%d->%pI4:%d\n",
++			   "NAPT(%d): %pI4:%d->%pI4:%d => %pI4:%d->%pI4:%d qid=%d\n",
+ 			   index, &saddr, entry->ipv4_hnapt.sport, &daddr,
+ 			   entry->ipv4_hnapt.dport, &nsaddr,
+ 			   entry->ipv4_hnapt.new_sport, &ndaddr,
+-			   entry->ipv4_hnapt.new_dport);
++			   entry->ipv4_hnapt.new_dport, entry->ipv4_hnapt.iblk2.qid);
+ 	} else if (IS_IPV4_HNAT(entry)) {
+-		seq_printf(m, "NAT(%d): %pI4->%pI4 => %pI4->%pI4\n",
+-			   index, &saddr, &daddr, &nsaddr, &ndaddr);
++		seq_printf(m, "NAT(%d): %pI4->%pI4 => %pI4->%pI4 qid=%d\n",
++			   index, &saddr, &daddr, &nsaddr, &ndaddr,
++			   entry->ipv4_hnapt.iblk2.qid);
+ 	}
+ 
+ 	if (IS_IPV4_DSLITE(entry)) {
+@@ -2557,6 +2561,45 @@ static const struct file_operations hnat_ppd_if_fops = {
+ 	.release = single_release,
+ };
+ 
++#define DEFINE_HNAT_INT_DEBUGFS(name, var)					\
++static int hnat_##name##_read(struct seq_file *m, void *private)		\
++{										\
++	seq_printf(m, "%d\n", var);						\
++	return 0;								\
++}										\
++static int hnat_##name##_open(struct inode *inode, struct file *file)		\
++{										\
++	return single_open(file, hnat_##name##_read, file->private_data);	\
++}										\
++static ssize_t hnat_##name##_write(struct file *file, const char __user *buffer, \
++				   size_t count, loff_t *data)			\
++{										\
++	char buf[16] = {0};							\
++	long val;								\
++										\
++	if (count >= sizeof(buf) || copy_from_user(buf, buffer, count))		\
++		return -EFAULT;							\
++										\
++	if (kstrtol(buf, 0, &val))						\
++		return -EINVAL;							\
++										\
++	var = val;								\
++	pr_info("hnat " #name " = %ld\n", val);					\
++	return count;								\
++}										\
++static const struct file_operations hnat_##name##_fops = {			\
++	.open = hnat_##name##_open,						\
++	.read = seq_read,							\
++	.llseek = seq_lseek,							\
++	.write = hnat_##name##_write,						\
++	.release = single_release,						\
++};
++
++DEFINE_HNAT_INT_DEBUGFS(short_pkt_toggle, short_pkt_toggle)
++DEFINE_HNAT_INT_DEBUGFS(short_pkt_qid, short_pkt_qid)
++DEFINE_HNAT_INT_DEBUGFS(short_pkt_len, short_pkt_len)
++#undef DEFINE_HNAT_INT_DEBUGFS
++
+ static int hnat_mape_toggle_read(struct seq_file *m, void *private)
+ {
+ 	pr_info("value=%d, %s is enabled now!\n", mape_toggle, (mape_toggle) ? "mape" : "ds-lite");
+@@ -3271,18 +3314,7 @@ static void hnat_qos_toggle_usage(void)
+ 
+ static int hnat_qos_toggle_read(struct seq_file *m, void *private)
+ {
+-	if (qos_toggle == 0) {
+-		pr_info("HQoS is disabled now!\n");
+-	} else if (qos_toggle == 1) {
+-		pr_info("HQoS is enabled now!\n");
+-		pr_info("HQoS uplink is %s now!\n",
+-				qos_ul_toggle ? "enabled" : "disabled");
+-		pr_info("HQoS downlink is %s now!\n",
+-				qos_dl_toggle ? "enabled" : "disabled");
+-	} else if (qos_toggle == 2) {
+-		pr_info("Per-port-per-queue mode is enabled!\n");
+-	}
+-
++	seq_printf(m, "%d\n", qos_toggle);
+ 	return 0;
+ }
+ 
+@@ -4145,6 +4177,13 @@ int hnat_init_debugfs(struct mtk_hnat *h)
+ 		debugfs_create_symlink(name, root, name_symlink);
+ 	}
+ 
++	debugfs_create_file("short_pkt_toggle", 0644, root, h,
++			    &hnat_short_pkt_toggle_fops);
++	debugfs_create_file("short_pkt_qid", 0644, root, h,
++			    &hnat_short_pkt_qid_fops);
++	debugfs_create_file("short_pkt_len", 0644, root, h,
++			    &hnat_short_pkt_len_fops);
++
+ 	return 0;
+ 
+ err1:

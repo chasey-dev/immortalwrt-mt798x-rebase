@@ -1,0 +1,75 @@
+hnat: dispatch short packets to a high-priority queue
+
+When short_pkt_toggle is enabled, TCP ACKs (payload 0) and small UDP
+packets (payload <= short_pkt_len) are dispatched to the high-priority
+hardware queue short_pkt_qid on any path (no PPPQ requirement), so
+games and other latency-sensitive small flows get prioritized even on
+2.5G direct ports.
+
+Flows that already carry an explicit queue id via skb->mark (custom
+priority rules / device rules) keep their queue; auto detection only
+applies to otherwise unclassified traffic.
+
+Signed-off-by: hxlls <hxlls@users.noreply.github.com>
+---
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
+index ffa6125fc9..23b8575ac3 100644
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
+@@ -2848,7 +2848,54 @@ hnat_entry_bind:
+ 	else
+ 		qid = 0;
+ 
+-	if (IS_PPPQ_MODE && IS_PPPQ_PATH(dev, skb) && port_id >= 0) {
++	/* Short-packet QoS: TCP ACKs and small UDP packets are dispatched to a
++	 * high-priority queue on any path (no PPPQ requirement), so games and
++	 * other latency-sensitive small flows get prioritized even on 2.5G
++	 * direct ports.
++	 */
++	/* Flows that already carry an explicit queue id via skb->mark (custom
++	 * priority rules / device rules) keep that queue; auto detection only
++	 * applies to otherwise unclassified traffic.
++	 */
++	if (short_pkt_toggle && !(skb->mark & MTK_QDMA_QUEUE_MASK)) {
++		if (h_proto == ETH_P_IP) {
++			iph = (struct iphdr *)(skb_network_header(skb) + h_offset);
++			if (iph->protocol == IPPROTO_TCP) {
++				tcph = (struct tcphdr *)((u8 *)iph + iph->ihl * 4);
++				payload_len = be16_to_cpu(iph->tot_len) -
++					      iph->ihl * 4 - __tcp_hdrlen(tcph);
++				if (payload_len == 0) {
++					qid = short_pkt_qid;
++					pr_info_once("hnat shortpkt: TCP ACK -> qid %d\n", qid);
++				}
++			} else if (iph->protocol == IPPROTO_UDP) {
++				payload_len = be16_to_cpu(iph->tot_len) -
++					      iph->ihl * 4 - sizeof(struct udphdr);
++				if (payload_len <= short_pkt_len) {
++					qid = short_pkt_qid;
++					pr_info_once("hnat shortpkt: UDP len=%u -> qid %d\n",
++						payload_len, qid);
++				}
++			}
++		} else if (h_proto == ETH_P_IPV6) {
++			ip6h = (struct ipv6hdr *)(skb_network_header(skb) + h_offset);
++			if (ip6h->nexthdr == NEXTHDR_TCP) {
++				tcph = (struct tcphdr *)((u8 *)ip6h + sizeof(struct ipv6hdr));
++				payload_len = be16_to_cpu(ip6h->payload_len) - __tcp_hdrlen(tcph);
++				if (payload_len == 0) {
++					qid = short_pkt_qid;
++					pr_info_once("hnat shortpkt: IPv6 TCP ACK -> qid %d\n", qid);
++				}
++			} else if (ip6h->nexthdr == NEXTHDR_UDP) {
++				payload_len = be16_to_cpu(ip6h->payload_len) - sizeof(struct udphdr);
++				if (payload_len <= short_pkt_len) {
++					qid = short_pkt_qid;
++					pr_info_once("hnat shortpkt: IPv6 UDP len=%u -> qid %d\n",
++						payload_len, qid);
++				}
++			}
++		}
++	} else if (IS_PPPQ_MODE && IS_PPPQ_PATH(dev, skb) && port_id >= 0) {
+ 		if (h_proto == ETH_P_IP) {
+ 			iph = (struct iphdr *)(skb_network_header(skb) + h_offset);
+ 			if (iph->protocol == IPPROTO_TCP) {

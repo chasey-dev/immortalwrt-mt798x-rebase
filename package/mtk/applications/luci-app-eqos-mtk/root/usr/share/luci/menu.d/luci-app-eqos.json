@@ -1,13 +1,38 @@
 {
 	"admin/services/eqos": {
 		"title": "EQoS",
+		"order": 40,
 		"action": {
 			"type": "view",
-			"path": "eqos"
+			"path": "eqos/qos"
 		},
 		"depends": {
 			"acl": [ "luci-app-eqos" ],
 			"uci": { "eqos": true }
+		}
+	},
+	"admin/services/eqos/qos": {
+		"title": "HQoS Settings",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "eqos/qos"
+		}
+	},
+	"admin/services/eqos/priority": {
+		"title": "Packet priority settings",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "eqos/priority"
+		}
+	},
+	"admin/services/eqos/monitor": {
+		"title": "Queue Monitor",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "eqos/monitor"
 		}
 	}
 }

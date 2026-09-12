@@ -141,45 +141,87 @@ start_service() {
 
 	local enabled
 	config_get_bool enabled config enabled 0
-	[ "$enabled" -eq 1 ] || return 0
 
-	local download upload
-	config_get download config download
-	config_get upload config upload
+	# Short-packet priority and custom priority rules apply independently of
+	# the eqos master switch, so they must be applied even when total
+	# bandwidth shaping is disabled (enabled=0).
+	if [ "$enabled" -eq 1 ]; then
+		local download upload
+		config_get download config download
+		config_get upload config upload
 
-	if ! is_uinteger "$download" || ! is_uinteger "$upload" ||
-	   [ "$download" -lt 1 ] || [ "$upload" -lt 1 ] ||
-	   [ "$download" -gt "$TOTAL_RATE_MAX" ] || [ "$upload" -gt "$TOTAL_RATE_MAX" ]; then
-		echo "eqos: total download and upload rates must be between 1 and $TOTAL_RATE_MAX Mbit/s" >&2
-		return 1
+		if ! is_uinteger "$download" || ! is_uinteger "$upload" ||
+		   [ "$download" -lt 1 ] || [ "$upload" -lt 1 ] ||
+		   [ "$download" -gt "$TOTAL_RATE_MAX" ] || [ "$upload" -gt "$TOTAL_RATE_MAX" ]; then
+			echo "eqos: total download and upload rates must be between 1 and $TOTAL_RATE_MAX Mbit/s" >&2
+			return 1
+		fi
+
+		CONFIG_ERROR=0
+		USED_QUEUES=" "
+		USED_SELECTORS=" "
+		config_foreach validate_device device
+		[ "$CONFIG_ERROR" -eq 0 ] || return 1
+
+		if ! eqos start "$download" "$upload"; then
+			eqos stop >/dev/null 2>&1
+			return 1
+		fi
+
+		CONFIG_ERROR=0
+		config_foreach parse_device device
+		if [ "$CONFIG_ERROR" -ne 0 ]; then
+			eqos stop >/dev/null 2>&1
+			return 1
+		fi
+
+		if ! eqos enable; then
+			eqos stop >/dev/null 2>&1
+			return 1
+		fi
 	fi
 
-	CONFIG_ERROR=0
-	USED_QUEUES=" "
-	USED_SELECTORS=" "
-	config_foreach validate_device device
-	[ "$CONFIG_ERROR" -eq 0 ] || return 1
-
-	if ! eqos start "$download" "$upload"; then
+	apply_short_pkt_service || {
 		eqos stop >/dev/null 2>&1
 		return 1
-	fi
+	}
 
-	CONFIG_ERROR=0
-	config_foreach parse_device device
-	if [ "$CONFIG_ERROR" -ne 0 ]; then
+	apply_priority_rules_service || {
 		eqos stop >/dev/null 2>&1
 		return 1
-	fi
-
-	if ! eqos enable; then
-		eqos stop >/dev/null 2>&1
-		return 1
-	fi
+	}
 }
 
 stop_service() {
 	eqos stop
+}
+
+# Short-packet priority and custom priority rules are applied independently
+# of the eqos master switch: they are driven solely by their own config, so
+# they work even when the total bandwidth shaping is disabled.
+apply_short_pkt_service() {
+	local short_pkt
+
+	config_load eqos
+	config_get_bool short_pkt config short_pkt_priority 0
+	if [ "$short_pkt" -eq 1 ]; then
+		eqos shortpkt
+	else
+		eqos shortpkt-stop
+	fi
+}
+
+apply_priority_rules_service() {
+	local cfg enabled
+
+	for cfg in $(uci -q show eqos |
+		     sed -n 's/^eqos\.\([^=]*\)=priority_rule$/\1/p'); do
+		enabled="$(uci -q get eqos.$cfg.enabled)"
+		if [ "$enabled" = "1" ]; then
+			eqos priority
+			return 0
+		fi
+	done
 }
 
 reload_service() {
@@ -191,6 +233,8 @@ reload_service() {
 		start_service
 	else
 		stop_service
+		apply_short_pkt_service
+		apply_priority_rules_service
 	fi
 }
 

@@ -205,6 +205,166 @@ stop_hnat_qos() {
 	reset_hnat_qdma
 }
 
+# Short-packet QoS: enable per-packet short-flow detection in the mtkhnat
+# driver so ACK/small-UDP flows are dispatched to a high-priority hardware
+# queue on any port.  On HNAT the queue id comes from skb->mark, so the
+# port/DSCP ctmark rules used by the flow-offload path are omitted here.
+apply_short_pkt() {
+	local enabled len qid qos_cur
+
+	uci -q get eqos.config.short_pkt_priority >/dev/null 2>&1 || return 0
+	enabled="$(uci -q get eqos.config.short_pkt_priority)"
+	[ "$enabled" = "1" ] || return 0
+
+	len="$(uci -q get eqos.config.short_pkt_len)"
+	[ -n "$len" ] && is_uinteger "$len" || len=64
+	[ "$len" -ge 16 ] && [ "$len" -le 128 ] || len=64
+	qid="$(uci -q get eqos.config.short_pkt_qid)"
+	[ -n "$qid" ] && is_uinteger "$qid" || qid=14
+	[ "$qid" -ge 1 ] && [ "$qid" -le 62 ] || qid=14
+
+	# The short-packet qid is only written into the FOE entry when HQoS mode is
+	# active (qos_toggle != 0), so make sure it is enabled.  Default flows stay
+	# on qid 0 when no skb mark is set, so this does not disturb normal traffic.
+	if [ -e "$HNAT_DIR/qos_toggle" ]; then
+		qos_cur="$(cat "$HNAT_DIR/qos_toggle" 2>/dev/null)"
+		if [ "$qos_cur" -ne 1 ] 2>/dev/null && [ "$qos_cur" -ne 2 ] 2>/dev/null; then
+			printf '%s' 1 > "$HNAT_DIR/qos_toggle" 2>/dev/null
+		fi
+	fi
+
+	if [ -d "$HNAT_DIR" ] && [ -w "$HNAT_DIR/short_pkt_toggle" ]; then
+		printf '%s' 1 > "$HNAT_DIR/short_pkt_toggle" 2>/dev/null
+		printf '%s' "$len"  > "$HNAT_DIR/short_pkt_len" 2>/dev/null
+		printf '%s' "$qid"  > "$HNAT_DIR/short_pkt_qid" 2>/dev/null
+		# Dispatch short packets with the highest WRR weight so they are not
+		# overtaken by custom priority rules.
+		program_priority_queue "$qid" "$UP_SCH" 10
+	fi
+}
+
+stop_short_pkt() {
+	[ -d "$HNAT_DIR" ] || return 0
+	[ -w "$HNAT_DIR/short_pkt_toggle" ] || return 0
+	printf '%s' 0 > "$HNAT_DIR/short_pkt_toggle" 2>/dev/null
+}
+
+# Map a priority level (1 lowest .. 10 highest) to a hardware queue id.
+# Upload queues span 1-31, download queues span 32-62.
+priority_qid() {
+	local prio="$1"
+	local base="$2"
+
+	echo $((base + (prio - 1) * 30 / 9))
+}
+
+# Configure a hardware queue with the given scheduler and WRR weight,
+# no rate limit (rate limiting is the job of device rules).
+program_priority_queue() {
+	local qid="$1"
+	local sch="$2"
+	local weight="$3"
+
+	write_hnat "qdma_txq$qid" "$sch 0 0 0 0 $weight 1"
+}
+
+# Emit an nft rule that marks matching packets to the given queue.  When a
+# port is configured both sport and dport are matched (port does not carry
+# direction semantics here), direction is handled via iifname/oifname.
+emit_priority_mark() {
+	local dir="$1" proto="$2" sport="$3" dport="$4" dscp="$5" qid="$6" dev="$7"
+	local iface extra
+
+	case "$dir" in
+		up) iface="iifname \"$dev\"" ;;
+		down) iface="oifname \"$dev\"" ;;
+		*) return 1 ;;
+	esac
+
+	extra=""
+	[ -n "$dscp" ] && extra="$extra ip dscp $dscp"
+
+	case "$proto" in
+		tcp|udp)
+			if [ -n "$sport" ]; then
+				"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+					$iface $proto sport "$sport" $extra meta mark set "$qid" 2>/dev/null
+			fi
+			if [ -n "$dport" ]; then
+				"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+					$iface $proto dport "$dport" $extra meta mark set "$qid" 2>/dev/null
+			fi
+			;;
+		icmp)
+			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+				$iface meta l4proto icmp $extra meta mark set "$qid" 2>/dev/null
+			;;
+		*)
+			# any protocol
+			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+				$iface $extra meta mark set "$qid" 2>/dev/null
+			;;
+	esac
+
+	# tcp/udp with no port configured still needs a protocol-scoped rule
+	if [ "$proto" = "tcp" ] || [ "$proto" = "udp" ]; then
+		if [ -z "$sport" ] && [ -z "$dport" ]; then
+			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
+				$iface $proto $extra meta mark set "$qid" 2>/dev/null
+		fi
+	fi
+}
+
+# Apply custom priority rules: configure the hardware queues (WRR weight from
+# the level) and add nft mark rules.  Needs the nft table, create it if the
+# main eqos service is disabled.
+apply_priority_rules() {
+	local dev="$DEV_DEFAULT"
+	local cfg enabled protocol sport dport dscp direction prio cur
+	local qid_up qid_dl
+
+	need_nft
+	if ! "$NFT" list table "$TABLE_FAMILY" "$TABLE_NAME" >/dev/null 2>&1; then
+		nft_start "$dev" || return 1
+	fi
+
+	for cfg in $(uci -q show eqos |
+		     sed -n 's/^eqos\.\([^=]*\)=priority_rule$/\1/p'); do
+		enabled="$(uci -q get eqos.$cfg.enabled)"
+		[ "$enabled" = "1" ] || continue
+
+		protocol="$(uci -q get eqos.$cfg.protocol)"
+		sport="$(uci -q get eqos.$cfg.sport)"
+		dport="$(uci -q get eqos.$cfg.dport)"
+		dscp="$(uci -q get eqos.$cfg.dscp)"
+		direction="$(uci -q get eqos.$cfg.direction)"
+		prio="$(uci -q get eqos.$cfg.priority)"
+		is_uinteger "$prio" && [ "$prio" -ge 1 ] && [ "$prio" -le 10 ] || prio=5
+
+		qid_up="$(priority_qid "$prio" 1)"
+		qid_dl="$(priority_qid "$prio" 32)"
+
+		# HQoS mode must be on for the mark -> queue mapping to apply
+		if [ -e "$HNAT_DIR/qos_toggle" ]; then
+			cur="$(cat "$HNAT_DIR/qos_toggle" 2>/dev/null)"
+			if [ "$cur" -ne 1 ] 2>/dev/null && [ "$cur" -ne 2 ] 2>/dev/null; then
+				printf '%s' 1 > "$HNAT_DIR/qos_toggle" 2>/dev/null
+			fi
+		fi
+
+		if [ "$direction" = "up" ] || [ "$direction" = "both" ]; then
+			program_priority_queue "$qid_up" "$UP_SCH" "$prio"
+			emit_priority_mark up "$protocol" "$sport" "$dport" "$dscp" "$qid_up" "$dev"
+		fi
+		if [ "$direction" = "down" ] || [ "$direction" = "both" ]; then
+			program_priority_queue "$qid_dl" "$DL_SCH" "$prio"
+			emit_priority_mark down "$protocol" "$sport" "$dport" "$dscp" "$qid_dl" "$dev"
+		fi
+	done
+
+	return 0
+}
+
 enable_hnat() {
 	local fastpath bind_rate hook_state
 
@@ -540,6 +700,7 @@ stop_all() {
 	stop_qos "$dev"
 	nft_stop
 	stop_hnat_qos
+	stop_short_pkt
 }
 
 usage() {
@@ -550,9 +711,14 @@ Commands:
   start <download_mbit> <upload_mbit>
   add <slot> <download_kbit> <upload_kbit> <ipv4|ipv6> [total_down_mbit] [total_up_mbit]
   enable
+  shortpkt
+  shortpkt-stop
+  priority
   stop
 
-Run enable once after all add commands.
+Run enable once after all add commands, then shortpkt to apply the
+short-packet QoS settings and priority to apply custom priority rules.
+shortpkt-stop disables short-packet detection.
 
 Queue slots 1-31 use the common NETSYS V2/V3 64-QDMA layout. EQoS keeps
 qid0 as the default unclassified queue, uses qid1-31 for upload and
@@ -577,6 +743,18 @@ case "$1" in
 	enable)
 		shift
 		enable_hnat "$@"
+		;;
+	shortpkt)
+		shift
+		apply_short_pkt "$@"
+		;;
+	shortpkt-stop)
+		shift
+		stop_short_pkt "$@"
+		;;
+	priority)
+		shift
+		apply_priority_rules "$@"
 		;;
 	*)
 		usage

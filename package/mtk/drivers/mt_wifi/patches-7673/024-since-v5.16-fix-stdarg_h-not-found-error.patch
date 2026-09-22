@@ -1,0 +1,22 @@
+--- a/mt_wifi/embedded/ap/ap_mlme.c
++++ b/mt_wifi/embedded/ap/ap_mlme.c
+@@ -26,7 +26,7 @@
+  */
+ 
+ #include "rt_config.h"
+-#include <stdarg.h>
++#include <linux/stdarg.h>
+ 
+ #ifdef IXIA_C50_MODE
+ #ifdef MT7986
+--- a/mt_wifi/embedded/common/mlme.c
++++ b/mt_wifi/embedded/common/mlme.c
+@@ -25,7 +25,7 @@
+ */
+ 
+ #include "rt_config.h"
+-#include <stdarg.h>
++#include <linux/stdarg.h>
+ #ifdef DOT11R_FT_SUPPORT
+ #include "ft.h"
+ #endif /* DOT11R_FT_SUPPORT */

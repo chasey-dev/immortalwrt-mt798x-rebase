@@ -1,0 +1,16 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
+@@ -552,7 +552,12 @@
+ 			resets = <&ethsys 0>;
+ 			reset-names = "mtketh";
+ 			mtketh-soc = <&eth>;
+-			status = "disabled";
++			status = "okay";
++			mtketh-wan = "eth1";
++			mtketh-lan = "lan";
++			mtketh-max-gmac = <2>;
++			mtketh-ppe-num = <2>;
++			ext-devices-prefix = "wwan", "usb", "eth";
+ 		};
+ 
+ 		ap2woccif: ap2woccif@151a5000 {

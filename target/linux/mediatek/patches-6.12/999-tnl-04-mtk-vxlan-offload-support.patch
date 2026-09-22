@@ -1,0 +1,45 @@
+--- a/drivers/net/vxlan/vxlan_core.c
++++ b/drivers/net/vxlan/vxlan_core.c
+@@ -24,6 +24,7 @@
+ #include <net/rtnetlink.h>
+ #include <net/inet_ecn.h>
+ #include <net/net_namespace.h>
++#include <net/netfilter/nf_flow_table.h>
+ #include <net/netns/generic.h>
+ #include <net/tun_proto.h>
+ #include <net/vxlan.h>
+@@ -3268,6 +3269,24 @@ static int vxlan_fill_metadata_dst(struc
+ 	return 0;
+ }
+ 
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++static int vxlan_flow_offload_check(struct flow_offload_hw_path *path)
++{
++	struct net_device *dev = path->dev;
++	struct vxlan_dev *vxlan = netdev_priv(dev);
++
++	if (path->flags & BIT(DEV_PATH_TNL))
++		return -EEXIST;
++
++	path->flags |= BIT(DEV_PATH_TNL);
++	path->tnl_type = FLOW_OFFLOAD_TNL_VXLAN;
++	path->virt_dev = dev;
++	path->dev = vxlan->dev;
++
++	return 0;
++}
++#endif /* CONFIG_NF_FLOW_TABLE */
++
+ static const struct net_device_ops vxlan_netdev_ether_ops = {
+ 	.ndo_init		= vxlan_init,
+ 	.ndo_uninit		= vxlan_uninit,
+@@ -3289,6 +3308,9 @@ static const struct net_device_ops vxlan
+ 	.ndo_mdb_dump		= vxlan_mdb_dump,
+ 	.ndo_mdb_get		= vxlan_mdb_get,
+ 	.ndo_fill_metadata_dst	= vxlan_fill_metadata_dst,
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++	.ndo_flow_offload_check = vxlan_flow_offload_check,
++#endif
+ };
+ 
+ static const struct net_device_ops vxlan_netdev_raw_ops = {

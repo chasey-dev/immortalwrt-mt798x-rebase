@@ -1,0 +1,114 @@
+---
+[v1] net: ethernet: mtk_ppe: change IB1 VLAN_TAG bit to IS_SP_TAG for NETSYSv3
+
+In NETSYSv3, IB1 bit 18 is repurposed from VLAN_TAG to IS_SP_TAG
+after the MTK_PPE_TB_CFG_IS_SP_TAG_EN is enabled. Update PPE entry
+setup and hardware config to reflect this change.
+---
+v1: Add IS_SP_TAG constants and update PPE entry helpers for NETSYSv3.
+---
+
+From e84d13c6c3ef6edd32119423309b3d291eb2b87d Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Fri, 17 Apr 2026 11:16:46 +0800
+Subject: [PATCH] net: ethernet: mtk_ppe: change IB1 VLAN_TAG bit to IS_SP_TAG
+ for NETSYSv3
+
+In NETSYSv3, IB1 bit 18 is repurposed from VLAN_TAG to IS_SP_TAG
+after the MTK_PPE_TB_CFG_IS_SP_TAG_EN is enabled.
+Add the MTK_FOE_IB1_BIND_IS_SP_TAG_V3 constant and MTK_PPE_TB_CFG_IS_SP_TAG_EN
+register bit accordingly.
+
+Update mtk_foe_entry_set_dsa() to set IS_SP_TAG on NETSYSv3 instead of
+clearing VLAN_TAG. Update mtk_foe_entry_set_vlan() and
+mtk_foe_entry_set_pppoe() to track VLAN tag presence via l2->etype rather
+than the repurposed IB1 VLAN_TAG bit. Enable IS_SP_TAG processing in the
+PPE table config during mtk_ppe_start() for NETSYSv3 or greater.
+---
+ drivers/net/ethernet/mediatek/mtk_ppe.c      | 16 ++++++++--------
+ drivers/net/ethernet/mediatek/mtk_ppe.h      |  3 +++
+ drivers/net/ethernet/mediatek/mtk_ppe_regs.h |  1 +
+ 3 files changed, 12 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_ppe.c b/drivers/net/ethernet/mediatek/mtk_ppe.c
+index 92d8e22..101e753 100644
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
+@@ -595,10 +595,10 @@ int mtk_foe_entry_set_dsa(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ 			entry->ib1 |= mtk_prep_ib1_vlan_layer(eth, 1);
+ 		else
+ 			l2->etype |= BIT(8);
+-
+-		entry->ib1 &= ~mtk_get_ib1_vlan_tag_mask(eth);
+ 	}
+
++	entry->ib1 |= mtk_get_ib1_sp_tag_mask(eth);
++
+ 	return 0;
+ #else
+ 	return -ENOTSUPP;
+@@ -637,12 +637,12 @@ int mtk_foe_entry_set_vlan(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+
+ 	switch (mtk_get_ib1_vlan_layer(eth, entry->ib1)) {
+ 	case 0:
+-		entry->ib1 |= mtk_get_ib1_vlan_tag_mask(eth) |
+-			      mtk_prep_ib1_vlan_layer(eth, 1);
++		entry->ib1 |= mtk_prep_ib1_vlan_layer(eth, 1);
++		l2->etype = ETH_P_8021Q;
+ 		l2->vlan1 = vid;
+ 		return 0;
+ 	case 1:
+-		if (!(entry->ib1 & mtk_get_ib1_vlan_tag_mask(eth))) {
++		if (l2->etype != ETH_P_8021Q) {
+ 			l2->vlan1 = vid;
+ 			l2->etype |= BIT(8);
+ 		} else {
+@@ -660,8 +660,7 @@ int mtk_foe_entry_set_pppoe(struct mtk_eth *eth, struct mtk_foe_entry *entry,
+ {
+ 	struct mtk_foe_mac_info *l2 = mtk_foe_entry_l2(eth, entry);
+ 
+-	if (!(entry->ib1 & mtk_get_ib1_vlan_layer_mask(eth)) ||
+-	    (entry->ib1 & mtk_get_ib1_vlan_tag_mask(eth)))
++	if (!(entry->ib1 & mtk_get_ib1_vlan_layer_mask(eth)))
+ 		l2->etype = ETH_P_PPP_SES;
+ 
+ 	entry->ib1 |= mtk_get_ib1_ppoe_mask(eth);
+@@ -1322,7 +1321,8 @@ void mtk_ppe_start(struct mtk_ppe *ppe)
+ 	if (mtk_is_netsys_v2_or_greater(ppe->eth))
+ 		val |= MTK_PPE_TB_CFG_INFO_SEL;
+ 	if (mtk_is_netsys_v3_or_greater(ppe->eth))
+-		val |= MTK_PPE_TB_CFG_KEEP_DSCP_ECN_EN;
++		val |= MTK_PPE_TB_CFG_KEEP_DSCP_ECN_EN |
++		       MTK_PPE_TB_CFG_IS_SP_TAG_EN;
+ 	if (!mtk_is_netsys_v3_or_greater(ppe->eth))
+ 		val |= MTK_PPE_TB_CFG_ENTRY_80B;
+ 	ppe_w32(ppe, MTK_PPE_TB_CFG, val);
+diff --git a/drivers/net/ethernet/mediatek/mtk_ppe.h b/drivers/net/ethernet/mediatek/mtk_ppe.h
+index 5032019..cbc2ad3 100644
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.h
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.h
+@@ -43,6 +43,9 @@
+ #define MTK_FOE_IB1_BIND_TTL_V2		BIT(22)
+ #define MTK_FOE_IB1_PACKET_TYPE_V2	GENMASK(27, 23)
+
++/* CONFIG_MEDIATEK_NETSYS_V3 */
++#define MTK_FOE_IB1_BIND_IS_SP_TAG_V3	BIT(18)
++
+ enum {
+ 	MTK_PPE_PKT_TYPE_IPV4_HNAPT = 0,
+ 	MTK_PPE_PKT_TYPE_IPV4_ROUTE = 1,
+diff --git a/drivers/net/ethernet/mediatek/mtk_ppe_regs.h b/drivers/net/ethernet/mediatek/mtk_ppe_regs.h
+index 0252f9c..b39e52c 100644
+--- a/drivers/net/ethernet/mediatek/mtk_ppe_regs.h
++++ b/drivers/net/ethernet/mediatek/mtk_ppe_regs.h
+@@ -67,6 +67,7 @@
+ #define MTK_PPE_TB_CFG_INFO_SEL			BIT(20)
+ #define MTK_PPE_TB_TICK_SEL			BIT(24)
+ #define MTK_PPE_TB_CFG_KEEP_DSCP_ECN_EN		BIT(25)
++#define MTK_PPE_TB_CFG_IS_SP_TAG_EN		BIT(26)
+
+ #define MTK_PPE_BIND_LMT1			0x230
+ #define MTK_PPE_NTU_KEEPALIVE			GENMASK(23, 16)
+--
+2.45.2
+

@@ -1,0 +1,14 @@
+--- a/mt_wifi/include/os/rt_linux.h
++++ b/mt_wifi/include/os/rt_linux.h
+@@ -725,7 +725,11 @@ typedef struct os_cookie	*POS_COOKIE;
+ #if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
+ #define MTWF_PRINT	printk
+ #else
++/* For kernel versions between 4.10 and 5.4, keep the original (problematic) printk redefinition.
++   For kernels newer than 5.4, this redefinition causes compilation errors. */
++#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 4, 0))
+ #define  printk(fmt, ...) printk(KERN_CONT fmt, ##__VA_ARGS__)
++#endif /* LINUX_VERSION_CODE <= 5.4.0 */
+ #define MTWF_PRINT	pr_cont
+ #endif
+ #ifdef DBG_ENHANCE

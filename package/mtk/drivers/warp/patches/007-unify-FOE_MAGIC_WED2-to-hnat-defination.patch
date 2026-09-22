@@ -1,0 +1,11 @@
+--- a/warp_wifi.c
++++ b/warp_wifi.c
+@@ -87,7 +87,7 @@ void wifi_dump_skb(
+ 
+ #define FOE_MAGIC_WED0 0x78
+ #define FOE_MAGIC_WED1 0x79
+-#define FOE_MAGIC_WED2 0x87
++#define FOE_MAGIC_WED2 0x7A
+ 
+ void
+ wifi_rx_tuple_add(struct wifi_entry *wifi, u8 idx, unsigned char *rx_info)

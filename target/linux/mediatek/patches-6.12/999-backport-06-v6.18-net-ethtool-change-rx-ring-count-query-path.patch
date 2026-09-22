@@ -1,0 +1,237 @@
+---
+[v1] net: ethtool: change rx ring count query path
+
+Backport upstream change that introduces a dedicated
+ethtool_get_rx_ring_count() helper for handling
+ETHTOOL_GRXRINGS queries, instead of going through the
+generic ethtool_get_rxnfc() path.
+
+Old path:
+  ioctl(ETHTOOL_GRXRINGS) -> ethtool_get_rxnfc()
+                          -> ops->get_rxnfc(cmd=ETHTOOL_GRXRINGS)
+New path:
+  ioctl(ETHTOOL_GRXRINGS) -> ethtool_get_rxrings()
+                          -> ethtool_get_rx_ring_count()
+                          -> ops->get_rx_ring_count()
+---
+v1: Change RX ring count query path
+---
+
+From d8cb42d9935f5620d7f3c8fbc477436eb8003852 Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Wed, 16 Sep 2026 17:21:20 +0800
+Subject: [PATCH] net: ethtool: change rx ring count query path
+
+Backport upstream change that introduces a dedicated
+ethtool_get_rx_ring_count() helper for handling
+ETHTOOL_GRXRINGS queries, instead of going through the
+generic ethtool_get_rxnfc() path.
+---
+ include/linux/ethtool.h |  2 ++
+ net/ethtool/common.c    | 10 ++++++++
+ net/ethtool/common.h    |  3 +++
+ net/ethtool/ioctl.c     | 56 ++++++++++++++++++++++++++++++-----------
+ 4 files changed, 56 insertions(+), 15 deletions(-)
+
+diff --git a/include/linux/ethtool.h b/include/linux/ethtool.h
+index b0ed740..d4deb0d 100644
+--- a/include/linux/ethtool.h
++++ b/include/linux/ethtool.h
+@@ -854,6 +854,7 @@ struct kernel_ethtool_ts_info {
+  * @reset: Reset (part of) the device, as specified by a bitmask of
+  *	flags from &enum ethtool_reset_flags.  Returns a negative
+  *	error code or zero.
++ * @get_rx_ring_count: Return the number of RX rings
+  * @get_rxfh_key_size: Get the size of the RX flow hash key.
+  *	Returns zero if not supported for this specific device.
+  * @get_rxfh_indir_size: Get the size of the RX flow hash indirection table.
+@@ -1044,6 +1045,7 @@ struct ethtool_ops {
+ 	int	(*set_rxnfc)(struct net_device *, struct ethtool_rxnfc *);
+ 	int	(*flash_device)(struct net_device *, struct ethtool_flash *);
+ 	int	(*reset)(struct net_device *, u32 *);
++	u32	(*get_rx_ring_count)(struct net_device *dev);
+ 	u32	(*get_rxfh_key_size)(struct net_device *);
+ 	u32	(*get_rxfh_indir_size)(struct net_device *);
+ 	int	(*get_rxfh)(struct net_device *, struct ethtool_rxfh_param *);
+diff --git a/net/ethtool/common.c b/net/ethtool/common.c
+index dd345ef..1ae6696 100644
+--- a/net/ethtool/common.c
++++ b/net/ethtool/common.c
+@@ -523,6 +523,16 @@ int __ethtool_get_link(struct net_device *dev)
+ 	return netif_running(dev) && dev->ethtool_ops->get_link(dev);
+ }
+ 
++int ethtool_get_rx_ring_count(struct net_device *dev)
++{
++	const struct ethtool_ops *ops = dev->ethtool_ops;
++
++	if (!ops->get_rx_ring_count)
++		return -EOPNOTSUPP;
++
++	return ops->get_rx_ring_count(dev);
++}
++
+ static int ethtool_get_rxnfc_rule_count(struct net_device *dev)
+ {
+ 	const struct ethtool_ops *ops = dev->ethtool_ops;
+diff --git a/net/ethtool/common.h b/net/ethtool/common.h
+index d55d520..0e7b8bc 100644
+--- a/net/ethtool/common.h
++++ b/net/ethtool/common.h
+@@ -47,6 +47,9 @@ bool convert_legacy_settings_to_link_ksettings(
+ int ethtool_check_max_channel(struct net_device *dev,
+ 			      struct ethtool_channels channels,
+ 			      struct genl_info *info);
++
++int ethtool_get_rx_ring_count(struct net_device *dev);
++
+ int __ethtool_get_ts_info(struct net_device *dev, struct kernel_ethtool_ts_info *info);
+ 
+ extern const struct ethtool_phy_ops *ethtool_phy_ops;
+diff --git a/net/ethtool/ioctl.c b/net/ethtool/ioctl.c
+index 67fba88..b2e4787 100644
+--- a/net/ethtool/ioctl.c
++++ b/net/ethtool/ioctl.c
+@@ -1028,6 +1028,28 @@ static noinline_for_stack int ethtool_set_rxnfc(struct net_device *dev,
+ 	return 0;
+ }
+ 
++static noinline_for_stack int ethtool_get_rxrings(struct net_device *dev,
++						  u32 cmd,
++						  void __user *useraddr)
++{
++	struct ethtool_rxnfc info;
++	size_t info_size;
++	int ret;
++
++	info_size = sizeof(info);
++	ret = ethtool_rxnfc_copy_struct(cmd, &info, &info_size, useraddr);
++	if (ret)
++		return ret;
++
++	ret = ethtool_get_rx_ring_count(dev);
++	if (ret < 0)
++		return ret;
++
++	info.data = ret;
++
++	return ethtool_rxnfc_copy_to_user(useraddr, &info, info_size, NULL);
++}
++
+ static noinline_for_stack int ethtool_get_rxnfc(struct net_device *dev,
+ 						u32 cmd, void __user *useraddr)
+ {
+@@ -1066,7 +1088,7 @@ static noinline_for_stack int ethtool_get_rxnfc(struct net_device *dev,
+ }
+ 
+ static int ethtool_copy_validate_indir(u32 *indir, void __user *useraddr,
+-					struct ethtool_rxnfc *rx_rings,
++					int num_rx_rings,
+ 					u32 size)
+ {
+ 	int i;
+@@ -1076,7 +1098,7 @@ static int ethtool_copy_validate_indir(u32 *indir, void __user *useraddr,
+ 
+ 	/* Validate ring indices */
+ 	for (i = 0; i < size; i++)
+-		if (indir[i] >= rx_rings->data)
++		if (indir[i] >= num_rx_rings)
+ 			return -EINVAL;
+ 
+ 	return 0;
+@@ -1145,7 +1167,7 @@ static noinline_for_stack int ethtool_set_rxfh_indir(struct net_device *dev,
+ 	const struct ethtool_ops *ops = dev->ethtool_ops;
+ 	struct ethtool_rxfh_param rxfh_dev = {};
+ 	struct netlink_ext_ack *extack = NULL;
+-	struct ethtool_rxnfc rx_rings;
++	int num_rx_rings;
+ 	u32 user_size, i;
+ 	int ret;
+ 	u32 ringidx_offset = offsetof(struct ethtool_rxfh_indir, ring_index[0]);
+@@ -1171,20 +1193,21 @@ static noinline_for_stack int ethtool_set_rxfh_indir(struct net_device *dev,
+ 	if (!rxfh_dev.indir)
+ 		return -ENOMEM;
+ 
+-	rx_rings.cmd = ETHTOOL_GRXRINGS;
+-	ret = ops->get_rxnfc(dev, &rx_rings, NULL);
+-	if (ret)
++	num_rx_rings = ethtool_get_rx_ring_count(dev);
++	if (num_rx_rings < 0) {
++		ret = num_rx_rings;
+ 		goto out;
++	}
+ 
+ 	if (user_size == 0) {
+ 		u32 *indir = rxfh_dev.indir;
+ 
+ 		for (i = 0; i < rxfh_dev.indir_size; i++)
+-			indir[i] = ethtool_rxfh_indir_default(i, rx_rings.data);
++			indir[i] = ethtool_rxfh_indir_default(i, num_rx_rings);
+ 	} else {
+ 		ret = ethtool_copy_validate_indir(rxfh_dev.indir,
+ 						  useraddr + ringidx_offset,
+-						  &rx_rings,
++						  num_rx_rings,
+ 						  rxfh_dev.indir_size);
+ 		if (ret)
+ 			goto out;
+@@ -1355,10 +1378,10 @@ static noinline_for_stack int ethtool_set_rxfh(struct net_device *dev,
+ 	struct ethtool_rxfh_param rxfh_dev = {};
+ 	struct ethtool_rxfh_context *ctx = NULL;
+ 	struct netlink_ext_ack *extack = NULL;
+-	struct ethtool_rxnfc rx_rings;
+ 	struct ethtool_rxfh rxfh;
+ 	bool locked = false; /* dev->ethtool->rss_lock taken */
+ 	bool create = false;
++	int num_rx_rings;
+ 	u8 *rss_config;
+ 	int ret;
+ 
+@@ -1419,10 +1442,11 @@ static noinline_for_stack int ethtool_set_rxfh(struct net_device *dev,
+ 	if (!rss_config)
+ 		return -ENOMEM;
+ 
+-	rx_rings.cmd = ETHTOOL_GRXRINGS;
+-	ret = ops->get_rxnfc(dev, &rx_rings, NULL);
+-	if (ret)
++	num_rx_rings = ethtool_get_rx_ring_count(dev);
++	if (num_rx_rings < 0) {
++		ret = num_rx_rings;
+ 		goto out;
++	}
+ 
+ 	/* rxfh.indir_size == 0 means reset the indir table to default (master
+ 	 * context) or delete the context (other RSS contexts).
+@@ -1435,7 +1459,7 @@ static noinline_for_stack int ethtool_set_rxfh(struct net_device *dev,
+ 		rxfh_dev.indir_size = dev_indir_size;
+ 		ret = ethtool_copy_validate_indir(rxfh_dev.indir,
+ 						  useraddr + rss_cfg_offset,
+-						  &rx_rings,
++						  num_rx_rings,
+ 						  rxfh.indir_size);
+ 		if (ret)
+ 			goto out;
+@@ -1447,7 +1471,7 @@ static noinline_for_stack int ethtool_set_rxfh(struct net_device *dev,
+ 			rxfh_dev.indir_size = dev_indir_size;
+ 			indir = rxfh_dev.indir;
+ 			for (i = 0; i < dev_indir_size; i++)
+-				indir[i] = ethtool_rxfh_indir_default(i, rx_rings.data);
++				indir[i] = ethtool_rxfh_indir_default(i, num_rx_rings);
+ 		} else {
+ 			rxfh_dev.rss_delete = true;
+ 		}
+@@ -3256,8 +3280,10 @@ __dev_ethtool(struct net *net, struct ifreq *ifr, void __user *useraddr,
+ 		rc = ethtool_set_value(dev, useraddr,
+ 				       dev->ethtool_ops->set_priv_flags);
+ 		break;
+-	case ETHTOOL_GRXFH:
+ 	case ETHTOOL_GRXRINGS:
++		rc = ethtool_get_rxrings(dev, ethcmd, useraddr);
++		break;
++	case ETHTOOL_GRXFH:
+ 	case ETHTOOL_GRXCLSRLCNT:
+ 	case ETHTOOL_GRXCLSRULE:
+ 	case ETHTOOL_GRXCLSRLALL:
+-- 
+2.45.2
+

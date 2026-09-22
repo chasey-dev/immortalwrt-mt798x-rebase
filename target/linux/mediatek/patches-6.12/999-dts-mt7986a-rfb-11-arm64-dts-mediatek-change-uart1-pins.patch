@@ -1,0 +1,21 @@
+---
+[v1] arm64: dts: mt7986a rfb: change uart1 pins
+
+Change UART1 pinmux to uart1_tx_rx configuration due to GPIO button pin sharing
+on MT7986A RFB.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+@@ -276,7 +276,7 @@
+ 
+ &uart1 {
+ 	pinctrl-names = "default";
+-	pinctrl-0 = <&uart1_pins>;
++	pinctrl-0 = <&uart1_tx_rx_pins>;
+ 	status = "okay";
+ };
+ 

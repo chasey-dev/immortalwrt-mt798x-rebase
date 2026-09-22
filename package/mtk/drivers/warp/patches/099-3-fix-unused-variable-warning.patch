@@ -1,0 +1,41 @@
+--- a/warp_main.c
++++ b/warp_main.c
+@@ -1229,8 +1229,8 @@ warp_isr_handler(void *priv_data)
+ 		return;
+ 
+ 	wed = &warp->wed;
+-	struct wifi_entry *wifi = &warp->wifi;
+-	struct wifi_hw *hw = &wifi->hw;
++	// struct wifi_entry *wifi = &warp->wifi;
++	// struct wifi_hw *hw = &wifi->hw;
+ 
+ 	warp_eint_ctrl_hw(wed, false);
+ 	warp_eint_get_stat_hw(wed, &status);
+--- a/wed.c
++++ b/wed.c
+@@ -566,8 +566,8 @@ int wed_release_rx_token(
+ {
+ 	int ret = -1;
+ 	struct warp_entry *warp = NULL;
+-	struct wifi_entry *wifi = NULL;
+-	struct wifi_ops *ops = NULL;
++	// struct wifi_entry *wifi = NULL;
++	// struct wifi_ops *ops = NULL;
+ 
+ 	if (wed) {
+ 		warp = (struct warp_entry *)wed->warp;
+--- a/warp_bm_v2.c
++++ b/warp_bm_v2.c
+@@ -1161,9 +1161,9 @@ wed_rx_budget_ring_exit(
+ 	u32 ring_len,
+ 	struct warp_dma_buf *desc)
+ {
+-	struct wed_res_ctrl *res_ctrl = &wed->res_ctrl;
+-	struct wed_rx_ctrl *rx_ctrl = &res_ctrl->rx_ctrl;
+-	struct wed_rx_bm_res *extra_res = &rx_ctrl->extra;
++	// struct wed_res_ctrl *res_ctrl = &wed->res_ctrl;
++	// struct wed_rx_ctrl *rx_ctrl = &res_ctrl->rx_ctrl;
++	// struct wed_rx_bm_res *extra_res = &rx_ctrl->extra;
+ 	u32 i;
+ 
+ 	for (i = 0; i < ring_len; i++)

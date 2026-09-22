@@ -1,0 +1,44 @@
+---
+[v1] net: ethernet: mtk_eth_soc: fix mtk_eth_offload_init memory leak
+
+Without this patch, the flow table rhashtable allocated in
+mtk_eth_offload_init is never destroyed, causing a memory leak on driver
+unload.
+---
+v1: Fix flow table rhashtable memory leak in mtk_ppe_deinit.
+---
+
+From d933c660a042bd291511cba53b9cfb444d49fbaa Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 20 Jan 2026 16:35:52 +0800
+Subject: [PATCH] net: ethernet: mtk_ppe: fix mtk_eth_offload_init memory
+ leak
+
+---
+ drivers/net/ethernet/mediatek/mtk_ppe.c         | 1 +
+ drivers/net/ethernet/mediatek/mtk_ppe_offload.c | 4 +---
+ 4 files changed, 8 insertions(+), 8 deletions(-)
+
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
+@@ -1237,6 +1237,7 @@ void mtk_ppe_deinit(struct mtk_eth *eth)
+ 			return;
+ 		rhashtable_destroy(&eth->ppe[i]->l2_flows);
+ 	}
++	rhashtable_destroy(&eth->flow_table);
+ }
+ 
+ static void mtk_ppe_init_foe_table(struct mtk_ppe *ppe)
+--- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
+@@ -802,9 +802,7 @@ int mtk_eth_setup_tc(struct net_device *
+ 	}
+ }
+ 
+-int mtk_eth_offload_init(struct mtk_eth *eth, u8 id)
++int mtk_eth_offload_init(struct mtk_eth *eth)
+ {
+-	if (!eth->ppe[id] || !eth->ppe[id]->foe_table)
+-		return 0;
+ 	return rhashtable_init(&eth->flow_table, &mtk_flow_ht_params);
+ }

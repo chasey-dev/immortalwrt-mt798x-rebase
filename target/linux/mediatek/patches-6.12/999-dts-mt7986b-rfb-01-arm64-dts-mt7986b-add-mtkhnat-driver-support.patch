@@ -1,0 +1,30 @@
+From 132c1162c61d07e98e8b12d5d21b4b75d4e9a50a Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 27 Jan 2026 19:53:18 +0800
+Subject: [PATCH] arm64: dts: mt7986b: add mtkhnat driver support
+
+---
+ arch/arm64/boot/dts/mediatek/mt7986b-rfb.dts | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7986b-rfb.dts b/arch/arm64/boot/dts/mediatek/mt7986b-rfb.dts
+index effc447..d05d01e 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7986b-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986b-rfb.dts
+@@ -124,6 +124,13 @@ fixed-link {
+ 	};
+ };
+ 
++&hnat {
++	mtketh-wan = "eth1";
++	mtketh-lan = "lan";
++	mtketh-max-gmac = <2>;
++	status = "okay";
++};
++
+ &spi0 {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&spi_flash_pins>;
+-- 
+2.45.2
+

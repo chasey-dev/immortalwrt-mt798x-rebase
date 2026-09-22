@@ -1,0 +1,358 @@
+--- /dev/null
++++ b/configs/mt7986_ruijie_rg-x60-new-ubi_defconfig
+@@ -0,0 +1,111 @@
++CONFIG_ARM=y
++CONFIG_SYS_HAS_NONCACHED_MEMORY=y
++CONFIG_POSITION_INDEPENDENT=y
++CONFIG_ARCH_MEDIATEK=y
++CONFIG_TEXT_BASE=0x41e00000
++CONFIG_SYS_MALLOC_F_LEN=0x4000
++CONFIG_NR_DRAM_BANKS=1
++CONFIG_DEFAULT_DEVICE_TREE="mt7986a-ruijie-rg-x60-new"
++CONFIG_OF_LIBFDT_OVERLAY=y
++CONFIG_TARGET_MT7986=y
++CONFIG_SYS_LOAD_ADDR=0x46000000
++CONFIG_PRE_CON_BUF_ADDR=0x4007EF00
++CONFIG_DEBUG_UART_BASE=0x11002000
++CONFIG_DEBUG_UART_CLOCK=40000000
++CONFIG_DEBUG_UART=y
++CONFIG_FIT=y
++CONFIG_BOOTDELAY=3
++CONFIG_AUTOBOOT_KEYED=y
++CONFIG_AUTOBOOT_MENU_SHOW=y
++CONFIG_DEFAULT_FDT_FILE="mediatek/mt7986a-ruijie-rg-x60-new.dtb"
++CONFIG_LOGLEVEL=7
++CONFIG_PRE_CONSOLE_BUFFER=y
++CONFIG_LOG=y
++# CONFIG_BOARD_INIT is not set
++CONFIG_BOARD_LATE_INIT=y
++CONFIG_HUSH_PARSER=y
++CONFIG_SYS_PROMPT="MT7986> "
++CONFIG_CMD_CPU=y
++CONFIG_CMD_LICENSE=y
++CONFIG_CMD_BOOTMENU=y
++CONFIG_CMD_ASKENV=y
++CONFIG_CMD_ERASEENV=y
++CONFIG_CMD_ENV_FLAGS=y
++CONFIG_CMD_STRINGS=y
++CONFIG_CMD_DM=y
++CONFIG_CMD_GPIO=y
++CONFIG_CMD_MTD=y
++CONFIG_CMD_TFTPSRV=y
++CONFIG_CMD_RARP=y
++CONFIG_CMD_CDP=y
++CONFIG_CMD_LINK_LOCAL=y
++CONFIG_CMD_DHCP=y
++CONFIG_CMD_DNS=y
++CONFIG_CMD_PING=y
++CONFIG_CMD_SNTP=y
++CONFIG_CMD_PXE=y
++CONFIG_CMD_CACHE=y
++CONFIG_CMD_PSTORE=y
++CONFIG_CMD_PSTORE_MEM_ADDR=0x42ff0000
++CONFIG_CMD_UUID=y
++CONFIG_CMD_HASH=y
++CONFIG_CMD_SMC=y
++CONFIG_CMD_MTDPARTS=y
++CONFIG_CMD_UBI=y
++CONFIG_CMD_UBI_RENAME=y
++CONFIG_OF_EMBED=y
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_UBI=y
++CONFIG_ENV_REDUNDANT=y
++CONFIG_ENV_UBI_PART="ubi"
++CONFIG_ENV_UBI_VOLUME="ubootenv"
++CONFIG_ENV_UBI_VOLUME_REDUND="ubootenv2"
++CONFIG_ENV_RELOC_GD_ENV_ADDR=y
++CONFIG_ENV_USE_DEFAULT_ENV_TEXT_FILE=y
++CONFIG_ENV_DEFAULT_ENV_TEXT_FILE="defenvs/ruijie_rg-x60-new-ubi_env"
++CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG=y
++CONFIG_VERSION_VARIABLE=y
++CONFIG_NETCONSOLE=y
++CONFIG_USE_IPADDR=y
++CONFIG_IPADDR="192.168.1.1"
++CONFIG_USE_SERVERIP=y
++CONFIG_SERVERIP="192.168.1.254"
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_REGMAP=y
++CONFIG_SYSCON=y
++CONFIG_BUTTON=y
++CONFIG_BUTTON_GPIO=y
++CONFIG_CLK=y
++CONFIG_GPIO_HOG=y
++# CONFIG_I2C is not set
++CONFIG_LED=y
++CONFIG_LED_BOOT=y
++CONFIG_LED_ACTIVITY=y
++CONFIG_LED_BLINK=y
++CONFIG_LED_SW_BLINK=y
++CONFIG_LED_GPIO=y
++# CONFIG_MMC is not set
++CONFIG_MTD=y
++CONFIG_DM_MTD=y
++CONFIG_MTD_SPI_NAND=y
++CONFIG_MTD_UBI_FASTMAP=y
++CONFIG_PHY_FIXED=y
++CONFIG_MEDIATEK_ETH=y
++CONFIG_PHY=y
++CONFIG_PINCTRL=y
++CONFIG_PINCONF=y
++CONFIG_PINCTRL_MT7986=y
++CONFIG_POWER_DOMAIN=y
++CONFIG_MTK_POWER_DOMAIN=y
++CONFIG_DM_REGULATOR=y
++CONFIG_DM_REGULATOR_FIXED=y
++CONFIG_DM_REGULATOR_GPIO=y
++CONFIG_RAM=y
++CONFIG_DM_SERIAL=y
++CONFIG_SERIAL_RX_BUFFER=y
++CONFIG_MTK_SERIAL=y
++CONFIG_SPI=y
++CONFIG_DM_SPI=y
++CONFIG_MTK_SPIM=y
++CONFIG_ZSTD=y
++CONFIG_HEXDUMP=y
+--- /dev/null
++++ b/arch/arm/dts/mt7986a-ruijie-rg-x60-new.dts
+@@ -0,0 +1,188 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++/dts-v1/;
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/linux-event-codes.h>
++
++#include "mt7986.dtsi"
++
++/ {
++	#address-cells = <1>;
++	#size-cells = <1>;
++
++	model = "Ruijie RG-X60 New";
++	compatible = "ruijie,rg-x60-new", "mediatek,mt7986a";
++
++	chosen {
++		stdout-path = &uart0;
++		tick-timer = &timer0;
++	};
++
++	memory@40000000 {
++		reg = <0x40000000 0x20000000>;
++		device_type = "memory";
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		button-0 {
++			label = "reset";
++			gpios = <&pio 14 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RESTART>;
++		};
++
++		button-1 {
++			label = "mesh";
++			gpios = <&pio 15 GPIO_ACTIVE_LOW>;
++			linux,code = <BTN_MISC>;
++		};
++	};
++
++	gpio-leds {
++		compatible = "gpio-leds";
++
++		led-0 {
++			label = "red:status";
++			gpios = <&pio 10 GPIO_ACTIVE_LOW>;
++		};
++
++		led-1 {
++			label = "green:status";
++			gpios = <&pio 9 GPIO_ACTIVE_LOW>;
++		};
++
++		led-2 {
++			label = "blue:status";
++			gpios = <&pio 11 GPIO_ACTIVE_LOW>;
++		};
++
++		led-3 {
++			label = "mesh:status";
++			gpios = <&pio 22 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	options {
++		u-boot {
++			boot-led = "green:status";
++			boot-led-period = <250>;
++
++			activity-led = "blue:status";
++			activity-led-period = <100>;
++		};
++	};
++};
++
++&eth {
++	status = "okay";
++	mediatek,gmac-id = <0>;
++	phy-mode = "2500base-x";
++	mediatek,switch = "mt7531";
++	reset-gpios = <&pio 5 GPIO_ACTIVE_HIGH>;
++
++	fixed-link {
++		speed = <2500>;
++		full-duplex;
++	};
++};
++
++&pio {
++	spi_flash_pins: spi0-pins-func-1 {
++		mux {
++			function = "flash";
++			groups = "spi0", "spi0_wp_hold";
++		};
++
++		conf-pu {
++			pins = "SPI0_CS", "SPI0_HOLD", "SPI0_WP";
++			drive-strength = <MTK_DRIVE_4mA>;
++			bias-pull-up = <MTK_PUPD_SET_R1R0_11>;
++		};
++
++		conf-pd {
++			pins = "SPI0_CLK", "SPI0_MOSI", "SPI0_MISO";
++			drive-strength = <MTK_DRIVE_4mA>;
++			bias-pull-down = <MTK_PUPD_SET_R1R0_11>;
++		};
++	};
++};
++
++&spi0 {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi_flash_pins>;
++	must_tx;
++	enhance_timing;
++	dma_ext;
++	ipm_design;
++	support_quad;
++	tick_dly = <2>;
++	sample_sel = <0>;
++	status = "okay";
++
++	spi_nand@0 {
++		compatible = "spi-nand";
++		reg = <0>;
++
++		spi-max-frequency = <52000000>;
++		spi-tx-bus-width = <4>;
++		spi-rx-bus-width = <4>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "BL2";
++				reg = <0x000000 0x100000>;
++				read-only;
++			};
++
++			partition@100000 {
++				label = "u-boot-env";
++				reg = <0x100000 0x80000>;
++				read-only;
++			};
++
++			partition@180000 {
++				label = "Factory";
++				reg = <0x180000 0x200000>;
++				read-only;
++			};
++
++			partition@380000 {
++				label = "FIP";
++				reg = <0x380000 0x200000>;
++				read-only;
++			};
++
++			partition@580000 {
++				label = "product_info";
++				reg = <0x580000 0x80000>;
++				read-only;
++			};
++
++			partition@600000 {
++				label = "kdump";
++				reg = <0x600000 0x80000>;
++				read-only;
++			};
++
++			partition@680000 {
++				label = "ubi";
++				reg = <0x680000 0x0>;
++			};
++		};
++	};
++};
++
++&uart0 {
++	status = "okay";
++};
++
++&watchdog {
++	status = "disabled";
++};
+--- /dev/null
++++ b/defenvs/ruijie_rg-x60-new-ubi_env
+@@ -0,0 +1,50 @@
++ipaddr=192.168.1.1
++serverip=192.168.1.254
++loadaddr=0x46000000
++console=earlycon=uart8250,mmio32,0x11002000 console=ttyS0
++bootargs=console=ttyS0,115200n8 console_msg_format=syslog
++bootcmd=if pstore check ; then run boot_tftp_recovery || run led_error ; else run boot_production || run led_error ; fi
++bootdelay=3
++bootfile_recovery=immortalwrt-mediatek-filogic-ruijie_rg-x60-new-ubi-initramfs-recovery.itb
++bootfile_bl2=immortalwrt-mediatek-filogic-ruijie_rg-x60-new-ubi-preloader.bin
++bootfile_fip=immortalwrt-mediatek-filogic-ruijie_rg-x60-new-ubi-bl31-uboot.fip
++bootfile_upg=immortalwrt-mediatek-filogic-ruijie_rg-x60-new-ubi-squashfs-sysupgrade.itb
++bootmenu_confirm_return=askenv - Press ENTER to return to menu ; bootmenu 60
++bootmenu_default=0
++bootmenu_delay=2
++bootmenu_title=OpenWrt
++bootmenu_0=Initialize environment.=run _firstboot
++bootmenu_0d=Run default boot command.=run boot_default
++bootmenu_1=Boot production system from NAND.=run boot_production ; run bootmenu_confirm_return
++bootmenu_2=Boot recovery system via TFTP.=run boot_tftp_recovery ; run bootmenu_confirm_return
++bootmenu_3=Boot production system via TFTP.=run boot_tftp_production ; run bootmenu_confirm_return
++bootmenu_4=Load production system via TFTP then write to NAND.=run tftp_write_production ; run bootmenu_confirm_return
++bootmenu_5=[31mLoad BL31+U-Boot FIP via TFTP then write to NAND.[0m=run boot_tftp_write_fip ; run bootmenu_confirm_return
++bootmenu_6=[31mLoad BL2 preloader via TFTP then write to NAND.[0m=run boot_tftp_write_bl2 ; run bootmenu_confirm_return
++bootmenu_7=Reboot.=reset
++bootmenu_8=Reset all settings to factory defaults.=run reset_env; ubi remove rootfs_data ; reset
++boot_default=if button mesh ; then run boot_tftp_recovery || run led_error ; else run bootcmd ; fi 
++boot_production=run ubi_read_production && bootm $loadaddr
++boot_tftp_production=tftpboot $loadaddr $bootfile_upg && iminfo $loadaddr && bootm $loadaddr
++boot_tftp_recovery=run led_blue_blink && tftpboot $loadaddr $bootfile_recovery && led blue:status off && iminfo $loadaddr && bootm $loadaddr
++boot_tftp_write_fip=tftpboot $loadaddr $bootfile_fip && iminfo $loadaddr && run ubi_write_fip && run reset_env && reset
++boot_tftp_write_bl2=tftpboot $loadaddr $bootfile_bl2 && iminfo $loadaddr && run mtd_write_bl2
++led_error=led red:status blink 500
++led_blue_blink=led blue:status blink 500
++netretry=once
++part_fit=fit
++reset_env=mw $loadaddr 0xff 0x1f000 ; ubi write $loadaddr ubootenv 0x1f000 ; ubi write $loadaddr ubootenv2 0x1f000
++tftp_write_production=tftpboot $loadaddr $bootfile_upg && iminfo $loadaddr && run ubi_write_production
++ubi_write_fip=ubi check fip && ubi write $loadaddr fip 0x200000
++mtd_write_bl2=mtd erase BL2 && mtd write BL2 $loadaddr
++ubi_create_env=ubi check ubootenv || ubi create ubootenv 0x1f000 dynamic ; ubi check ubootenv2 || ubi create ubootenv2 0x1f000 dynamic
++ubi_format=ubi detach ; mtd erase ubi && ubi part ubi ; reset
++ubi_prepare_rootfs=if ubi check rootfs_data ; then else if env exists rootfs_data_max ; then ubi create rootfs_data $rootfs_data_max dynamic || ubi create rootfs_data - dynamic ; else ubi create rootfs_data - dynamic ; fi ; fi
++ubi_read_production=ubi read $loadaddr $part_fit && iminfo $loadaddr && run ubi_prepare_rootfs
++ubi_remove_rootfs=ubi check rootfs_data && ubi remove rootfs_data
++ubi_write_production=ubi check fit && ubi remove fit ; run ubi_remove_rootfs ; ubi create fit $filesize dynamic && ubi write $loadaddr fit $filesize
++_init_env=setenv _init_env ; run ubi_create_env ; saveenv
++_boot_first=setenv _boot_first ; if button reset ; then run boot_tftp_recovery || run led_error ; else run boot_production || run led_error ; fi
++_firstboot=setenv _firstboot ; run _switch_to_menu ; run _init_env ; run _boot_first
++_switch_to_menu=setenv _switch_to_menu ; setenv bootmenu_0 $bootmenu_0d ; setenv bootmenu_0d ; run _bootmenu_update_title
++_bootmenu_update_title=setenv _bootmenu_update_title ; setenv bootmenu_title "$bootmenu_title $ver"

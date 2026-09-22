@@ -1,0 +1,36 @@
+--- a/base/osal.c
++++ b/base/osal.c
+@@ -48,6 +48,8 @@
+ #endif /* CONFIG_MTD */
+ #include "osal.h"
+ 
++int mt_eeprom_read_wifi(loff_t from, size_t len, unsigned char *buf);
++
+ /*******************************************************************************
+ *                              C O N S T A N T S
+ ********************************************************************************
+@@ -96,23 +98,7 @@ static int __maybe_unused get_default_bi
+ 
+ void FlashRead(char *name, unsigned char *value, unsigned long offset, unsigned long size)
+ {
+-#ifdef CONFIG_MTD
+-	int ret;
+-	size_t rdlen;
+-	struct mtd_info *mtd;
+-
+-	mtd = get_mtd_device_nm(name);
+-	if (IS_ERR(mtd)) {
+-		pr_err("Can't get mtd device!\n");
+-		return;
+-	} else {
+-		ret = mtd_read(mtd, offset, size, &rdlen, value);
+-		if (rdlen != size) {
+-			pr_err("mtd_read: rdlen is not equal to size!\n");
+-		}
+-		put_mtd_device(mtd);
+-	}
+-#endif /* CONFIG_WIFI_MTD */
++	mt_eeprom_read_wifi(offset, size, value);
+ }
+ 
+ void FlashWrite(char *name, unsigned char *p, unsigned long a, unsigned long b)

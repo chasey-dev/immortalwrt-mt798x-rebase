@@ -101,6 +101,7 @@ platform_do_upgrade() {
 	case "$board" in
 	abt,asr3000|\
 	acer,predator-w6x-ubootmod|\
+	aigo,ags21|\
 	asus,zenwifi-bt8-ubootmod|\
 	bananapi,bpi-r3|\
 	bananapi,bpi-r3-mini|\
@@ -147,6 +148,7 @@ platform_do_upgrade() {
 	qihoo,360t7-ubi|\
 	routerich,ax3000-ubootmod|\
 	routerich,be7200|\
+	ruijie,rg-x60-new-ubi|\
 	snr,snr-cpe-ax2|\
 	teralink,tl3020-256mb|\
 	tplink,tl-7dr7230-v1|\
@@ -156,7 +158,10 @@ platform_do_upgrade() {
 	tplink,tl-xdr6086|\
 	tplink,tl-xdr6088|\
 	tplink,tl-xtr8488|\
+	viettel,32x6|\
+	viettel,nr3053|\
 	wavlink,wl-wnt100x3-ubootmod|\
+	wirelesstag,zx7981pd-ubootmod|\
 	xiaomi,mi-router-ax3000t-ubootmod|\
 	xiaomi,redmi-router-ax6000-ubootmod|\
 	xiaomi,mi-router-wr30u-ubootmod|\
@@ -169,6 +174,7 @@ platform_do_upgrade() {
 	acer,vero-w6m|\
 	airpi,ap3000m|\
 	arcadyan,mozart|\
+	clx,s20p|\
 	glinet,gl-mt2500|\
 	glinet,gl-mt2500-airoha|\
 	glinet,gl-mt6000|\
@@ -177,6 +183,7 @@ platform_do_upgrade() {
 	hiveton,h5000m|\
 	huasifei,wh3000-emmc|\
 	huasifei,wh3000-pro-emmc|\
+	sl,3000-emmc|\
 	smartrg,sdg-8612|\
 	smartrg,sdg-8614|\
 	smartrg,sdg-8622|\
@@ -231,7 +238,9 @@ platform_do_upgrade() {
 	cudy,wr3000p-v1|\
 	huasifei,wh3000-pro-nand|\
 	huasifei,wh3000r-nand|\
-	jiorouter,ax6000-jidu6101)
+	jiorouter,ax6000-jidu6101|\
+	ruijie,rg-x30e-pro|\
+	zhao,7981r128)
 		CI_UBIPART="ubi"
 		nand_do_upgrade "$1"
 		;;
@@ -348,6 +357,7 @@ platform_check_image() {
 	case "$board" in
 	abt,asr3000|\
 	acer,predator-w6x-ubootmod|\
+	aigo,ags21|\
 	asus,zenwifi-bt8-ubootmod|\
 	bananapi,bpi-r3|\
 	bananapi,bpi-r3-mini|\
@@ -391,6 +401,7 @@ platform_check_image() {
 	qihoo,360t7|\
 	qihoo,360t7-ubi|\
 	routerich,ax3000-ubootmod|\
+	ruijie,rg-x60-new-ubi|\
 	teralink,tl3020-256mb|\
 	tplink,tl-7dr7230-v1|\
 	tplink,tl-7dr7230-v2|\
@@ -399,10 +410,13 @@ platform_check_image() {
 	tplink,tl-xdr6086|\
 	tplink,tl-xdr6088|\
 	tplink,tl-xtr8488|\
+	viettel,32x6|\
+	viettel,nr3053|\
 	wavlink,wl-wnt100x3-ubootmod|\
 	xiaomi,mi-router-ax3000t-ubootmod|\
 	xiaomi,redmi-router-ax6000-ubootmod|\
 	xiaomi,mi-router-wr30u-ubootmod|\
+	wirelesstag,zx7981pd-ubootmod|\
 	zyxel,ex5601-t0-ubootmod)
 		fit_check_image "$1"
 		return $?
@@ -410,7 +424,8 @@ platform_check_image() {
 	creatlentem,clt-r30b1|\
 	creatlentem,clt-r30b1-112m|\
 	hiveton,h5000m|\
-	nradio,c8-668gl)
+	nradio,c8-668gl|\
+	zhao,7981r128)
 		# tar magic `ustar`
 		magic="$(dd if="$1" bs=1 skip=257 count=5 2>/dev/null)"
 
@@ -437,6 +452,7 @@ platform_copy_config() {
 	acer,vero-w6m|\
 	airpi,ap3000m|\
 	arcadyan,mozart|\
+	clx,s20p|\
 	glinet,gl-mt2500|\
 	glinet,gl-mt2500-airoha|\
 	glinet,gl-mt6000|\
@@ -447,6 +463,7 @@ platform_copy_config() {
 	huasifei,wh3000-emmc|\
 	huasifei,wh3000-pro-emmc|\
 	jdcloud,re-cp-03|\
+	sl,3000-emmc|\
 	nradio,c8-668gl|\
 	smartrg,sdg-8612|\
 	smartrg,sdg-8614|\
@@ -458,6 +475,7 @@ platform_copy_config() {
 	ubnt,unifi-6-plus)
 		emmc_copy_config
 		;;
+	aigo,ags21|\
 	bananapi,bpi-r3|\
 	bananapi,bpi-r3-mini|\
 	bananapi,bpi-r4|\

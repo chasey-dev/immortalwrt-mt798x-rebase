@@ -1,13 +1,43 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
+msgid "1 lowest .. 10 highest. Maps to upload queue 1-31 / download queue 32-62. Custom rules take precedence over short-packet auto detection."
+msgstr ""
+
+msgid "Active queues only"
+msgstr ""
+
 msgid "Address"
+msgstr ""
+
+msgid "Any"
+msgstr ""
+
+msgid "Both"
+msgstr ""
+
+msgid "Collecting data..."
+msgstr ""
+
+msgid "DSCP"
+msgstr ""
+
+msgid "Dest port"
 msgstr ""
 
 msgid "Device rules"
 msgstr ""
 
+msgid "Direction"
+msgstr ""
+
 msgid "Download"
+msgstr ""
+
+msgid "Download queue %s is already used by a device rule."
+msgstr ""
+
+msgid "Download queue %s is already used by another rule."
 msgstr ""
 
 msgid "EQoS"
@@ -22,22 +52,106 @@ msgstr ""
 msgid "Grant UCI access for luci-app-eqos"
 msgstr ""
 
+msgid "HQoS Settings"
+msgstr ""
+
 msgid "IPv4 address"
 msgstr ""
 
 msgid "IPv6 address"
 msgstr ""
 
+msgid "Len"
+msgstr ""
+
+msgid "Maximum average packet size (16-128 bytes) treated as a short flow."
+msgstr ""
+
 msgid "Maximum rate in Mbit/s. Use 0 for no limit."
+msgstr ""
+
+msgid "Mode"
 msgstr ""
 
 msgid "Network speed control service for MediaTek HNAT."
 msgstr ""
 
+msgid "No data"
+msgstr ""
+
+msgid "Optional DSCP value 0-63, e.g. 46 for EF."
+msgstr ""
+
+msgid "Optional, e.g. 443 or 27000-27030."
+msgstr ""
+
+msgid "Optional, e.g. 53 or 27000-27030."
+msgstr ""
+
+msgid "Packets"
+msgstr ""
+
+msgid "Packet priority settings"
+msgstr ""
+
+msgid "Packet priority settings for MediaTek HNAT."
+msgstr ""
+
+msgid "Packets/s"
+msgstr ""
+
+msgid "Path"
+msgstr ""
+
+msgid "Priority"
+msgstr ""
+
+msgid "Priority settings"
+msgstr ""
+
+msgid "Priority queue ID"
+msgstr ""
+
+msgid "Priority rules"
+msgstr ""
+
+msgid "Protocol"
+msgstr ""
+
+msgid "QoS"
+msgstr ""
+
+msgid "Queue"
+msgstr ""
+
 msgid "Queue ID"
 msgstr ""
 
+msgid "Queue Monitor"
+msgstr ""
+
+msgid "Queue map"
+msgstr ""
+
+msgid "Rate"
+msgstr ""
+
+msgid "Recognizes short flows (TCP ACK / small UDP) in hardware before offload and puts them into the priority queue below. Tune it with \"Short-flow length\" and \"Priority queue ID\". Works on any port, including direct 2.5G."
+msgstr ""
+
 msgid "Settings"
+msgstr ""
+
+msgid "Short-flow length"
+msgstr ""
+
+msgid "Short-packet flows (TCP ACK / small UDP) are steered to this hardware queue. On MTK hardware larger queue numbers mean higher priority. To give it a speed limit, add a Device rule below and enter the same number as its Queue ID: Queue ID N limits upload queue N and download queue N+31. Default 14."
+msgstr ""
+
+msgid "Short-packet priority"
+msgstr ""
+
+msgid "Source port"
 msgstr ""
 
 msgid "This value is already in use."
@@ -55,6 +169,15 @@ msgstr ""
 msgid "Upload"
 msgstr ""
 
+msgid "Upload queue %s conflicts with the short-packet priority queue."
+msgstr ""
+
+msgid "Upload queue %s is already used by a device rule."
+msgstr ""
+
+msgid "Upload queue %s is already used by another rule."
+msgstr ""
+
 msgid "Values 1-31 use HNAT HQoS. Values 32 and above use software shaping."
 msgstr ""
 
@@ -63,3 +186,4 @@ msgstr ""
 
 msgid "unspecified"
 msgstr ""
+

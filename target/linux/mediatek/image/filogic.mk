@@ -1001,6 +1001,35 @@ define Device/cmcc_rax3000m_common
   ARTIFACT/emmc-gpt.bin := mt798x-gpt emmc
 endef
 
+define Device/cmcc_rax3000m-emmc-mtk
+  DEVICE_VENDOR := CMCC
+  DEVICE_MODEL := RAX3000M EMMC
+  DEVICE_VARIANT := (MTK layout)
+  DEVICE_DTS := mt7981b-cmcc-rax3000m-emmc-mtk
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_PACKAGES := kmod-usb3 f2fsck mkf2fs
+  SUPPORTED_DEVICES += cmcc,rax3000m-emmc
+  KERNEL := kernel-bin | lzma | fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
+  KERNEL_INITRAMFS := kernel-bin | lzma | \
+	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += cmcc_rax3000m-emmc-mtk
+
+define Device/cmcc_rax3000m-nand-mtk
+  DEVICE_VENDOR := CMCC
+  DEVICE_MODEL := RAX3000M NAND
+  DEVICE_VARIANT := (MTK layout)
+  DEVICE_DTS := mt7981b-cmcc-rax3000m-nand-mtk
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_PACKAGES := kmod-usb3 f2fsck mkf2fs
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE_SIZE := 116736k
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += cmcc_rax3000m-nand-mtk
+
 define Device/cmcc_rax3000m
   DEVICE_VENDOR := CMCC
   DEVICE_MODEL := RAX3000M
@@ -4070,6 +4099,22 @@ define Device/zyxel_ex5700-telenor
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 endef
 TARGET_DEVICES += zyxel_ex5700-telenor
+
+define Device/zyxel_ex5700-telenor-mtk
+  DEVICE_VENDOR := Zyxel
+  DEVICE_MODEL := EX5700 (Telenor) MTK
+  DEVICE_DTS := mt7986a-zyxel-ex5700-telenor-mtk
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_PACKAGES := kmod-ubootenv-nvram kmod-usb3 automount
+  BOARD_NAME := zyxel_ex5700-telenor
+  SUPPORTED_DEVICES := zyxel,ex5700-telenor
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE_SIZE := 65536k
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += zyxel_ex5700-telenor-mtk
 
 define Device/zyxel_nwa50ax-pro
   DEVICE_VENDOR := Zyxel

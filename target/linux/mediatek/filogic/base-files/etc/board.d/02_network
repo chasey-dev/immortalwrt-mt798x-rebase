@@ -10,7 +10,7 @@ mediatek_setup_interfaces()
 	case $board in
 	abt,asr3000|\
 	buffalo,wsr-6000ax8|\
-	cmcc,rax3000m|\
+	cmcc,rax3000m*|\
 	cmcc,rax3000me|\
 	cmcc,xr30-mtkuboot|\
 	h3c,magic-nx30-pro|\
@@ -262,6 +262,9 @@ mediatek_setup_interfaces()
 	xiaomi,redmi-router-ax6000-ubootmod)
 		ucidef_set_interfaces_lan_wan "lan2 lan3 lan4" wan
 		;;
+	zyxel,ex5700-telenor)
+		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" wan
+		;;
 	zyxel,wx5600-t0-ubootmod)
 		ucidef_set_interface_lan "lan1 lan2"
 		;;
@@ -390,11 +393,28 @@ mediatek_setup_macs()
 		wan_mac=$(macaddr_add "$lan_mac" 1)
 		label_mac=$lan_mac
 		;;
+	zyxel,ex5700-telenor)
+		label_mac=$(mtd_get_mac_binary Factory 0x4)
+		case "${label_mac}" in
+			""|"ff:ff:ff:ff:ff:ff"|"00:00:00:00:00:00") ;;
+			*)
+				lan_mac=$(macaddr_add "$label_mac" 1)
+				wan_mac=$(macaddr_add "$label_mac" 2)
+				;;
+		esac
+		;;
 	esac
 
 	[ -n "$lan_mac" ] && ucidef_set_interface_macaddr "lan" $lan_mac
 	[ -n "$wan_mac" ] && ucidef_set_interface_macaddr "wan" $wan_mac
 	[ -n "$label_mac" ] && ucidef_set_label_macaddr $label_mac
+
+	case $board in
+	zyxel,ex5700-telenor)
+		[ -n "$lan_mac" ] && ucidef_set_network_device_mac br-lan $lan_mac
+		[ -n "$wan_mac" ] && ucidef_set_network_device_mac wan $wan_mac
+		;;
+	esac
 }
 
 board_config_update

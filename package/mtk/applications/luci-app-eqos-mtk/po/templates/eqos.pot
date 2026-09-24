@@ -4,6 +4,9 @@ msgstr "Content-Type: text/plain; charset=UTF-8"
 msgid "Address"
 msgstr ""
 
+msgid "Automatically assigns fair hardware queues to DHCP clients. Manual device rules are preserved but inactive while enabled."
+msgstr ""
+
 msgid "Device rules"
 msgstr ""
 
@@ -31,6 +34,9 @@ msgstr ""
 msgid "Maximum rate in Mbit/s. Use 0 for no limit."
 msgstr ""
 
+msgid "Manual device rules are preserved and will become active again after SMART_HWQOS is disabled."
+msgstr ""
+
 msgid "Network speed control service for MediaTek HNAT."
 msgstr ""
 
@@ -38,6 +44,9 @@ msgid "Queue ID"
 msgstr ""
 
 msgid "Settings"
+msgstr ""
+
+msgid "SMART_HWQOS"
 msgstr ""
 
 msgid "This value is already in use."

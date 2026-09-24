@@ -1,13 +1,18 @@
 #!/bin/sh
 
-DEV_DEFAULT="br-lan"
-IFB_DEV="ifb-eqos"
-HNAT_DIR="/sys/kernel/debug/hnat"
-NFT="/usr/sbin/nft"
+DEV_DEFAULT="${DEV_DEFAULT:-br-lan}"
+IFB_DEV="${IFB_DEV:-ifb-eqos}"
+HNAT_DIR="${HNAT_DIR:-/sys/kernel/debug/hnat}"
+NFT="${NFT:-/usr/sbin/nft}"
 
 TABLE_FAMILY="inet"
 TABLE_NAME="eqos"
 CHAIN_NAME="forward"
+SMART_CHAIN_NAME="smart_forward"
+BRIDGE_TABLE_NAME="eqos_bridge"
+BRIDGE_CHAIN_NAME="postrouting"
+SMART_BRIDGE_CHAIN_NAME="smart_ipv6_down"
+SMART_PRIORITY=-149
 MARK_CLEAR_MASK="0xffff0000"
 HNAT_EXCEPTION_MARK="0x99"
 HNAT_BIND_THRESHOLD=5
@@ -26,8 +31,25 @@ PPD_QID=63
 MANAGED_QID_LAST=62
 DEFAULT_QUEUE_CFG="0 0 0 0 0 0 4"
 
+LEASE_FILE="${EQOS_LEASE_FILE:-/tmp/dhcp.leases}"
+STATE_DIR="${EQOS_STATE_DIR:-/tmp/eqos-smart}"
+ASSIGNMENT_FILE="$STATE_DIR/assignments"
+PENDING_FILE="$STATE_DIR/pending"
+DEGRADED_FILE="$STATE_DIR/degraded"
+WORKER_LOCK="${EQOS_WORKER_LOCK:-/var/lock/eqos-smart-worker.lock}"
+HQOS_OWNER="${EQOS_HQOS_OWNER:-/var/run/eqos-hqos.owner}"
+EQOS_INIT="${EQOS_INIT:-/etc/init.d/eqos}"
+UCI="${UCI:-/sbin/uci}"
+QUIET_SECONDS=2
+MAX_WAIT_SECONDS=5
+
+log() {
+	logger -t eqos "$*"
+}
+
 die() {
 	echo "eqos: $*" >&2
+	logger -t eqos "$*"
 	exit 1
 }
 
@@ -39,24 +61,54 @@ is_uinteger() {
 	return 0
 }
 
-valid_ipv4() {
-	[ -n "$1" ] || return 1
-
+valid_mode() {
 	case "$1" in
-		*[!0-9./]*) return 1 ;;
+		manual|smart) return 0 ;;
+		*) return 1 ;;
 	esac
-
-	return 0
 }
 
-valid_ipv6() {
-	[ -n "$1" ] || return 1
+valid_ipv4_host() {
+	local octet IFS=.
 
 	case "$1" in
-		*[!0-9A-Fa-f:./]*) return 1 ;;
+		''|*[!0-9.]*|.*|*.|*..*) return 1 ;;
 	esac
 
-	return 0
+	set -- $1
+	[ "$#" -eq 4 ] || return 1
+	for octet; do
+		[ "${#octet}" -le 3 ] && [ "$octet" -le 255 ] || return 1
+	done
+}
+
+valid_selector() {
+	local family="$1"
+	local value="$2"
+
+	[ -n "$value" ] || return 1
+	case "$family" in
+		ip) case "$value" in *[!0-9./]*) return 1 ;; esac ;;
+		ip6) case "$value" in *[!0-9A-Fa-f:./]*) return 1 ;; esac ;;
+		*) return 1 ;;
+	esac
+
+	printf 'table inet eqos_validate_%s {\n chain c {\n  %s saddr %s counter\n }\n}\n' \
+		"$$" "$family" "$value" | "$NFT" --check -f - >/dev/null 2>&1
+}
+
+valid_mac() {
+	local mac="$1"
+	local first
+
+	case "$mac" in
+		[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+		*) return 1 ;;
+	esac
+
+	[ "$mac" != "00:00:00:00:00:00" ] || return 1
+	first="${mac%%:*}"
+	[ $((0x$first & 1)) -eq 0 ]
 }
 
 need_nft() {
@@ -75,6 +127,21 @@ write_hnat() {
 	[ -w "$HNAT_DIR/$node" ] || die "$HNAT_DIR/$node is not writable"
 	printf '%s' "$value" > "$HNAT_DIR/$node" ||
 		die "failed to write $HNAT_DIR/$node"
+}
+
+# Same write, but for teardown steps that must not abort the rest of the
+# cleanup: a node we cannot restore is worth a log line, not a failed stop.
+try_write_hnat() {
+	local node="$1"
+	local value="$2"
+
+	if [ ! -w "$HNAT_DIR/$node" ]; then
+		log "$HNAT_DIR/$node is not writable; leaving it unchanged"
+		return 0
+	fi
+	printf '%s' "$value" > "$HNAT_DIR/$node" ||
+		log "failed to write $HNAT_DIR/$node"
+	return 0
 }
 
 need_qdma_layout() {
@@ -147,7 +214,8 @@ start_qos() {
 
 nft_stop() {
 	need_nft
-	"$NFT" delete table "$TABLE_FAMILY" "$TABLE_NAME" 2>/dev/null
+	"$NFT" delete table "$TABLE_FAMILY" "$TABLE_NAME" 2>/dev/null || true
+	"$NFT" delete table bridge "$BRIDGE_TABLE_NAME" 2>/dev/null || true
 }
 
 nft_start() {
@@ -170,6 +238,48 @@ EOF
 	"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
 		oifname "$dev" meta mark != "$HNAT_EXCEPTION_MARK" \
 		meta mark set meta mark '&' "$MARK_CLEAR_MASK" || return 1
+}
+
+nft_smart_start() {
+	local dev="$1"
+	local batch="/tmp/eqos-smart-start.$$"
+
+	need_nft
+	nft_stop
+	umask 077
+	cat > "$batch" <<EOF || return 1
+table $TABLE_FAMILY $TABLE_NAME {
+	chain $CHAIN_NAME {
+		type filter hook forward priority $SMART_PRIORITY; policy accept;
+		iifname "$dev" meta nfproto ipv4 ip dscp set 0
+		oifname "$dev" meta nfproto ipv4 ip dscp set 0
+		iifname "$dev" meta nfproto ipv6 ip6 dscp set 0
+		oifname "$dev" meta nfproto ipv6 ip6 dscp set 0
+		iifname "$dev" meta mark != $HNAT_EXCEPTION_MARK meta mark set meta mark & $MARK_CLEAR_MASK
+		oifname "$dev" meta mark != $HNAT_EXCEPTION_MARK meta mark set meta mark & $MARK_CLEAR_MASK
+		jump $SMART_CHAIN_NAME
+	}
+
+	chain $SMART_CHAIN_NAME {
+	}
+}
+
+table bridge $BRIDGE_TABLE_NAME {
+	chain $BRIDGE_CHAIN_NAME {
+		type filter hook postrouting priority $SMART_PRIORITY; policy accept;
+		jump $SMART_BRIDGE_CHAIN_NAME
+	}
+
+	chain $SMART_BRIDGE_CHAIN_NAME {
+	}
+}
+EOF
+
+	if ! "$NFT" --check -f "$batch" || ! "$NFT" -f "$batch"; then
+		rm -f "$batch"
+		return 1
+	fi
+	rm -f "$batch"
 }
 
 reset_hnat_qdma() {
@@ -198,15 +308,22 @@ start_hnat_qos() {
 }
 
 stop_hnat_qos() {
+	local bind_rate
 	[ -d "$HNAT_DIR" ] || return 0
 
 	need_qdma_layout
 	write_hnat "qos_toggle" "0"
 	reset_hnat_qdma
+	# Restore the platform configuration without modifying its persistent UCI state.
+	bind_rate="$("$UCI" -q get turboacc.config.fastpath_mh_bind_rate)"
+	if ! is_uinteger "$bind_rate" || [ "$bind_rate" -lt 1 ] || [ "$bind_rate" -gt 65535 ]; then
+		bind_rate=30
+	fi
+	try_write_hnat "hnat_setting" "1 $bind_rate"
 }
 
 enable_hnat() {
-	local fastpath bind_rate hook_state
+	local hook_state
 
 	need_hnat
 	hook_state="$(cat "$HNAT_DIR/hook_toggle")"
@@ -227,32 +344,6 @@ enable_hnat() {
 		die "failed to enable HNAT hooks"
 	write_hnat "hnat_setting" "1 $HNAT_BIND_THRESHOLD"
 
-	[ -f /etc/config/turboacc ] || return 0
-
-	fastpath="$(uci -q get turboacc.config.fastpath)"
-	bind_rate="$(uci -q get turboacc.config.fastpath_mh_bind_rate)"
-	[ "$fastpath" = "mediatek_hnat" ] &&
-		[ "$bind_rate" = "$HNAT_BIND_THRESHOLD" ] && return 0
-
-	if ! uci -q set "turboacc.config.fastpath=mediatek_hnat" ||
-	   ! uci -q set "turboacc.config.fastpath_mh_bind_rate=$HNAT_BIND_THRESHOLD" ||
-	   ! uci -q commit turboacc; then
-		die "failed to synchronize turboacc HNAT settings"
-	fi
-}
-
-queue_from_slot() {
-	local slot="$1"
-	local dir="$2"
-
-	case "$dir" in
-		up) echo $((UP_QID_BASE + slot - 1)) ;;
-		dl) echo $((DL_QID_BASE + slot - 1)) ;;
-	esac
-}
-
-tc_classid_from_slot() {
-	printf '%x\n' "$1"
 }
 
 ensure_tc_qos() {
@@ -285,6 +376,87 @@ program_queue() {
 
 	[ "$rate" -eq 0 ] && return 0
 	write_hnat "qdma_txq$qid" "$sch 0 0 1 $rate 4 1"
+}
+
+program_smart_queues() {
+	local dl="$1"
+	local up="$2"
+	local slot up_min dl_min up_max dl_max
+
+	is_uinteger "$dl" || die "download rate must be an integer"
+	is_uinteger "$up" || die "upload rate must be an integer"
+	[ "$dl" -gt 0 ] && [ "$dl" -le "$TOTAL_RATE_MAX" ] ||
+		die "download rate must be between 1 and $TOTAL_RATE_MAX Mbit/s"
+	[ "$up" -gt 0 ] && [ "$up" -le "$TOTAL_RATE_MAX" ] ||
+		die "upload rate must be between 1 and $TOTAL_RATE_MAX Mbit/s"
+	need_qdma_layout
+
+	up_min=$((up * 225))
+	dl_min=$((dl * 200))
+	up_max=$((up * 1000))
+	dl_max=$((dl * 1000))
+	slot=1
+	while [ "$slot" -le "$QUEUE_SLOTS" ]; do
+		write_hnat "qdma_txq$slot" "$UP_SCH 1 $up_min 1 $up_max 4 1"
+		write_hnat "qdma_txq$((slot + QUEUE_SLOTS))" "$DL_SCH 1 $dl_min 1 $dl_max 4 1"
+		slot=$((slot + 1))
+	done
+}
+
+# Emit and commit the classification rules for the current leases. This runs
+# in the same process that produced and validated them, so the rows do not
+# need a second round of validation on the way in.
+smart_apply_rules() {
+	local leases="$1"
+	local assignments="$2"
+	local batch="$STATE_DIR/rules.$$"
+	local seen_macs="$STATE_DIR/rulemacs.$$"
+	local mac ip slot down_qid
+
+	need_nft
+	"$NFT" list chain "$TABLE_FAMILY" "$TABLE_NAME" "$SMART_CHAIN_NAME" >/dev/null 2>&1 ||
+		die "smart inet chain is not initialized"
+	"$NFT" list chain bridge "$BRIDGE_TABLE_NAME" "$SMART_BRIDGE_CHAIN_NAME" >/dev/null 2>&1 ||
+		die "smart bridge chain is not initialized"
+
+	umask 077
+	: > "$seen_macs" || die "failed to create rule state"
+	if ! cat > "$batch" <<EOF
+flush chain $TABLE_FAMILY $TABLE_NAME $SMART_CHAIN_NAME
+flush chain bridge $BRIDGE_TABLE_NAME $SMART_BRIDGE_CHAIN_NAME
+EOF
+	then
+		rm -f "$seen_macs" "$batch"
+		die "failed to create nft batch"
+	fi
+
+	while IFS="	" read -r mac ip; do
+		slot="$(awk -F '\t' -v want="$mac" '$1 == want { print $2; exit }' "$assignments")"
+		[ -n "$slot" ] || {
+			rm -f "$seen_macs" "$batch"
+			die "no slot assigned for $mac"
+		}
+		down_qid=$((slot + QUEUE_SLOTS))
+		# Keep the 6.6 wire DSCP values; rebase uses a different downlink QID base.
+		cat >> "$batch" <<EOF
+add rule $TABLE_FAMILY $TABLE_NAME $SMART_CHAIN_NAME iifname "$DEV_DEFAULT" ip saddr $ip meta mark != $HNAT_EXCEPTION_MARK ip dscp set $slot meta mark set (meta mark & $MARK_CLEAR_MASK) | $slot counter comment "eqos-smart-ip4-up-$mac"
+add rule $TABLE_FAMILY $TABLE_NAME $SMART_CHAIN_NAME oifname "$DEV_DEFAULT" ip daddr $ip meta mark != $HNAT_EXCEPTION_MARK ip dscp set $((slot + 32)) meta mark set (meta mark & $MARK_CLEAR_MASK) | $down_qid counter comment "eqos-smart-ip4-down-$mac"
+EOF
+
+		grep -Fqx "$mac" "$seen_macs" && continue
+		printf '%s\n' "$mac" >> "$seen_macs"
+		cat >> "$batch" <<EOF
+add rule $TABLE_FAMILY $TABLE_NAME $SMART_CHAIN_NAME iifname "$DEV_DEFAULT" meta nfproto ipv6 ether saddr $mac meta mark != $HNAT_EXCEPTION_MARK meta mark set (meta mark & $MARK_CLEAR_MASK) | $slot counter comment "eqos-smart-ip6-up-$mac"
+add rule bridge $BRIDGE_TABLE_NAME $SMART_BRIDGE_CHAIN_NAME ether type ip6 ether daddr $mac meta mark != $HNAT_EXCEPTION_MARK meta mark set (meta mark & $MARK_CLEAR_MASK) | $down_qid counter comment "eqos-smart-ip6-down-$mac"
+EOF
+	done < "$leases"
+
+	if ! "$NFT" --check -f "$batch" || ! "$NFT" -f "$batch"; then
+		rm -f "$seen_macs" "$batch"
+		die "failed to commit smart nft rules"
+	fi
+
+	rm -f "$seen_macs" "$batch"
 }
 
 tc_filter_rule() {
@@ -346,7 +518,7 @@ program_tc_queue() {
 		*) return 1 ;;
 	esac
 
-	classid="$(tc_classid_from_slot "$slot")"
+	classid="$(printf '%x\n' "$slot")"
 	tc class replace dev "$tcdev" parent 1:1 classid "1:$classid" \
 		htb rate "${rate}kbit" ceil "${rate}kbit" || return 1
 	tc_filter_rule "$dir" ip "$ip4" "$slot" "$classid" "$dev" || return 1
@@ -431,7 +603,7 @@ add_rule() {
 	local total_dl="$6"
 	local total_up="$7"
 	local dev="$DEV_DEFAULT"
-	local up_qid dl_qid selector_count
+	local up_qid dl_qid
 
 	is_uinteger "$slot" || die "queue slot must be an integer"
 	is_uinteger "$dl" || die "download rate must be an integer"
@@ -441,20 +613,8 @@ add_rule() {
 		die "queue slot must be between 1 and $TC_SLOT_MAX"
 	[ "$dl" -le "$QDMA_RATE_MAX" ] && [ "$up" -le "$QDMA_RATE_MAX" ] ||
 		die "device rate must not exceed $QDMA_RATE_MAX kbit/s"
-	[ -n "$ip4" ] && valid_ipv4 "$ip4" || [ -z "$ip4" ] ||
-		die "invalid IPv4 selector"
-	[ -n "$ip6" ] && valid_ipv6 "$ip6" || [ -z "$ip6" ] ||
-		die "invalid IPv6 selector"
-
-	selector_count=0
-	[ -z "$ip4" ] || selector_count=$((selector_count + 1))
-	[ -z "$ip6" ] || selector_count=$((selector_count + 1))
-	[ "$selector_count" -eq 1 ] ||
-		die "exactly one selector is required: IPv4 or IPv6"
-
 	[ "$dl" -ne 0 ] || [ "$up" -ne 0 ] || return 0
 
-	need_nft
 	need_qdma_layout
 
 	if [ "$slot" -gt "$QUEUE_SLOTS" ]; then
@@ -475,8 +635,8 @@ add_rule() {
 		return 0
 	fi
 
-	up_qid="$(queue_from_slot "$slot" up)"
-	dl_qid="$(queue_from_slot "$slot" dl)"
+	up_qid="$slot"
+	dl_qid=$((slot + QUEUE_SLOTS))
 
 	program_queue "$up_qid" "$UP_SCH" "$up" || return 1
 	program_queue "$dl_qid" "$DL_SCH" "$dl" || return 1
@@ -503,10 +663,11 @@ add_inferred_rule() {
 	local ip4 ip6
 
 	[ -n "$selector" ] || die "selector is required"
+	need_nft
 
-	if valid_ipv4 "$selector"; then
+	if valid_selector ip "$selector"; then
 		ip4="$selector"
-	elif valid_ipv6 "$selector"; then
+	elif valid_selector ip6 "$selector"; then
 		ip6="$selector"
 	else
 		die "selector must be an IPv4 or IPv6 address"
@@ -518,7 +679,10 @@ add_inferred_rule() {
 start_all() {
 	local dl="$1"
 	local up="$2"
+	local mode="${3:-manual}"
 	local dev="$DEV_DEFAULT"
+
+	valid_mode "$mode" || die "mode must be manual or smart"
 
 	is_uinteger "$dl" || die "download rate must be an integer"
 	is_uinteger "$up" || die "upload rate must be an integer"
@@ -531,7 +695,16 @@ start_all() {
 	stop_qos "$dev"
 	nft_stop
 	start_hnat_qos "$dl" "$up"
-	nft_start "$dev" || die "failed to configure nftables"
+	case "$mode" in
+		manual)
+			nft_start "$dev" || die "failed to configure nftables"
+			;;
+		smart)
+			nft_smart_start "$dev" || die "failed to configure smart nftables"
+			program_smart_queues "$dl" "$up"
+			smart_rebuild 1
+			;;
+	esac
 }
 
 stop_all() {
@@ -542,12 +715,233 @@ stop_all() {
 	stop_hnat_qos
 }
 
+prepare_state_dir() {
+	umask 077
+	mkdir -p "$STATE_DIR" /var/lock || return 1
+}
+
+normalize_leases() {
+	local output="$1"
+	local expiry mac ip rest normalized
+
+	local raw="${output}.raw"
+
+	[ -r "$LEASE_FILE" ] || return 1
+	: > "$raw" || return 1
+
+	while read -r expiry mac ip rest; do
+		[ -n "$expiry" ] && [ -n "$mac" ] && [ -n "$ip" ] || continue
+		normalized="$(printf '%s\n' "$mac" | tr 'A-F' 'a-f')"
+		if ! valid_mac "$normalized" || ! valid_ipv4_host "$ip"; then
+			log "ignoring invalid DHCP lease: $mac $ip"
+			continue
+		fi
+		printf '%s\t%s\n' "$normalized" "$ip" >> "$raw" || return 1
+	done < "$LEASE_FILE"
+
+	# Never use "sort -o": BusyBox parses the option unconditionally but only
+	# implements the output redirect under FEATURE_SORT_BIG, which this target
+	# does not enable. It then exits 0, leaves the file untouched and prints
+	# the sorted result to stdout.
+	sort -u "$raw" > "$output" || {
+		rm -f "$raw"
+		return 1
+	}
+	rm -f "$raw"
+
+	awk -F '\t' '
+		seen[$2] && seen[$2] != $1 { exit 1 }
+		{ seen[$2] = $1 }
+	' "$output"
+}
+
+validate_assignments() {
+	local file="$1"
+	local mac slot extra normalized
+	local seen="$STATE_DIR/seen.$$"
+
+	: > "$seen" || return 1
+	while IFS="	" read -r mac slot extra; do
+		[ -n "$mac" ] && [ -n "$slot" ] && [ -z "$extra" ] || {
+			rm -f "$seen"
+			return 1
+		}
+		normalized="$(printf '%s\n' "$mac" | tr 'A-F' 'a-f')"
+		[ "$normalized" = "$mac" ] && valid_mac "$mac" || {
+			rm -f "$seen"
+			return 1
+		}
+		case "$slot" in
+			''|*[!0-9]*) rm -f "$seen"; return 1 ;;
+		esac
+		[ "$slot" -ge 1 ] && [ "$slot" -le "$QUEUE_SLOTS" ] || {
+			rm -f "$seen"
+			return 1
+		}
+		grep -Fqx "$mac" "$seen" && {
+			rm -f "$seen"
+			return 1
+		}
+		printf '%s\n' "$mac" >> "$seen" || {
+			rm -f "$seen"
+			return 1
+		}
+	done < "$file"
+	rm -f "$seen"
+}
+
+allocate_slot() {
+	local mac="$1"
+	local assignments="$2"
+	local hex base slot attempts=0
+
+	hex="$(printf '%s' "$mac" | tr -d ':')"
+	base=$((0x$hex % QUEUE_SLOTS + 1))
+	slot="$base"
+	while [ "$attempts" -lt "$QUEUE_SLOTS" ]; do
+		if ! grep -Eq "[[:space:]]${slot}$" "$assignments"; then
+			echo "$slot"
+			return 0
+		fi
+		slot=$((slot % QUEUE_SLOTS + 1))
+		attempts=$((attempts + 1))
+	done
+
+	# All dedicated slots are occupied. Preserve existing assignments and
+	# deterministically share this host's hash origin.
+	echo "$base"
+}
+
+reconcile_assignments() {
+	local leases="$1"
+	local output="$2"
+	local initial="$3"
+	local mac slot
+	local macs="$STATE_DIR/macs.$$"
+	local preserved="$STATE_DIR/preserved.$$"
+
+	cut -f1 "$leases" | sort -u > "$macs" || return 1
+	: > "$preserved" || return 1
+
+	if [ "$initial" -eq 0 ] && [ -e "$ASSIGNMENT_FILE" ]; then
+		if ! validate_assignments "$ASSIGNMENT_FILE"; then
+			rm -f "$macs" "$preserved"
+			return 2
+		fi
+		while IFS="	" read -r mac slot; do
+			grep -Fqx "$mac" "$macs" || continue
+			printf '%s\t%s\n' "$mac" "$slot" >> "$preserved" || return 1
+		done < "$ASSIGNMENT_FILE"
+	fi
+
+	sort -u "$preserved" > "$output" || return 1
+	while read -r mac; do
+		[ -n "$mac" ] || continue
+		grep -Eq "^${mac}[[:space:]]" "$output" && continue
+		slot="$(allocate_slot "$mac" "$output")" || return 1
+		printf '%s\t%s\n' "$mac" "$slot" >> "$output" || return 1
+	done < "$macs"
+	sort "$output" > "$preserved" || return 1
+	mv -f "$preserved" "$output" || return 1
+	rm -f "$macs" "$preserved"
+}
+
+worker() {
+	local first now token current
+
+	prepare_state_dir || exit 1
+	exec 9>"$WORKER_LOCK" || exit 1
+	flock 9 || exit 1
+
+	while [ -e "$PENDING_FILE" ]; do
+		first="$(date +%s)"
+		while :; do
+			token="$(cat "$PENDING_FILE" 2>/dev/null)"
+			[ -n "$token" ] || break
+			sleep "$QUIET_SECONDS"
+			current="$(cat "$PENDING_FILE" 2>/dev/null)"
+			now="$(date +%s)"
+			[ "$current" = "$token" ] && break
+			[ $((now - first)) -ge "$MAX_WAIT_SECONDS" ] && break
+		done
+
+		[ -e "$PENDING_FILE" ] || continue
+		rm -f "$PENDING_FILE" || continue
+		"$EQOS_INIT" smart_rebuild || log "scheduled rebuild failed"
+	done
+}
+
+schedule() {
+	local token
+
+	[ "$($UCI -q get eqos.config.enabled)" = 1 ] || return 0
+	[ "$($UCI -q get eqos.config.smarthqos)" = 1 ] || return 0
+	[ "$(cat "$HQOS_OWNER" 2>/dev/null)" = smart ] || return 0
+	prepare_state_dir || die "failed to create runtime state"
+	token="$(date +%s).$$"
+	printf '%s\n' "$token" > "${PENDING_FILE}.$$" || die "failed to queue rebuild"
+	mv -f "${PENDING_FILE}.$$" "$PENDING_FILE" || die "failed to publish rebuild request"
+
+	(
+		exec </dev/null >>"$STATE_DIR/worker.log" 2>&1
+		worker
+	) &
+}
+
+# Rebuild the whole lease->slot mapping and the rules derived from it.
+# initial=1 is the boot path driven by start_all(), where no owner has been
+# published yet; initial=0 is the DHCP-driven path.
+smart_rebuild() {
+	local initial="${1:-0}"
+	local leases assignments ret
+
+	if [ "$initial" -eq 1 ]; then
+		# The lifecycle lock is held by /etc/init.d/eqos around the whole
+		# start sequence; an owner already being published means smart mode
+		# is running and a from-scratch rebuild would discard slot stability.
+		[ ! -e "$HQOS_OWNER" ] || die "initial rebuild requires no published owner"
+	else
+		[ "$(cat "$HQOS_OWNER" 2>/dev/null)" = smart ] ||
+			die "dynamic rebuild requires smart ownership"
+		[ ! -e "$DEGRADED_FILE" ] ||
+			die "runtime state is degraded; reload EQoS to recover"
+	fi
+
+	prepare_state_dir || die "failed to create runtime state"
+	leases="$STATE_DIR/leases.$$"
+	assignments="$STATE_DIR/assignments.$$"
+	trap 'rm -f "$leases" "$assignments"' EXIT INT TERM
+
+	normalize_leases "$leases" || die "failed to normalize DHCP leases"
+	reconcile_assignments "$leases" "$assignments" "$initial"
+	ret=$?
+	if [ "$ret" -eq 2 ]; then
+		printf '%s\n' "invalid runtime assignments" > "$DEGRADED_FILE"
+		die "runtime assignments are invalid; reload EQoS to recover"
+	elif [ "$ret" -ne 0 ]; then
+		die "failed to reconcile runtime assignments"
+	fi
+
+	smart_apply_rules "$leases" "$assignments"
+
+	if ! mv -f "$assignments" "$ASSIGNMENT_FILE"; then
+		printf '%s\n' "assignment commit failed after nft commit" > "$DEGRADED_FILE"
+		die "failed to publish runtime assignments; reload EQoS to recover"
+	fi
+	rm -f "$DEGRADED_FILE"
+	trap - EXIT INT TERM
+	rm -f "$leases"
+}
+
 usage() {
 	cat <<EOF
 Usage: $0 <command> [options]
 
 Commands:
-  start <download_mbit> <upload_mbit>
+  start <download_mbit> <upload_mbit> [manual|smart]
+  smart-rebuild                 rebuild lease mappings (smart mode)
+  smart-schedule                queue a debounced rebuild (DHCP hotplug)
+  smart-clear                   drop smart runtime state
   add <slot> <download_kbit> <upload_kbit> <ipv4|ipv6> [total_down_mbit] [total_up_mbit]
   enable
   stop
@@ -574,9 +968,31 @@ case "$1" in
 		shift
 		add_inferred_rule "$@"
 		;;
+	check-selector)
+		shift
+		[ "$#" -eq 2 ] || die "check-selector requires family and value"
+		need_nft
+		valid_selector "$1" "$2" || die "invalid $1 selector: $2"
+		;;
+	smart-rebuild)
+		shift
+		[ "$#" -eq 0 ] || die "smart-rebuild takes no arguments"
+		smart_rebuild 0
+		;;
+	smart-schedule)
+		shift
+		[ "$#" -eq 0 ] || die "smart-schedule takes no arguments"
+		schedule
+		;;
+	smart-clear)
+		shift
+		[ "$#" -eq 0 ] || die "smart-clear takes no arguments"
+		rm -rf "$STATE_DIR"
+		;;
 	enable)
 		shift
-		enable_hnat "$@"
+		[ "$#" -eq 0 ] || die "enable takes no arguments"
+		enable_hnat
 		;;
 	*)
 		usage

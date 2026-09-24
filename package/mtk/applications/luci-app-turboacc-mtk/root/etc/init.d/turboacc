@@ -57,7 +57,13 @@ start_service() {
 			local fastpath_mh_bind_rate fastpath_mh_update_nfct
 			# hnat bind rate
 			config_get "fastpath_mh_bind_rate" "config" "fastpath_mh_bind_rate" "30"
-			echo "1 $fastpath_mh_bind_rate" > "$hnat_path/hnat_setting"
+			# Serialize with EQoS start/stop; its runtime threshold owns this field.
+			(
+				exec 900>/var/lock/eqos-hqos.lock || exit 1
+				flock 900 || exit 1
+				[ ! -e /var/run/eqos-hqos.owner ] || exit 0
+				echo "1 $fastpath_mh_bind_rate" > "$hnat_path/hnat_setting"
+			)
 			# update hnat counter to nf_conntrack or not
 			config_get "fastpath_mh_update_nfct" "config" "fastpath_mh_update_nfct" "0"
 			echo "7 $fastpath_mh_update_nfct" > "$hnat_path/hnat_setting"

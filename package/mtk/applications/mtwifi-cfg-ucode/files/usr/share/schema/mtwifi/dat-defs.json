@@ -1,6 +1,7 @@
 {
 	"MAX_MBSSID": 16,
 	"MAX_APCLI_NUM": 1,
+	"MAX_MLD_GROUP_ID": 64,
 	"MAX_ACL_ENTRY": 129,
 	"AP_CFGS": {
 		"AuthMode": "OPEN",
@@ -139,6 +140,9 @@
 		"wpa-mixed+ccmp": [ "WPA1WPA2", "AES" ],
 		"wpa-mixed+tkip+ccmp": [ "WPA1WPA2", "TKIPAES" ],
 		"wpa3-mixed": [ "WPA3WPA2", "AES" ]
+	},
+	"ENC_2_MLO_AP_DAT": {
+		"sae": [ "WPA3PSK", "CCMP128,GCMP256" ]
 	},
 	"COUNTRY_REGIONS": {
         "DB": [ 5, 13 ], "AE": [ 1, 0 ], "AL": [ 1, 0 ], "AR": [ 1, 3 ],

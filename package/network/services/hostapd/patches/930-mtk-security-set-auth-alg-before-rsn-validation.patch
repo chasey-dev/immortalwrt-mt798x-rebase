@@ -1,0 +1,19 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] AP: Set WPA authentication algorithm before RSN validation
+
+RSN and PMKID validation uses the WPA state machine's authentication
+algorithm. Copying sta->auth_alg before validation makes that value
+available to the checks instead of assigning it afterwards.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -634,6 +634,7 @@ int hostapd_notif_assoc(struct hostapd_d
+ 					     &sta->mld_info);
+ 		}
+ #endif /* CONFIG_IEEE80211BE */
++		wpa_auth_set_auth_alg(sta->wpa_sm, sta->auth_alg);
+ 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
+ 					  hapd->iface->freq,
+ 					  ie, ielen,

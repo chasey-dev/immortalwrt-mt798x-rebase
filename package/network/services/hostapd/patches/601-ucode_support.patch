@@ -728,7 +728,7 @@ as adding/removing interfaces.
  	}
  
  	if (drv->capa.flags2 & WPA_DRIVER_FLAGS2_CONTROL_PORT_RX) {
-@@ -9312,6 +9330,50 @@ static int wpa_driver_nl80211_if_remove(
+@@ -9313,6 +9331,50 @@ static int wpa_driver_nl80211_if_remove(
  	return 0;
  }
  
@@ -779,7 +779,7 @@ as adding/removing interfaces.
  
  static int cookie_handler(struct nl_msg *msg, void *arg)
  {
-@@ -11197,6 +11259,37 @@ static bool nl80211_is_drv_shared(void *
+@@ -11198,6 +11260,37 @@ static bool nl80211_is_drv_shared(void *
  #endif /* CONFIG_IEEE80211BE */
  
  
@@ -817,7 +817,7 @@ as adding/removing interfaces.
  static int driver_nl80211_send_mlme(void *priv, const u8 *data,
  				    size_t data_len, int noack,
  				    unsigned int freq,
-@@ -15016,6 +15109,8 @@ const struct wpa_driver_ops wpa_driver_n
+@@ -15017,6 +15110,8 @@ const struct wpa_driver_ops wpa_driver_n
  	.set_acl = wpa_driver_nl80211_set_acl,
  	.if_add = wpa_driver_nl80211_if_add,
  	.if_remove = driver_nl80211_if_remove,

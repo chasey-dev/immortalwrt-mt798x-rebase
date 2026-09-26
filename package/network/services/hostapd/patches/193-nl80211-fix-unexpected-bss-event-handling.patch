@@ -1,0 +1,28 @@
+From: Huang Chenming <chenhuan@qti.qualcomm.com>
+Date: Sat, 6 Sep 2025 14:14:51 +0530
+Subject: [PATCH] nl80211: Fix unexpected BSS event handling
+
+When a BSS is deinitialized, the bss->in_deinit flag may not be set if
+it is not the final BSS being processed. This oversight can lead to
+nl_preq handle remaining active and undestroyed for a logically
+deinitialized BSS. Consequently, if subsequent events related to this
+BSS arrive and are handled by wpa_driver_nl80211_event_receive(), they
+are handled for a BSS that is no longer operational, leading to
+unexpected behavior or potential crashes.
+
+Ensure bss->in_deinit is consistently set to 1 within
+wpa_driver_nl80211_if_remove() to correctly mark the BSS as under
+deinitialization, allowing for proper cleanup and preventing event
+handling for stale BSS contexts.
+
+Signed-off-by: Huang Chenming <chenhuan@qti.qualcomm.com>
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -9239,6 +9239,7 @@ static int wpa_driver_nl80211_if_remove(
+ 				   bss->brname, strerror(errno));
+ 	}
+ 
++	bss->in_deinit = 1;
+ 	if (bss != drv->first_bss) {
+ 		struct i802_bss *tbss;
+ 

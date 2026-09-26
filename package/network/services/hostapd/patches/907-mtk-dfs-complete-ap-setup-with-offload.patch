@@ -1,0 +1,37 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] DFS: Complete AP setup with driver-managed DFS
+
+MTK AP SME with DFS offload manages radar detection in the driver.
+hostapd's DFS-required check can prevent AP setup from following this
+driver-managed path.
+
+Bypass that check for MTK AP SME with DFS offload and complete pending
+AP setup when a channel notification arrives.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1539,6 +1539,10 @@ int hostapd_is_dfs_required(struct hosta
+ {
+ 	int n_chans, n_chans1, start_chan_idx, start_chan_idx1, res;
+ 
++	if ((iface->drv_flags2 & WPA_DRIVER_FLAGS2_MTK_AP_SME) &&
++	    (iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD))
++		return 0;
++
+ 	if ((!(iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) &&
+ 	     !iface->conf->ieee80211h) ||
+ 	    !iface->current_mode ||
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1422,7 +1422,8 @@ void hostapd_event_ch_switch(struct host
+ 		hostapd_ubus_notify_csa(hapd, freq);
+ 	} else if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) {
+ 		/* Complete AP configuration for the first bring up. */
+-		if (is_dfs0 > 0 &&
++		if ((is_dfs0 > 0 ||
++		     (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_MTK_AP_SME)) &&
+ 		    hostapd_is_dfs_required(hapd->iface) <= 0 &&
+ 		    hapd->iface->state != HAPD_IFACE_ENABLED) {
+ 			/* Fake a CAC start bit to skip setting channel */

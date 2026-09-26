@@ -11,11 +11,13 @@ diff --git a/include/net/netfilter/nf_flow_table.h b/include/net/netfilter/nf_fl
 index 179f9cb..534bbc0 100644
 --- a/include/net/netfilter/nf_flow_table.h
 +++ b/include/net/netfilter/nf_flow_table.h
-@@ -195,6 +195,7 @@ struct flow_offload_hw_path {
+@@ -195,6 +195,9 @@ struct flow_offload_hw_path {
  	u16 vlan_proto;
  	u16 vlan_id;
  	u16 pppoe_sid;
 +	u16 dsa_port;
++	/* Borrowed DSA user device; valid during the RCU-protected walk. */
++	struct net_device *dsa_dev;
  };
  
  #define NF_FLOW_TIMEOUT (30 * HZ)
@@ -34,7 +36,7 @@ index 06267c5..868a013 100644
  
  #include "conduit.h"
  #include "dsa.h"
-@@ -2525,6 +2529,27 @@ static int dsa_user_fill_forward_path(struct net_device_path_ctx *ctx,
+@@ -2525,6 +2529,31 @@ static int dsa_user_fill_forward_path(struct net_device_path_ctx *ctx,
  	return 0;
  }
  
@@ -47,7 +49,11 @@ index 06267c5..868a013 100644
 +	if (!(path->flags & BIT(DEV_PATH_ETHERNET)))
 +		return -EINVAL;
 +
++	if (path->flags & BIT(DEV_PATH_DSA))
++		return -EOPNOTSUPP;
++
 +	dp = dsa_user_to_port(dev);
++	path->dsa_dev = dev;
 +	path->dsa_port = dp->index;
 +	path->dev = dsa_user_to_conduit(dev);
 +	path->flags |= BIT(DEV_PATH_DSA);
@@ -62,7 +68,7 @@ index 06267c5..868a013 100644
  static const struct net_device_ops dsa_user_netdev_ops = {
  	.ndo_open		= dsa_user_open,
  	.ndo_stop		= dsa_user_close,
-@@ -2546,6 +2571,9 @@ static const struct net_device_ops dsa_user_netdev_ops = {
+@@ -2546,6 +2575,9 @@ static const struct net_device_ops dsa_user_netdev_ops = {
  	.ndo_vlan_rx_kill_vid	= dsa_user_vlan_rx_kill_vid,
  	.ndo_change_mtu		= dsa_user_change_mtu,
  	.ndo_fill_forward_path	= dsa_user_fill_forward_path,

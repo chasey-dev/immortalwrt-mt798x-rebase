@@ -32,7 +32,6 @@ int hnat_dsa_fill_stag(const struct net_device *netdev,
 		       int mape)
 {
 #if defined(CONFIG_NET_DSA)
-	const unsigned int *port_reg;
 	const struct dsa_port *dp;
 	struct net_device *ndev;
 	int port_index;
@@ -40,21 +39,21 @@ int hnat_dsa_fill_stag(const struct net_device *netdev,
 
 	ndev = (struct net_device *)netdev;
 
-	port_reg = of_get_property(ndev->dev.of_node, "reg", NULL);
-	if (unlikely(!port_reg))
-		return -EINVAL;
+	dp = dsa_port_from_netdev(ndev);
+	if (IS_ERR(dp))
+		return -ENODEV;
 
-	port_index = be32_to_cpup(port_reg);
+	if (dp->cpu_dp->tag_ops->proto != DSA_TAG_PROTO_MTK &&
+	    !IS_DSA_TAG_PROTO_8021Q(dp))
+		return -EOPNOTSUPP;
+
+	port_index = dp->index;
 
 	/* In the case MAPE LAN --> WAN, binding entry is to CPU.
 	 * Do not add special tag.
 	 */
 	if (IS_WAN(ndev) && mape)
 		return port_index;
-
-	dp = dsa_port_from_netdev(ndev);
-	if (IS_ERR(dp))
-		return -ENODEV;
 
 	entry->bfib1.vpm = 0;
 

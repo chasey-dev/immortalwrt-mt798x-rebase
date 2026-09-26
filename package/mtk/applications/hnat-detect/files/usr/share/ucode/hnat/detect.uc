@@ -45,8 +45,10 @@ const INTERFACE = getenv('INTERFACE');
 
 log.debug(`env: ACTION= ${ACTION || ''} INTERFACE= ${INTERFACE || ''}`);
 
-// if (ACTION != 'ifup' && ACTION != 'update' && ACTION != 'ifupdate')
-if (ACTION != 'ifup')
+if (ACTION != 'ifup' && ACTION != 'ifupdate')
+	exit(0);
+
+if (ACTION == 'ifupdate' && !getenv('IFUPDATE_ADDRESSES') && !getenv('IFUPDATE_DATA'))
 	exit(0);
 
 if (!INTERFACE || INTERFACE == 'loopback')

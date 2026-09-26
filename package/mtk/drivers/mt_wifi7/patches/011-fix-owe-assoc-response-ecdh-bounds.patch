@@ -1,0 +1,45 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] OWE: Fix ECDH bounds in association response parsing
+
+PeerAssocRspSanity() clears public_key using the received ECDH element
+length before checking its capacity. An oversized element can overwrite
+the buffer before the copy is rejected. Valid elements are copied through
+the single-byte ext_id_ecdh member, spanning the group and public key.
+
+Checking the element length before clearing or copying prevents the
+overflow. Copying the complete element, including its header, into
+ecdh_ie also avoids the field-spanning write.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/sta/sanity.c
++++ b/mt_wifi/sta/sanity.c
+@@ -459,20 +459,18 @@ BOOLEAN PeerAssocRspSanity(
+ 			case EID_EXT_ECDH:
+ #ifdef CONFIG_OWE_SUPPORT
+ 			{
+-				UCHAR *ext_ie_length = (UCHAR *)pEid + 1;
+-				if (*ext_ie_length <= 3) {
++				if (pEid->Len <= 3) {
+ 					MTWF_DBG(NULL, DBG_CAT_MLME, CATMLME_ASSOC, DBG_LVL_DEBUG,
+-					"Ivalid value(*ext_ie_length=%d), drop!\n", *ext_ie_length);
++					"Invalid ECDH IE length (%d), drop!\n", pEid->Len);
+ 					break;
+ 				}
+-				os_zero_mem(ie_list->ecdh_ie.public_key, *ext_ie_length-3);
+-				ie_list->ecdh_ie.ext_ie_id = IE_WLAN_EXTENSION;
+-				ie_list->ecdh_ie.length = pEid->Len;
+-				if (pEid->Len <= (1 + 2 + sizeof(ie_list->ecdh_ie.public_key)))
+-					NdisMoveMemory(&ie_list->ecdh_ie.ext_id_ecdh, pEid->Octet, pEid->Len);
+-				else
++				if (pEid->Len > (sizeof(ie_list->ecdh_ie) - 2)) {
+ 					MTWF_DBG(NULL, DBG_CAT_MLME, CATMLME_ASSOC, DBG_LVL_ERROR,
+-					"No enough buffer size for ecdh_ie.ext_id_ecdh!\n");
++					"No enough buffer size for ecdh_ie!\n");
++					break;
++				}
++				os_zero_mem(&ie_list->ecdh_ie, sizeof(ie_list->ecdh_ie));
++				NdisMoveMemory(&ie_list->ecdh_ie, pEid, pEid->Len + 2);
+ 			}
+ #endif /*CONFIG_OWE_SUPPORT*/
+ 				break;

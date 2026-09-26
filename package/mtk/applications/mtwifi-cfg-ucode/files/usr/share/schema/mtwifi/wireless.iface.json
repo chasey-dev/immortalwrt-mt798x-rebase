@@ -6,6 +6,10 @@
             "type": "string",
             "description": "Operation mode (ap, sta, etc.)"
         },
+        "mlo": {
+            "type": "boolean",
+            "description": "Multi-Link Operation"
+        },
         "network": {
             "type": "array",
             "items": {

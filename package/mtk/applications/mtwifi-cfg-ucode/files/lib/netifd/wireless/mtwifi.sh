@@ -37,6 +37,7 @@ import { validate } from 'wifi.validate';
 const LOCK_FILE = "/var/lock/mtwifi.lock";
 const MAX_AP_VIFS = defs.MAX_MBSSID;
 const MAX_APCLI_VIFS = defs.MAX_APCLI_NUM;
+const MAX_MLD_GROUP_ID = defs.MAX_MLD_GROUP_ID;
 
 let command = ARGV[1];
 let cur_devname = ARGV[2];
@@ -79,6 +80,12 @@ function dump_option(schema, key) {
 function dump_options() {
 	let dump = {
 		"name": "mtwifi", // driver name
+		"mlo": {
+			"mld_setup": "driver",
+			"vif_limit": {
+				"ap": MAX_AP_VIFS
+			}
+		}
 	};
 
 	for (let k, v in schemas) {
@@ -237,6 +244,22 @@ function prepare_wpad_data(data, iface_items, phy) {
             ...iface_config
         };
 
+        if (iface_config.mlo && iface_config.mode == "ap") {
+            /*
+             * MTK MLO AP DAT advertises GCMP-256 and SAE-EXT-KEY for SAE.
+             * Set the corresponding wifi-scripts options for wpad.
+             */
+            if (iface_config.encryption == "sae") {
+                iface_config.gcmp256 = true;
+                iface_config.sae_ext_key = true;
+            }
+
+            iface_config.hostapd_bss_options = [
+                ...(iface_config.hostapd_bss_options || []),
+                "mtk_private_mld=1"
+            ];
+        }
+
         if (item.existing_netdev) {
             iface_config.hostapd_bss_options = [
                 ...(iface_config.hostapd_bss_options || []),
@@ -244,6 +267,8 @@ function prepare_wpad_data(data, iface_items, phy) {
             ];
         }
 
+        delete iface_config.mlo;
+        delete iface_config.mld_addr;
         normalize_iface_config(iface_config, iface.mtwifi_ifname);
     }
 
@@ -458,13 +483,30 @@ function handle_setup(data) {
     // Only accepted interfaces are written to DAT or passed to wpad.
     let active_interfaces = {};
 
-    // Enforce the vif limits on the current netifd payload.
+    /*
+     * wifi-scripts validates cross-radio mtwifi MLO membership before this
+     * per-radio setup. Enforce the vif limits on the current payload.
+     */
     for (let idx, iface_data in data.interfaces) {
         let config = iface_data.config;
         let mode = config.mode;
 
         if (mode == "ap") {
             config.dtim_period ??= int(defs.AP_CFGS.DtimPeriod);
+
+            if (config.mlo) {
+                let mld_ifname_match = match(config.ifname, /^ap-mld([0-9]+)$/);
+                // ap-mldN is zero-based. Explicit DAT MLD groups start at 1.
+                let group_id = mld_ifname_match ? int(mld_ifname_match[1]) + 1 : null;
+
+                if (group_id == null || group_id > MAX_MLD_GROUP_ID) {
+                    log.error(`[Setup] Invalid MLO ifname ${config.ifname} ` +
+                        `for ${iface_data.name}`);
+                    netifd.setup_failed("INVALID_MLO_IFNAME");
+                    l1.close();
+                    return;
+                }
+            }
 
             if (ap_idx >= MAX_AP_VIFS) {
                 log.warn(`[Setup] Drop AP interface ${iface_data.name}: ` +

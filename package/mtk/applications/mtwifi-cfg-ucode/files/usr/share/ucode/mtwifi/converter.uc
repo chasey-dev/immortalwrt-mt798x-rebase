@@ -181,7 +181,7 @@ function calc_bandwidth(htmode, noscan) {
  *
  * The result only represents the current band profile. AP values are encoded as
  * indexed DAT tokens, while ApCli values target the single supported ApCli slot.
- * Interface capacity is checked before this payload reaches
+ * Interface capacity and MLO topology are admitted before this payload reaches
  * conversion.
  * A key in values is overwritten, a key in unset is deleted, and a key in
  * neither collection keeps its existing DAT value.
@@ -424,6 +424,15 @@ export function convert(uci_cfg) {
 		set_token("HT_AMSDU", strict_bool(c.amsdu));
 		set_token("HT_AutoBA", strict_bool(c.autoba));
 
+		if (c.mlo) {
+			/*
+			 * Input admission guarantees EHT, and the handler validates the
+			 * ap-mldN interface name before conversion.
+			 */
+			let m = match(c.ifname, /^ap-mld([0-9]+)$/);
+			set_token("MldGroup", int(m[1]) + 1);
+		}
+
 		// MU-MIMO / OFDMA
 		set_token("MuMimoDlEnable", strict_bool(c.mumimo_dl));
 		set_token("MuMimoUlEnable", strict_bool(c.mumimo_ul));
@@ -433,7 +442,8 @@ export function convert(uci_cfg) {
 		set_token("PweMethod", defs.SAE_PWE_2_DAT[c.sae_pwe]);
 
 		// AuthMode + EncrypType
-		let enc_def = defs.ENC_2_COMMON_DAT[c.encryption];
+		let enc_def = (c.mlo && defs.ENC_2_MLO_AP_DAT[c.encryption]) ||
+			defs.ENC_2_COMMON_DAT[c.encryption];
 		let authmode = enc_def[0];
 		let pmf_mode = calc_pmf_mode(authmode, c.ieee80211w);
 

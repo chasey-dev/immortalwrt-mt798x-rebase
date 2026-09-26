@@ -1,0 +1,23 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] cfg80211: Recognize FT-EAP-SHA384 in AP RSNEs
+
+cfg80211_ap_parse_rsn_ie() falls back to OPEN for AKM suite 13, so
+hostapd's FT-EAP-SHA384 configuration loses its FT security type in the
+driver. The suite now maps to the existing FT_WPA2_SHA384 flag, which
+RSNE construction and station security selection already support.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/os/linux/cfg80211/cfg80211_ap.c
++++ b/mt_wifi/os/linux/cfg80211/cfg80211_ap.c
+@@ -3832,6 +3832,10 @@ BOOLEAN cfg80211_ap_parse_rsn_ie(
+ 					/* Set AP support WPA-PSK mode*/
+ 					SET_AKM_FT_WPA2PSK(sec_cfg->AKMMap);
+ 					break;
++				case 13:
++					/* Set AP support FT-EAP-SHA384 mode */
++					SET_AKM_FT_WPA2_SHA384(sec_cfg->AKMMap);
++					break;
+ 				case 25:
+ 					/*Set AP Support FT-SAE EXT AKM25*/
+ 					SET_AKM_FT_SAE_EXT(sec_cfg->AKMMap);

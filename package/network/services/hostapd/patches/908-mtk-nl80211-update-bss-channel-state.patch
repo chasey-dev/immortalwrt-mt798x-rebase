@@ -1,0 +1,40 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] nl80211: Update MTK BSS channel caches after channel changes
+
+MTK ACS initially reports only the primary frequency. A later channel
+notification supplies channel state for one BSS, although AP BSSs on
+that radio share the operating channel. Updating only that BSS leaves
+other BSS channel caches stale.
+
+For device AP SME with MTK ACS support, nl80211 updates sibling BSS
+frequency and bandwidth before reporting the completed switch.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -1349,6 +1349,24 @@ static void mlme_event_ch_switch(struct
+ 			if (bw)
+ 				bss->flink->bandwidth = channel_width_to_int(
+ 					data.ch_switch.ch_width);
++#ifdef CONFIG_DRIVER_NL80211_MTK
++			if (drv->mtk_do_acs && drv->device_ap_sme &&
++			    is_ap_interface(drv->nlmode) && !bss->valid_links) {
++				struct i802_bss *other;
++
++				/* MTK driver reports the radio channel on
++				 * one BSS; its other BSSs use the same channel. */
++				for (other = drv->first_bss; other;
++				     other = other->next) {
++					if (other == bss || other->valid_links)
++						continue;
++					other->flink->freq = bss->flink->freq;
++					if (bw)
++						other->flink->bandwidth =
++							bss->flink->bandwidth;
++				}
++			}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ 		}
+ 	}
+ 

@@ -1,0 +1,27 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] cmm_wpa: Generate RSNEs for FT-only security modes
+
+WPAMakeRSNIE() omits FT-EAP, FT-SAE and FT-EAP-SHA384 when deciding
+whether to generate an RSNE. Configurations containing only these suites
+therefore leave the RSNE length at zero, although WPAMakeRsnIeAKM()
+already supports their encoding.
+
+Include these suites in the RSNE generation condition under
+DOT11R_FT_SUPPORT.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/common/security/cmm_wpa.c
++++ b/mt_wifi/common/security/cmm_wpa.c
+@@ -2398,7 +2398,11 @@ VOID WPAMakeRSNIE (
+ 	    IS_AKM_WPA2PSK(pSecConfig->AKMMap) ||
+ 	    IS_AKM_WPA3PSK(pSecConfig->AKMMap) ||
+ #ifdef DOT11R_FT_SUPPORT
++	    /* Hostapd can advertise FT suites without their non-FT variants. */
++	    IS_AKM_FT_WPA2(pSecConfig->AKMMap) ||
+ 	    IS_AKM_FT_WPA2PSK(pSecConfig->AKMMap) ||
++	    IS_AKM_FT_SAE_SHA256(pSecConfig->AKMMap) ||
++	    IS_AKM_FT_WPA2_SHA384(pSecConfig->AKMMap) ||
+ 	    IS_AKM_FT_SAE_EXT(pSecConfig->AKMMap) ||
+ #endif /* DOT11R_FT_SUPPORT */
+ 	    IS_AKM_DPP(pSecConfig->AKMMap) ||

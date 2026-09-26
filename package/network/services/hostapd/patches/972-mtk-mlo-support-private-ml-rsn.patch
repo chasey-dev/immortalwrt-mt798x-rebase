@@ -1,0 +1,411 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] AP MLD: Use driver-managed MTK state for ML RSN
+
+MTK driver-managed AP MLDs need the same shared security state as AP
+MLDs managed through standard nl80211. Their membership participates
+in ML RSN processing, with PMKSA lookup using MLD addresses. Station
+cleanup releases cross-link authenticator references. PMKSA release
+also visits private BSS groups, which are separate from standard MLD
+partner lists.
+
+An OWE association can reuse a partner BSS's non-ML PMKSA entry when
+the station MLD address and PMKID match. MTK AP SME release handling
+therefore clears partner references for both cache types. Private BSS
+cleanup flushes its ordinary cache before clearing MLD membership,
+since cache deinitialization does not invoke entry release callbacks.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -626,7 +626,7 @@ int hostapd_notif_assoc(struct hostapd_d
+ 		wpa_auth_set_rsn_selection(sta->wpa_sm, elems.rsn_selection,
+ 					   elems.rsn_selection_len);
+ #ifdef CONFIG_IEEE80211BE
+-		if (ap_sta_is_mld(hapd, sta)) {
++		if (ap_sta_has_ml_rsn(hapd, sta)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "MLD: Set ML info in RSN Authenticator");
+ 			wpa_auth_set_ml_info(sta->wpa_sm,
+@@ -642,7 +642,7 @@ int hostapd_notif_assoc(struct hostapd_d
+ 					  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
+ 					  elems.mdie, elems.mdie_len,
+ 					  elems.owe_dh, elems.owe_dh_len, NULL,
+-					  ap_sta_is_mld(hapd, sta));
++					  ap_sta_has_ml_rsn(hapd, sta));
+ 		reason = WLAN_REASON_INVALID_IE;
+ 		status = WLAN_STATUS_INVALID_IE;
+ 		switch (res) {
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3403,13 +3403,15 @@ int hostapd_clear_mtk_bss_mlo_info(struc
+ 	if (hapd->driver->set_bss_mlo_info)
+ 		hapd->driver->set_bss_mlo_info(hapd->drv_priv, NULL, 0, 0);
+ 
++	if (hostapd_is_mtk_private_mld(hapd))
++		hostapd_release_mtk_private_mld_auth_refs(hapd);
++
+ 	if (hapd->wpa_auth && wpa_auth_clear_mld_addr(hapd->wpa_auth)) {
+ 		wpa_printf(MSG_ERROR,
+ 			   "MTK BSS MLO: failed to clear WPA MLD info: iface=%s",
+ 			   ifname);
+ 		return -1;
+ 	}
+-
+ 	os_memset(hapd->conf->mld_addr, 0, ETH_ALEN);
+ 	hapd->mtk_mld_group_idx = 0;
+ 	hapd->mld_link_id = 0;
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2201,7 +2201,7 @@ void handle_auth_fils(struct hostapd_dat
+ 				  elems.rsnxe ? elems.rsnxe - 2 : NULL,
+ 				  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
+ 				  elems.mdie, elems.mdie_len, NULL, 0, NULL,
+-				  ap_sta_is_mld(hapd, sta));
++				  ap_sta_has_ml_rsn(hapd, sta));
+ 	resp = wpa_res_to_status_code(res);
+ 	if (resp != WLAN_STATUS_SUCCESS)
+ 		goto fail;
+@@ -2478,7 +2478,7 @@ prepare_auth_resp_fils(struct hostapd_da
+ 				    sta->fils_erp_pmkid,
+ 				    session_timeout,
+ 				    wpa_auth_sta_key_mgmt(sta->wpa_sm),
+-				    NULL, ap_sta_is_mld(hapd, sta)) < 0) {
++				    NULL, ap_sta_has_ml_rsn(hapd, sta)) < 0) {
+ 				wpa_printf(MSG_ERROR,
+ 					   "FILS: Failed to add PMKSA cache entry based on ERP");
+ 			}
+@@ -3959,6 +3959,7 @@ static u16 owe_process_assoc_req(struct
+ 	u8 prk[SHA512_MAC_LEN], pmkid[SHA512_MAC_LEN];
+ 	const char *info = "OWE Key Generation";
+ 	const u8 *addr[2];
++	const u8 *pmksa_addr = sta->addr;
+ 	size_t len[2];
+ 	u16 group;
+ 	size_t hash_len, prime_len;
+@@ -4099,9 +4100,13 @@ static u16 owe_process_assoc_req(struct
+ 
+ 	wpa_hexdump_key(MSG_DEBUG, "OWE: PMK", sta->owe_pmk, sta->owe_pmk_len);
+ 	wpa_hexdump(MSG_DEBUG, "OWE: PMKID", pmkid, PMKID_LEN);
+-	wpa_auth_pmksa_add2(hapd->wpa_auth, sta->addr, sta->owe_pmk,
++#ifdef CONFIG_IEEE80211BE
++	if (ap_sta_has_ml_rsn(hapd, sta))
++		pmksa_addr = sta->mld_info.common_info.mld_addr;
++#endif /* CONFIG_IEEE80211BE */
++	wpa_auth_pmksa_add2(hapd->wpa_auth, pmksa_addr, sta->owe_pmk,
+ 			    sta->owe_pmk_len, pmkid, 0, WPA_KEY_MGMT_OWE,
+-			    NULL, ap_sta_is_mld(hapd, sta));
++			    NULL, ap_sta_has_ml_rsn(hapd, sta));
+ 
+ 	return WLAN_STATUS_SUCCESS;
+ }
+@@ -4173,7 +4178,7 @@ u16 owe_process_rsn_ie(struct hostapd_da
+ 		goto end;
+ 	}
+ #ifdef CONFIG_IEEE80211BE
+-	if (ap_sta_is_mld(hapd, sta))
++	if (ap_sta_has_ml_rsn(hapd, sta))
+ 		wpa_auth_set_ml_info(sta->wpa_sm,
+ 				     sta->mld_assoc_link_id, &sta->mld_info);
+ #endif /* CONFIG_IEEE80211BE */
+@@ -4182,7 +4187,7 @@ u16 owe_process_rsn_ie(struct hostapd_da
+ 	res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
+ 				  hapd->iface->freq, rsn_ie, rsn_ie_len,
+ 				  NULL, 0, NULL, 0, owe_dh, owe_dh_len, NULL,
+-				  ap_sta_is_mld(hapd, sta));
++				  ap_sta_has_ml_rsn(hapd, sta));
+ 	status = wpa_res_to_status_code(res);
+ 	if (status != WLAN_STATUS_SUCCESS)
+ 		goto end;
+@@ -4528,7 +4533,7 @@ static int __check_assoc_ies(struct host
+ 		}
+ 
+ #ifdef CONFIG_IEEE80211BE
+-		if (ap_sta_is_mld(hapd, sta)) {
++		if (ap_sta_has_ml_rsn(hapd, sta)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "MLD: %s ML info in RSN Authenticator",
+ 				   init ? "Set" : "Reset");
+@@ -4551,7 +4556,7 @@ static int __check_assoc_ies(struct host
+ 					  elems->mdie, elems->mdie_len,
+ 					  elems->owe_dh, elems->owe_dh_len,
+ 					  assoc_sta ? assoc_sta->wpa_sm : NULL,
+-					  ap_sta_is_mld(hapd, sta));
++					  ap_sta_has_ml_rsn(hapd, sta));
+ 		resp = wpa_res_to_status_code(res);
+ 		if (resp != WLAN_STATUS_SUCCESS)
+ 			return resp;
+@@ -5163,7 +5168,7 @@ static int add_associated_sta(struct hos
+ 	u16 eml_cap = 0;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (ap_sta_is_mld(hapd, sta)) {
++	if (ap_sta_has_ml_rsn(hapd, sta)) {
+ 		u8 mld_link_id = hapd->mld_link_id;
+ 
+ 		mld_link_sta = sta->mld_assoc_link_id != mld_link_id;
+@@ -5492,7 +5497,7 @@ rsnxe_done:
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+-		if (hapd->conf->mld_ap)
++		if (ap_sta_has_ml_rsn(hapd, sta))
+ 			p = hostapd_eid_eht_ml_assoc(hapd, sta, p);
+ 		p = hostapd_eid_eht_capab(hapd, p, IEEE80211_MODE_AP);
+ 		p = hostapd_eid_eht_operation(hapd, p);
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -1930,19 +1930,17 @@ int ap_sta_re_add(struct hostapd_data *h
+ 	 */
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (ap_sta_is_mld(hapd, sta)) {
++	if (ap_sta_has_ml_rsn(hapd, sta)) {
+ 		u8 mld_link_id = hapd->mld_link_id;
+ 
+ 		mld_link_sta = sta->mld_assoc_link_id != mld_link_id;
+ 		mld_link_addr = sta->mld_info.links[mld_link_id].peer_addr;
+ 		eml_cap = sta->mld_info.common_info.eml_capa;
++	}
+ 
+-		/*
+-		 * In case the AP is affiliated with an AP MLD, we need to
+-		 * remove the station from all relevant links/APs.
+-		 */
++	/* Remove the station from every link of a standard AP MLD. */
++	if (ap_sta_is_mld(hapd, sta))
+ 		ap_sta_remove_link_sta(hapd, sta);
+-	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 	ap_sta_set_authorized(hapd, sta, 0);
+@@ -1990,6 +1988,16 @@ bool ap_sta_is_mld(struct hostapd_data *
+ #else /* CONFIG_IEEE80211BE */
+ 	return false;
+ #endif /* CONFIG_IEEE80211BE */
++}
++
++bool ap_sta_has_ml_rsn(struct hostapd_data *hapd, struct sta_info *sta)
++{
++#ifdef CONFIG_IEEE80211BE
++	return sta && sta->mld_info.mld_sta &&
++		(hapd->conf->mld_ap || hostapd_has_mtk_bss_mlo_info(hapd));
++#else /* CONFIG_IEEE80211BE */
++	return false;
++#endif /* CONFIG_IEEE80211BE */
+ }
+ 
+ void ap_sta_set_mld(struct sta_info *sta, bool mld)
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -413,6 +413,7 @@ int ap_sta_re_add(struct hostapd_data *h
+ void ap_free_sta_pasn(struct hostapd_data *hapd, struct sta_info *sta);
+ 
+ bool ap_sta_is_mld(struct hostapd_data *hapd, struct sta_info *sta);
++bool ap_sta_has_ml_rsn(struct hostapd_data *hapd, struct sta_info *sta);
+ void ap_sta_set_mld(struct sta_info *sta, bool mld);
+ 
+ void ap_sta_free_sta_profile(struct mld_info *info);
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -700,6 +700,16 @@ static int hostapd_wpa_auth_for_each_par
+ 	if (cb(hapd->wpa_auth, cb_ctx))
+ 		return 1;
+ 
++	/* MTK driver-managed links use private BSS groups instead of mld. */
++	if (hostapd_is_mtk_private_mld(hapd)) {
++		for_each_mtk_private_mld_link(bss, hapd) {
++			if (bss != hapd && bss->wpa_auth &&
++			    cb(bss->wpa_auth, cb_ctx))
++				return 1;
++		}
++		return 0;
++	}
++
+ 	if (!hapd->mld)
+ 		return 0;
+ 
+@@ -1627,7 +1637,8 @@ static int hostapd_wpa_auth_get_ml_key_i
+ 	wpa_printf(MSG_DEBUG, "WPA_AUTH: MLD: Get key info CB: n_mld_links=%u",
+ 		   info->n_mld_links);
+ 
+-	if (!hapd->conf->mld_ap || !hapd->iface || !hapd->iface->interfaces)
++	if ((!hapd->conf->mld_ap && !hostapd_has_mtk_bss_mlo_info(hapd)) ||
++	    !hapd->iface || !hapd->iface->interfaces)
+ 		return -1;
+ 
+ 	for (i = 0; i < info->n_mld_links; i++) {
+@@ -1648,17 +1659,32 @@ static int hostapd_wpa_auth_get_ml_key_i
+ 			continue;
+ 		}
+ 
+-		for_each_mld_link(bss, hapd) {
+-			if (bss == hapd || bss->mld_link_id != link_id)
+-				continue;
+-
+-			wpa_auth_ml_get_key_info(bss->wpa_auth,
+-						 &info->links[i],
+-						 info->mgmt_frame_prot,
+-						 info->beacon_prot,
+-						 rekey);
+-			link_bss_found = true;
+-			break;
++		if (hostapd_is_mtk_private_mld(hapd)) {
++			for_each_mtk_private_mld_link(bss, hapd) {
++				if (!bss->wpa_auth || bss->mld_link_id != link_id)
++					continue;
++
++				wpa_auth_ml_get_key_info(bss->wpa_auth,
++							 &info->links[i],
++							 info->mgmt_frame_prot,
++							 info->beacon_prot,
++							 rekey);
++				link_bss_found = true;
++				break;
++			}
++		} else if (hapd->conf->mld_ap) {
++			for_each_mld_link(bss, hapd) {
++				if (bss == hapd || bss->mld_link_id != link_id)
++					continue;
++
++				wpa_auth_ml_get_key_info(bss->wpa_auth,
++							 &info->links[i],
++							 info->mgmt_frame_prot,
++							 info->beacon_prot,
++							 rekey);
++				link_bss_found = true;
++				break;
++			}
+ 		}
+ 
+ 		if (!link_bss_found)
+@@ -1869,7 +1895,13 @@ int hostapd_setup_wpa(struct hostapd_dat
+ 	_conf.link_id = -1;
+ 	_conf.first_link_auth = NULL;
+ 
+-	if (hapd->conf->mld_ap) {
++	if (hostapd_is_mtk_private_mld(hapd) &&
++	    !hostapd_has_mtk_bss_mlo_info(hapd)) {
++		wpa_printf(MSG_DEBUG,
++			   "MTK private MLD: defer WPA MLD address: iface=%s",
++			   hapd->conf->iface);
++	} else if (!hostapd_is_mtk_private_mld(hapd) &&
++		   hapd->conf->mld_ap) {
+ 		struct hostapd_data *lhapd;
+ 
+ 		_conf.mld_addr = hapd->mld->mld_addr;
+@@ -1891,6 +1923,22 @@ int hostapd_setup_wpa(struct hostapd_dat
+ 		return -1;
+ 	}
+ 
++#if defined(CONFIG_IEEE80211BE) && defined(CONFIG_DRIVER_NL80211_MTK)
++	/*
++	 * MTK BSS MLD state can become available after WPA initialization. If
++	 * it is already known, apply it through the same update path used by a
++	 * later driver event.
++	 */
++	if (hostapd_has_mtk_bss_mlo_info(hapd) &&
++	    wpa_auth_set_mld_addr(hapd->wpa_auth, hapd->conf->mld_addr,
++				  hapd->mld_link_id)) {
++		wpa_printf(MSG_ERROR,
++			   "MTK BSS MLO: failed to initialize WPA MLD info: iface=%s",
++			   hapd->conf->iface);
++		return -1;
++	}
++#endif /* CONFIG_IEEE80211BE && CONFIG_DRIVER_NL80211_MTK */
++
+ 	if (hostapd_set_privacy(hapd, 1)) {
+ 		wpa_printf(MSG_ERROR, "Could not set PrivacyInvoked "
+ 			   "for interface %s", hapd->conf->iface);
+@@ -1959,6 +2007,36 @@ void hostapd_reconfig_wpa(struct hostapd
+ }
+ 
+ 
++#if defined(CONFIG_IEEE80211BE) && defined(CONFIG_DRIVER_NL80211_MTK)
++void hostapd_release_mtk_private_mld_auth_refs(struct hostapd_data *hapd)
++{
++	struct hostapd_data *bss;
++	struct sta_info *sta;
++	struct rsn_pmksa_cache *pmksa;
++
++	if (!hostapd_is_mtk_private_mld(hapd) ||
++	    !hostapd_has_mtk_bss_mlo_info(hapd))
++		return;
++
++	/* Cache deinit skips release callbacks. Flush borrowed entries first. */
++	pmksa = wpa_auth_get_pmksa_cache(hapd->wpa_auth);
++	if (pmksa)
++		pmksa_cache_auth_flush(pmksa);
++
++	for_each_mtk_private_mld_link(bss, hapd) {
++		if (bss == hapd)
++			continue;
++
++		for (sta = bss->sta_list; sta; sta = sta->next) {
++			if (ap_sta_has_ml_rsn(bss, sta))
++				wpa_release_link_auth_ref(sta->wpa_sm,
++							  hapd->mld_link_id, false);
++		}
++	}
++}
++#endif /* CONFIG_IEEE80211BE && CONFIG_DRIVER_NL80211_MTK */
++
++
+ void hostapd_deinit_wpa(struct hostapd_data *hapd)
+ {
+ 	ieee80211_tkip_countermeasures_deinit(hapd);
+@@ -1967,6 +2045,9 @@ void hostapd_deinit_wpa(struct hostapd_d
+ 
+ 	rsn_preauth_iface_deinit(hapd);
+ 	if (hapd->wpa_auth) {
++#if defined(CONFIG_IEEE80211BE) && defined(CONFIG_DRIVER_NL80211_MTK)
++		hostapd_release_mtk_private_mld_auth_refs(hapd);
++#endif /* CONFIG_IEEE80211BE && CONFIG_DRIVER_NL80211_MTK */
+ 		wpa_deinit(hapd->wpa_auth);
+ 		hapd->wpa_auth = NULL;
+ 
+--- a/src/ap/wpa_auth_glue.h
++++ b/src/ap/wpa_auth_glue.h
+@@ -12,5 +12,8 @@
+ int hostapd_setup_wpa(struct hostapd_data *hapd);
+ void hostapd_reconfig_wpa(struct hostapd_data *hapd);
+ void hostapd_deinit_wpa(struct hostapd_data *hapd);
++#if defined(CONFIG_IEEE80211BE) && defined(CONFIG_DRIVER_NL80211_MTK)
++void hostapd_release_mtk_private_mld_auth_refs(struct hostapd_data *hapd);
++#endif /* CONFIG_IEEE80211BE && CONFIG_DRIVER_NL80211_MTK */
+ 
+ #endif /* WPA_AUTH_GLUE_H */
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -681,6 +681,12 @@ static void wpa_auth_pmksa_free_cb(struc
+ {
+ 	struct wpa_authenticator *wpa_auth = ctx;
+ 	const u8 *aa = wpa_auth->addr;
++#ifdef CONFIG_IEEE80211BE
++	bool clear_partners = entry->is_ml;
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	u64 drv_flags = 0, drv_flags2 = 0;
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++#endif /* CONFIG_IEEE80211BE */
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	if (wpa_auth->is_ml)
+@@ -688,7 +694,17 @@ static void wpa_auth_pmksa_free_cb(struc
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (!entry->is_ml) {
++#ifdef CONFIG_DRIVER_NL80211_MTK
++	/*
++	 * MTK MLO association can borrow a partner's non-ML PMKSA entry.
++	 * Clear those references before the partner cache frees the entry.
++	 */
++	if (wpa_auth->is_ml &&
++	    wpa_auth_get_drv_flags(wpa_auth, &drv_flags, &drv_flags2) == 0 &&
++	    (drv_flags2 & WPA_DRIVER_FLAGS2_MTK_AP_SME))
++		clear_partners = true;
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++	if (!clear_partners) {
+ 		wpa_auth_for_each_sta(wpa_auth, wpa_auth_pmksa_clear_cb, entry);
+ 	} else {
+ 		/* Clear stale PMKSA references across partner MLD links. */

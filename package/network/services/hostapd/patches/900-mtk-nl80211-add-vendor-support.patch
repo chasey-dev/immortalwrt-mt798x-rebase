@@ -1,0 +1,89 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] nl80211: Add MTK vendor support
+
+MTK vendor commands need a build option and capability probing in
+nl80211. CONFIG_DRIVER_NL80211_MTK enables this integration, while vendor
+command discovery identifies interfaces using MTK AP SME.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -27,6 +27,9 @@
+ #include "common/qca-vendor.h"
+ #include "common/qca-vendor-attr.h"
+ #include "common/brcm_vendor.h"
++#ifdef CONFIG_DRIVER_NL80211_MTK
++#include "mtk_vendor_nl80211.h"
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ #include "common/ieee802_11_defs.h"
+ #include "common/ieee802_11_common.h"
+ #include "common/wpa_common.h"
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -17,6 +17,9 @@
+ #include "common/qca-vendor.h"
+ #include "common/qca-vendor-attr.h"
+ #include "common/brcm_vendor.h"
++#ifdef CONFIG_DRIVER_NL80211_MTK
++#include "mtk_vendor_nl80211.h"
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ #include "driver_nl80211.h"
+ 
+ 
+@@ -1148,6 +1151,12 @@ static int wiphy_info_handler(struct nl_
+ #endif /* CONFIG_DRIVER_NL80211_BRCM */
+ 			}
+ 
++#ifdef CONFIG_DRIVER_NL80211_MTK
++			if (vinfo->vendor_id == MTK_NL80211_VENDOR_ID &&
++			    vinfo->subcmd == MTK_NL80211_VENDOR_SUBCMD_SET_PMKID)
++				drv->capa.flags2 |= WPA_DRIVER_FLAGS2_MTK_AP_SME;
++#endif /* CONFIG_DRIVER_NL80211_MTK */
++
+ 			wpa_printf(MSG_DEBUG, "nl80211: Supported vendor command: vendor_id=0x%x subcmd=%u",
+ 				   vinfo->vendor_id, vinfo->subcmd);
+ 		}
+@@ -1579,6 +1588,8 @@ int wpa_driver_nl80211_capa(struct wpa_d
+ 	}
+ 
+ 	drv->device_ap_sme = info.device_ap_sme;
++	if (!drv->device_ap_sme)
++		drv->capa.flags2 &= ~WPA_DRIVER_FLAGS2_MTK_AP_SME;
+ 	drv->poll_command_supported = info.poll_command_supported;
+ 	drv->data_tx_status = info.data_tx_status;
+ 	drv->p2p_go_ctwindow_supported = info.p2p_go_ctwindow_supported;
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -16,6 +16,9 @@
+ #include "common/qca-vendor.h"
+ #include "common/qca-vendor-attr.h"
+ #include "common/brcm_vendor.h"
++#ifdef CONFIG_DRIVER_NL80211_MTK
++#include "mtk_vendor_nl80211.h"
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ #include "common/ieee802_11_defs.h"
+ #include "common/ieee802_11_common.h"
+ #include "driver_nl80211.h"
+--- a/src/drivers/drivers.mak
++++ b/src/drivers/drivers.mak
+@@ -50,6 +50,9 @@ DRV_OBJS += ../src/drivers/driver_nl8021
+ ifdef CONFIG_DRIVER_NL80211_QCA
+ DRV_CFLAGS += -DCONFIG_DRIVER_NL80211_QCA
+ endif
++ifdef CONFIG_DRIVER_NL80211_MTK
++DRV_CFLAGS += -DCONFIG_DRIVER_NL80211_MTK
++endif
+ NEED_SME=y
+ NEED_AP_MLME=y
+ NEED_NETLINK=y
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2426,6 +2426,8 @@ struct wpa_driver_capa {
+ #define WPA_DRIVER_FLAGS2_P2P_FEATURE_V2	0x0000000002000000ULL
+ /** Driver supports P2P PCC mode */
+ #define WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE	0x0000000004000000ULL
++/** MTK device AP SME with the private PMKID vendor command */
++#define WPA_DRIVER_FLAGS2_MTK_AP_SME		0x0000000008000000ULL
+ 	u64 flags2;
+ 
+ #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \

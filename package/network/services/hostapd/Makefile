@@ -69,6 +69,7 @@ ifeq ($(LOCAL_VARIANT),mesh)
 endif
 
 include $(INCLUDE_DIR)/package.mk
+include $(INCLUDE_DIR)/kernel.mk
 
 TARGET_LDFLAGS_C:=$(TARGET_LDFLAGS)
 
@@ -602,6 +603,8 @@ TARGET_CPPFLAGS := \
 	-DCONFIG_LIBNL20 \
 	-D_GNU_SOURCE \
 	$(if $(CONFIG_WPA_MSG_MIN_PRIORITY),-DCONFIG_MSG_MIN_PRIORITY=$(CONFIG_WPA_MSG_MIN_PRIORITY))
+
+TARGET_CPPFLAGS += -I$(LINUX_DIR)/include/uapi/linux/mtk_nl80211_inc
 
 TARGET_LDFLAGS += -lubox -lubus -lblobmsg_json -lucode -lm -lnl-tiny -ludebug
 

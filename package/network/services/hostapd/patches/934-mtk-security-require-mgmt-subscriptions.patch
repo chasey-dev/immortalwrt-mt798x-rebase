@@ -1,0 +1,52 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] nl80211: Fail MTK AP setup on management subscription errors
+
+MTK AP SME relies on hostapd receiving authentication frames. A failed
+management-frame subscription leaves hostapd unable to process those
+requests.
+
+Authentication subscription failures abort MTK AP setup. The subscription
+callback also propagates errors from the other required registrations.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -2967,9 +2967,17 @@ static int nl80211_mgmt_subscribe_ap_dev
+ 
+ 		/* Register for all Authentication frames */
+ 		if (nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0,
+-					   false) < 0)
++					   false) < 0) {
++#ifdef CONFIG_DRIVER_NL80211_MTK
++			if (bss->drv->capa.flags2 & WPA_DRIVER_FLAGS2_MTK_AP_SME) {
++				wpa_printf(MSG_ERROR,
++					   "nl80211: Failed to subscribe to Authentication frames for MTK AP SME");
++				goto out_err;
++			}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ 			wpa_printf(MSG_DEBUG,
+ 				   "nl80211: Failed to subscribe to handle Authentication frames - SAE offload may not work");
++		}
+ 	}
+ 
+ 	nl80211_mgmt_handle_register_eloop(bss);
+@@ -6424,9 +6432,17 @@ static int nl80211_setup_ap(struct i802_
+ 	if (!drv->device_ap_sme && nl80211_mgmt_subscribe_ap(bss))
+ 		return -1;
+ 
+-	if (drv->device_ap_sme && nl80211_mgmt_subscribe_ap_dev_sme(bss))
++	if (drv->device_ap_sme && nl80211_mgmt_subscribe_ap_dev_sme(bss)) {
++#ifdef CONFIG_DRIVER_NL80211_MTK
++		if (drv->capa.flags2 & WPA_DRIVER_FLAGS2_MTK_AP_SME) {
++			wpa_printf(MSG_ERROR,
++				   "nl80211: Required MTK AP SME management subscription failed");
++			return -1;
++		}
++#endif /* CONFIG_DRIVER_NL80211_MTK */
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: Failed to subscribe for mgmt frames from SME driver - trying to run without it");
++	}
+ 
+ 	if (drv->device_ap_sme &&
+ 	    wpa_driver_nl80211_probe_req_report(bss, 1) < 0) {

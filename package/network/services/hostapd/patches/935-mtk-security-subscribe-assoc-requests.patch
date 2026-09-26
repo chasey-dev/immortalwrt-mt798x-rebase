@@ -1,0 +1,42 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] nl80211: Subscribe to MTK OWE and FT association requests
+
+MTK AP SME forwards OWE and FT association requests as management
+frames. Both features need association and reassociation subscriptions,
+so a shared registration path is enabled when either feature is built.
+This avoids duplicate subscriptions when both are enabled. Required
+subscription failures propagate to AP setup.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -2978,6 +2978,28 @@ static int nl80211_mgmt_subscribe_ap_dev
+ 			wpa_printf(MSG_DEBUG,
+ 				   "nl80211: Failed to subscribe to handle Authentication frames - SAE offload may not work");
+ 		}
++#if defined(CONFIG_DRIVER_NL80211_MTK) && \
++	(defined(CONFIG_OWE) || defined(CONFIG_IEEE80211R_AP))
++		/* MTK forwards OWE and FT requests through RX management frames. */
++		if (bss->drv->capa.flags2 & WPA_DRIVER_FLAGS2_MTK_AP_SME) {
++			type = (WLAN_FC_TYPE_MGMT << 2) |
++				(WLAN_FC_STYPE_ASSOC_REQ << 4);
++			if (nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0,
++						   false) < 0) {
++				wpa_printf(MSG_ERROR,
++					   "nl80211: Failed to subscribe to Association Request frames for MTK AP SME");
++				goto out_err;
++			}
++			type = (WLAN_FC_TYPE_MGMT << 2) |
++				(WLAN_FC_STYPE_REASSOC_REQ << 4);
++			if (nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0,
++						   false) < 0) {
++				wpa_printf(MSG_ERROR,
++					   "nl80211: Failed to subscribe to Reassociation Request frames for MTK AP SME");
++				goto out_err;
++			}
++		}
++#endif /* CONFIG_DRIVER_NL80211_MTK && (CONFIG_OWE || CONFIG_IEEE80211R_AP) */
+ 	}
+ 
+ 	nl80211_mgmt_handle_register_eloop(bss);

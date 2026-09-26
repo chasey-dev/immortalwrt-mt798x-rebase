@@ -1,0 +1,78 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] cfg80211: Report PMKID update failures
+
+CFG80211_ApUpdateStaPmkid() returns success when adding a PMKID for a
+missing station and ignores failed PMKID cache insertion. hostapd can
+accept a PMKSA entry that mt_wifi7 did not install.
+
+Invalid operations, missing stations on addition and failed cache
+updates now return errors through the vendor command. PmkidByHostapd
+is updated only after checking the returned cache index.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/os/linux/cfg80211/cfg80211_ap.c
++++ b/mt_wifi/os/linux/cfg80211/cfg80211_ap.c
+@@ -2622,6 +2622,7 @@ INT CFG80211_ApUpdateStaPmkid(
+ 	struct mt_priv_pmkid *pApPmkidEntry = NULL;
+ 	UCHAR fake_PMK[LEN_MAX_PMK] = {0};
+ 	struct _NDIS_AP_802_11_PMKID *pmkid_cache;
++	INT cache_idx;
+ 
+ 	pApPmkidEntry = (struct mt_priv_pmkid *)pData;
+ 	pmkid_cache = PD_GET_PMKID_PTR(pAd->physical_dev);
+@@ -2629,8 +2630,10 @@ INT CFG80211_ApUpdateStaPmkid(
+ 	if (!pApPmkidEntry) {
+ 		MTWF_DBG(NULL, DBG_CAT_SEC, CATSEC_KEY, DBG_LVL_ERROR,
+ 			"pApPmkidEntry is NULL!\n");
+-		return -1;
++		return -RTMP_IO_EINVAL;
+ 	}
++	if (pApPmkidEntry->AddRemove > 1)
++		return -RTMP_IO_EINVAL;
+ 
+ 	MTWF_DBG(NULL, DBG_CAT_SEC, CATSEC_KEY, DBG_LVL_INFO,
+ 		"update sta pmkid in cache: %d (1-add, 0-remove)\n", pApPmkidEntry->AddRemove);
+@@ -2664,13 +2667,11 @@ INT CFG80211_ApUpdateStaPmkid(
+ 		RTMPDeletePMKIDCacheForSTA(pmkid_cache, pApPmkidEntry->bssid, pApPmkidEntry->link_addr, pApPmkidEntry->sta, FALSE);
+ 		OS_SEM_UNLOCK(&pmkid_cache->pmkid_lock);
+ 	} else if (pEntry && (pApPmkidEntry->AddRemove == 1)) { /* add pmkid for existing pEntry */
+-		NdisCopyMemory(pEntry->PmkidByHostapd, pApPmkidEntry->pmkid, LEN_PMKID);
+ 		MTWF_DBG(NULL, DBG_CAT_SEC, CATSEC_KEY, DBG_LVL_NOTICE,
+ 			"add PMKID in pEntryAddress: "MACSTR"\n",
+ 			MAC2STR(pApPmkidEntry->sta));
+-		hex_dump_with_lvl("Add PMKID", pEntry->PmkidByHostapd, LEN_PMKID, DBG_LVL_INFO);
+ 		OS_SEM_LOCK(&pmkid_cache->pmkid_lock);
+-		RTMPAddPMKIDCache(pmkid_cache,
++		cache_idx = RTMPAddPMKIDCache(pmkid_cache,
+ 				pApPmkidEntry->bssid,
+ 				pApPmkidEntry->sta,
+ 				pApPmkidEntry->pmkid,
+@@ -2684,10 +2685,15 @@ INT CFG80211_ApUpdateStaPmkid(
+ 				0
+ #endif
+ 		);
+-			OS_SEM_UNLOCK(&pmkid_cache->pmkid_lock);
++		OS_SEM_UNLOCK(&pmkid_cache->pmkid_lock);
++		if (cache_idx < 0 || cache_idx >= MAX_PMKID_COUNT)
++			return -RTMP_IO_EFAULT;
++		NdisCopyMemory(pEntry->PmkidByHostapd, pApPmkidEntry->pmkid, LEN_PMKID);
++		hex_dump_with_lvl("Add PMKID", pEntry->PmkidByHostapd, LEN_PMKID, DBG_LVL_INFO);
+ 	} else {
+ 		MTWF_DBG(pAd, DBG_CAT_SEC, CATSEC_KEY, DBG_LVL_ERROR,
+ 			"can't find pEntry in MacTable to add PMKID\n");
++		return -RTMP_IO_ENOTCONN;
+ 	}
+ 
+ 	return 0;
+--- a/mt_wifi/os/linux/cfg80211/cfg80211_vndr_cmm.c
++++ b/mt_wifi/os/linux/cfg80211/cfg80211_vndr_cmm.c
+@@ -5349,7 +5349,7 @@ int cfg80211_drv_vndr_set_pmkid(
+ 	void *ctrl_data_)
+ {
+ #ifdef HOSTAPD_PMKID_IN_DRIVER_SUPPORT
+-	int ret = 0;
++	int ret = -RTMP_IO_EINVAL;
+ 	struct mt_cfg80211_vndr_ctrl *ctrl_data = (struct mt_cfg80211_vndr_ctrl *)ctrl_data_;
+ 
+ 	if (ctrl_data->sub_id == MTK_NL80211_VENDOR_ATTR_SET_PMKSA_CACHE) {

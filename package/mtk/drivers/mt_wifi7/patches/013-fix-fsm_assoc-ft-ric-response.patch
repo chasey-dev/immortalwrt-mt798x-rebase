@@ -1,0 +1,131 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] fsm_assoc: Preserve RIC elements in FT responses
+
+mt_wifi7 rebuilds hostapd FT responses but drops RIC elements included
+in the FT MIC calculation. The transmitted response then fails MIC
+verification.
+
+Each RDIE and its resource descriptors, including vendor TSPECs, are
+copied into the response. Truncated descriptors and discontiguous RIC
+data fail before transmission. Buffer allocation accounts for RIC data
+and the completed response is checked against the management frame limit.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/common/fsm/fsm_assoc.c
++++ b/mt_wifi/common/fsm/fsm_assoc.c
+@@ -1742,6 +1742,7 @@ VOID assoc_fsm_hostapd_assoc_resp_handle
+ 	UINT8 ExtendedIECap_Hapd_len = 0;
+ 	NDIS_STATUS NStatus;
+ 	ULONG FrameLen = 0;
++	ULONG OutBufferLen = MAX_MGMT_PKT_LEN;
+ 	UCHAR SupRateLen, PhyMode, FlgIs11bSta;
+ 	UCHAR i;
+ 	UCHAR MaxSupportedRate = 0;
+@@ -1765,6 +1766,8 @@ VOID assoc_fsm_hostapd_assoc_resp_handle
+ 	PFT_CFG pFtCfg = NULL;
+ 	PFT_INFO pFtInfoBuf = NULL; 	/*Wframe-larger-than=1024 warning  removal*/
+ 	PEID_STRUCT pFtIe = NULL;
++	const UCHAR *RicIe = NULL;
++	ULONG RicIeLen = 0;
+ 	PEID_STRUCT pFtFragIe = NULL;
+ #endif /* DOT11R_FT_SUPPORT */
+ #ifdef HOSTAPD_OWE_SUPPORT
+@@ -1977,27 +1980,31 @@ VOID assoc_fsm_hostapd_assoc_resp_handle
+ 					break;
+ 
+ 				case IE_FT_RIC_DATA:
+-					/* record the pointer of first RDIE. */
+-					if (pFtInfoBuf->RicInfo.pRicInfo == NULL) {
+-						pFtInfoBuf->RicInfo.pRicInfo = &eid_ptr->Eid;
+-						pFtInfoBuf->RicInfo.Len = ((UCHAR *)mgmt + Data)
+-												- (UCHAR *)eid_ptr + 1;
+-					}
+-
+-					if ((pFtInfoBuf->RicInfo.RicIEsLen + eid_ptr->Len + 2) < MAX_RICIES_LEN) {
+-						NdisMoveMemory(&pFtInfoBuf->RicInfo.RicIEs[pFtInfoBuf->RicInfo.RicIEsLen],
+-										&eid_ptr->Eid, eid_ptr->Len + 2);
+-						pFtInfoBuf->RicInfo.RicIEsLen += eid_ptr->Len + 2;
+-					}
+-					break;
++				{
++					const UCHAR *start = (const UCHAR *)eid_ptr;
++					const UCHAR *end = (const UCHAR *)mgmt + Data;
++					const UCHAR *pos;
++					UINT count;
+ 
+-				case IE_FT_RIC_DESCRIPTOR:
+-					if ((pFtInfoBuf->RicInfo.RicIEsLen + eid_ptr->Len + 2) < MAX_RICIES_LEN) {
+-						NdisMoveMemory(&pFtInfoBuf->RicInfo.RicIEs[pFtInfoBuf->RicInfo.RicIEsLen],
+-										&eid_ptr->Eid, eid_ptr->Len + 2);
+-						pFtInfoBuf->RicInfo.RicIEsLen += eid_ptr->Len + 2;
++					if (eid_ptr->Len != 4 || end - start < 6)
++						goto LabelOK;
++					if (RicIe && RicIe + RicIeLen != start)
++						goto LabelOK;
++					pos = start + 6;
++					count = eid_ptr->Octet[1];
++					while (count--) {
++						if (end - pos < 2 || end - pos < 2 + pos[1] ||
++							pos[0] == IE_FT_RIC_DATA)
++							goto LabelOK;
++						pos += 2 + pos[1];
+ 					}
++					/* Preserve descriptors, including vendor TSPECs,
++					 * byte-for-byte: hostapd includes them in the MIC. */
++					if (!RicIe)
++						RicIe = start;
++					RicIeLen = pos - RicIe;
+ 					break;
++				}
+ #endif
+ #if defined(DOT11R_FT_SUPPORT) || defined(HOSTAPD_OWE_SUPPORT)
+ 
+@@ -2097,7 +2104,14 @@ VOID assoc_fsm_hostapd_assoc_resp_handle
+ 	/* SendAssocResponse: */
+ #endif /* DOT11W_PMF_SUPPORT */
+ 	/* 3. send Association Response */
+-	NStatus = MlmeAllocateMemory(pAd, &pOutBuffer);
++	/* Reserve RIC space without reducing the capacity available to
++	 * remaining IE builders. Check the final MMPDU length before use. */
++#ifdef DOT11R_FT_SUPPORT
++	if (RicIeLen > MAX_MGMT_PKT_LEN)
++		goto LabelOK;
++	OutBufferLen += RicIeLen;
++#endif /* DOT11R_FT_SUPPORT */
++	NStatus = os_alloc_mem(pAd, &pOutBuffer, OutBufferLen);
+ 
+ 	if (NStatus != NDIS_STATUS_SUCCESS)
+ 		goto LabelOK;
+@@ -2533,6 +2547,13 @@ VOID assoc_fsm_hostapd_assoc_resp_handle
+ 				FrameLen += TmpFragLen;
+ 			}
+ 		}
++		if (RicIeLen) {
++			if (FrameLen > OutBufferLen ||
++				RicIeLen > OutBufferLen - FrameLen)
++				goto LabelOK;
++			NdisMoveMemory(pOutBuffer + FrameLen, RicIe, RicIeLen);
++			FrameLen += RicIeLen;
++		}
+ 	}
+ #endif /* DOT11R_FT_SUPPORT */
+ 
+@@ -2581,6 +2602,8 @@ VOID assoc_fsm_hostapd_assoc_resp_handle
+ 
+ 	/* EHT MLO non-setup link association */
+ 	if (Elem->Others) {
++		if (FrameLen > MAX_MGMT_PKT_LEN)
++			goto LabelOK;
+ 		assoc_info = (struct eht_assoc_req_priv *)Elem->Others;
+ 		assoc_info->buf = pOutBuffer;
+ 		assoc_info->buf_len = FrameLen;
+@@ -2692,6 +2715,8 @@ VOID assoc_fsm_hostapd_assoc_resp_handle
+ 			"send assoc resp to "MACSTR" (status=%d) ...\n", MAC2STR(ie_list->Addr2), StatusCode);
+ 
+ 		/* transmit the association response frame */
++		if (FrameLen > MAX_MGMT_PKT_LEN)
++			goto LabelOK;
+ 		MiniportMMRequest(pAd, 0, pOutBuffer, FrameLen, NULL);
+ 	}
+ 

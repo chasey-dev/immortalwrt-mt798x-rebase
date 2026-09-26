@@ -14,6 +14,7 @@
 #include <linux/netfilter_bridge.h>
 #include <linux/netfilter_ipv6.h>
 #include <linux/if_bridge.h>
+#include <linux/if_arp.h>
 
 #include <net/arp.h>
 #include <net/neighbour.h>
@@ -2007,7 +2008,39 @@ static int hnat_foe_entry_commit(struct foe_entry *foe,
 	return 0;
 }
 
-int hnat_bind_crypto_entry(struct sk_buff *skb, const struct net_device *dev, int fill_inner_info)
+/* Keep the user port for role/tag selection, and the conduit for GMAC lookup.
+ * The path and its borrowed device pointers must remain under RCU protection.
+ */
+static const struct net_device *
+hnat_flow_path_dev(const struct flow_offload_hw_path *path)
+{
+	struct net_device *conduit;
+	int port, i;
+
+	if (!(path->flags & BIT(DEV_PATH_DSA))) {
+		if (path->dsa_dev)
+			return ERR_PTR(-EINVAL);
+
+		return IS_GMAC1_MODE ? path->virt_dev : path->dev;
+	}
+
+	if (!path->dsa_dev)
+		return ERR_PTR(-EINVAL);
+
+	conduit = path->dsa_dev;
+	port = hnat_dsa_get_port(&conduit);
+	if (port < 0 || port != path->dsa_port || conduit != path->dev)
+		return ERR_PTR(-EINVAL);
+
+	for (i = 0; i < MTK_MAX_DEVS; i++)
+		if (hnat_priv->eth->netdev[i] == conduit)
+			return path->dsa_dev;
+
+	return ERR_PTR(-ENODEV);
+}
+
+static int __hnat_bind_crypto_entry(struct sk_buff *skb,
+				  const struct net_device *dev, int fill_inner_info)
 {
 	struct net_device *master_dev;
 	struct foe_entry *foe;
@@ -2048,9 +2081,21 @@ int hnat_bind_crypto_entry(struct sk_buff *skb, const struct net_device *dev, in
 
 	hnat_get_filled_unbind_entry(skb, &entry);
 
+	if (!skb_mac_header_was_set(skb))
+		return -EINVAL;
+
+	ether_addr_copy(hw_path.eth_dest, eth_hdr(skb)->h_dest);
+	ether_addr_copy(hw_path.eth_src, eth_hdr(skb)->h_source);
+	if (dev->type == ARPHRD_ETHER || dev->type == ARPHRD_PPP)
+		hw_path.flags |= BIT(DEV_PATH_ETHERNET);
+
 	if (dev->netdev_ops->ndo_flow_offload_check) {
-		dev->netdev_ops->ndo_flow_offload_check(&hw_path);
-		dev = (IS_GMAC1_MODE) ? hw_path.virt_dev : hw_path.dev;
+		if (dev->netdev_ops->ndo_flow_offload_check(&hw_path) < 0)
+			return -EINVAL;
+
+		dev = hnat_flow_path_dev(&hw_path);
+		if (IS_ERR_OR_NULL(dev))
+			return -EINVAL;
 	}
 
 	if (hw_path.flags & BIT(DEV_PATH_PPPOE)) {
@@ -2290,6 +2335,17 @@ hnat_skip_fill_inner:
 		       0, sizeof(struct hnat_accounting));
 
 	return 0;
+}
+int hnat_bind_crypto_entry(struct sk_buff *skb, const struct net_device *dev,
+			   int fill_inner_info)
+{
+	int ret;
+
+	rcu_read_lock();
+	ret = __hnat_bind_crypto_entry(skb, dev, fill_inner_info);
+	rcu_read_unlock();
+
+	return ret;
 }
 EXPORT_SYMBOL(hnat_bind_crypto_entry);
 
@@ -3967,6 +4023,7 @@ static unsigned int mtk_hnat_nf_post_routing(
 	struct flow_offload_hw_path hw_path = { .virt_dev = (struct net_device *)out };
 	const struct net_device *arp_dev = out;
 	bool is_virt_dev = false;
+	bool l2_prepared = false;
 
 	if (xlat_toggle && !mtk_464xlat_post_process(skb, out))
 		return 0;
@@ -3994,9 +4051,31 @@ static unsigned int mtk_hnat_nf_post_routing(
 	hw_path.dev = (struct net_device *)out;
 
 	if (out->netdev_ops->ndo_flow_offload_check) {
-		out->netdev_ops->ndo_flow_offload_check(&hw_path);
+		/* Bridge callbacks need the egress MAC before their FDB lookup.
+		 * PPPoE supplies its MACs from the connected session instead.
+		 */
+		if (out->type == ARPHRD_ETHER || out->type == ARPHRD_PPP)
+			hw_path.flags |= BIT(DEV_PATH_ETHERNET);
 
-		out = (IS_GMAC1_MODE) ? hw_path.virt_dev : hw_path.dev;
+		if (out->type == ARPHRD_ETHER) {
+			if (fn) {
+				if (!skb_dst(skb) || fn(skb, arp_dev, &hw_path) ||
+				    is_zero_ether_addr(hw_path.eth_dest) ||
+				    is_zero_ether_addr(hw_path.eth_src))
+					return 0;
+			} else {
+				ether_addr_copy(hw_path.eth_dest, eth_hdr(skb)->h_dest);
+				ether_addr_copy(hw_path.eth_src, eth_hdr(skb)->h_source);
+			}
+			l2_prepared = true;
+		}
+
+		if (out->netdev_ops->ndo_flow_offload_check(&hw_path) < 0)
+			return 0;
+
+		out = hnat_flow_path_dev(&hw_path);
+		if (IS_ERR_OR_NULL(out))
+			return 0;
 		if (hw_path.flags & BIT(DEV_PATH_TNL) && mtk_tnl_encap_offload) {
 			if (ntohs(skb->protocol) == ETH_P_IP &&
 			    (ip_hdr(skb)->protocol == IPPROTO_TCP ||
@@ -4046,13 +4125,15 @@ static unsigned int mtk_hnat_nf_post_routing(
 			break;
 
 		if (!fn) {
-			memcpy(hw_path.eth_dest, eth_hdr(skb)->h_dest, ETH_ALEN);
-			memcpy(hw_path.eth_src, eth_hdr(skb)->h_source, ETH_ALEN);
+			if (!(hw_path.flags & BIT(DEV_PATH_PPPOE))) {
+				ether_addr_copy(hw_path.eth_dest, eth_hdr(skb)->h_dest);
+				ether_addr_copy(hw_path.eth_src, eth_hdr(skb)->h_source);
+			}
 		} else {
 			if (is_virt_dev && (hw_path.flags & BIT(DEV_PATH_TNL))) {
 				memset(hw_path.eth_dest, 0, ETH_ALEN);
 				memset(hw_path.eth_src, 0, ETH_ALEN);
-			} else if (fn(skb, arp_dev, &hw_path))
+			} else if (!l2_prepared && fn(skb, arp_dev, &hw_path))
 				break;
 		}
 		/* skb_hnat_tops(skb) is updated in mtk_tnl_offload() */

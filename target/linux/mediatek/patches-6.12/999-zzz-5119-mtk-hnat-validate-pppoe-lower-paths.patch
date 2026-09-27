@@ -1,0 +1,131 @@
+From: Liu Hao <9311628958@qq.com>
+Subject: [PATCH] net: mediatek: hnat: validate PPPoE lower paths
+
+Initialize PPPoE Ethernet paths before checking lower devices, honor
+callback errors, and retain the DSA user port for role and tag selection.
+Keep session MAC addresses when binding without a nexthop callback.
+Leave non-PPP path resolution and crypto binding unchanged.
+
+Signed-off-by: Liu Hao <9311628958@qq.com>
+---
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -217,6 +217,8 @@
+ 	u16 vlan_id;
+ 	u16 pppoe_sid;
+ 	u16 dsa_port;
++	/* Borrowed user port; valid during the RCU-protected path walk. */
++	struct net_device *dsa_dev;
+ };
+ 
+ #define NF_FLOW_TIMEOUT (30 * HZ)
+--- a/net/dsa/user.c
++++ b/net/dsa/user.c
+@@ -2539,6 +2539,7 @@
+ 		return -EINVAL;
+ 
+ 	dp = dsa_user_to_port(dev);
++	path->dsa_dev = dev;
+ 	path->dsa_port = dp->index;
+ 	path->dev = dsa_user_to_conduit(dev);
+ 	path->flags |= BIT(DEV_PATH_DSA);
+--- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
++++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
+@@ -14,6 +14,7 @@
+ #include <linux/netfilter_bridge.h>
+ #include <linux/netfilter_ipv6.h>
+ #include <linux/if_bridge.h>
++#include <linux/if_arp.h>
+ 
+ #include <net/arp.h>
+ #include <net/neighbour.h>
+@@ -4127,6 +4128,38 @@
+ 	return 0;
+ }
+ 
++/* Resolve a PPPoE path without losing the DSA port needed for HNAT tags.
++ * Netfilter holds RCU while the path's borrowed netdev pointers are used.
++ */
++static const struct net_device *
++hnat_pppoe_path_dev(const struct flow_offload_hw_path *path)
++{
++	struct net_device *conduit;
++	int port, i;
++
++	if (!(path->flags & BIT(DEV_PATH_DSA))) {
++		if (IS_GMAC1_MODE && path->virt_dev &&
++		    path->virt_dev->type != ARPHRD_PPP)
++			return path->virt_dev;
++
++		return path->dev;
++	}
++
++	if (!path->dsa_dev)
++		return NULL;
++
++	conduit = path->dsa_dev;
++	port = hnat_dsa_get_port(&conduit);
++	if (port < 0 || port != path->dsa_port || conduit != path->dev)
++		return NULL;
++
++	for (i = 0; i < MTK_MAX_DEVS; i++)
++		if (hnat_priv->eth->netdev[i] == conduit)
++			return path->dsa_dev;
++
++	return NULL;
++}
++
+ static unsigned int mtk_hnat_nf_post_routing(
+ 	struct sk_buff *skb, const struct net_device *out,
+ 	int (*fn)(struct sk_buff *, const struct net_device *,
+@@ -4138,6 +4171,8 @@
+ 	struct flow_offload_hw_path hw_path = { .virt_dev = (struct net_device *)out };
+ 	const struct net_device *arp_dev = out;
+ 	bool is_virt_dev = false;
++	bool ppp_path = out->type == ARPHRD_PPP;
++	int err;
+ 
+ 	if (xlat_toggle && !mtk_464xlat_post_process(skb, out))
+ 		return 0;
+@@ -4165,9 +4200,24 @@
+ 	hw_path.dev = (struct net_device *)out;
+ 
+ 	if (out->netdev_ops->ndo_flow_offload_check) {
+-		out->netdev_ops->ndo_flow_offload_check(&hw_path);
+-
+-		out = (IS_GMAC1_MODE) ? hw_path.virt_dev : hw_path.dev;
++		/* PPPoE supplies the Ethernet addresses before walking its lower
++		 * device. DSA and bridge callbacks require the Ethernet flag.
++		 */
++		if (ppp_path)
++			hw_path.flags |= BIT(DEV_PATH_ETHERNET);
++
++		err = out->netdev_ops->ndo_flow_offload_check(&hw_path);
++		if (ppp_path) {
++			/* Never bind partially resolved or unsupported PPP paths. */
++			if (err < 0 || !(hw_path.flags & BIT(DEV_PATH_PPPOE)))
++				return 0;
++
++			out = hnat_pppoe_path_dev(&hw_path);
++			if (!out)
++				return 0;
++		} else {
++			out = IS_GMAC1_MODE ? hw_path.virt_dev : hw_path.dev;
++		}
+ 		if (hw_path.flags & BIT(DEV_PATH_TNL) && mtk_tnl_encap_offload) {
+ 			if (ntohs(skb->protocol) == ETH_P_IP &&
+ 			    (ip_hdr(skb)->protocol == IPPROTO_TCP ||
+@@ -4217,8 +4267,10 @@
+ 			break;
+ 
+ 		if (!fn) {
+-			memcpy(hw_path.eth_dest, eth_hdr(skb)->h_dest, ETH_ALEN);
+-			memcpy(hw_path.eth_src, eth_hdr(skb)->h_source, ETH_ALEN);
++			if (!(hw_path.flags & BIT(DEV_PATH_PPPOE))) {
++				memcpy(hw_path.eth_dest, eth_hdr(skb)->h_dest, ETH_ALEN);
++				memcpy(hw_path.eth_src, eth_hdr(skb)->h_source, ETH_ALEN);
++			}
+ 		} else {
+ 			if (is_virt_dev && (hw_path.flags & BIT(DEV_PATH_TNL))) {
+ 				memset(hw_path.eth_dest, 0, ETH_ALEN);

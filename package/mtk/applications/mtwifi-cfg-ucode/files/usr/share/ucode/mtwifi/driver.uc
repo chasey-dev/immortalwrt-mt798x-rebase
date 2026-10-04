@@ -18,7 +18,7 @@
 'use strict';
 
 import { log } from 'mtwifi.utils';
-import { defs } from 'mtwifi.defaults';
+import { defs, schemas } from 'mtwifi.defaults';
 import * as fs from 'fs';
 
 // ==========================================
@@ -213,16 +213,23 @@ export function is_kmod() {
 };
 
 /**
- * Run one mtwifi mwctl set command.
+ * Run one mwctl command with an argument vector.
  *
  * @param {string} ifname - Interface name.
- * @param {string} key - iwpriv key.
- * @param {any} val - iwpriv value serialized into key=value.
+ * @param {string[]} args - Command arguments after the interface name.
+ * @returns {boolean} true when mwctl exits successfully.
  */
-export function exec_mwctl(ifname, key, val) {
-	let cmd = `mwctl ${ifname} set ${key}=${val}`;
-	log.debug(`[mwctl] ${cmd}`);
-	system(cmd);
+export function exec_mwctl(ifname, args) {
+	let cmd = [ "/usr/sbin/mwctl", ifname, ...args ];
+
+	log.debug(`[mwctl] ${join(" ", cmd)}`);
+	let ret = system(cmd, 5000);
+	if (ret !== 0) {
+		log.error(`[mwctl] ${join(" ", cmd)} failed (${ret})`);
+		return false;
+	}
+
+	return true;
 };
 
 /**
@@ -231,12 +238,12 @@ export function exec_mwctl(ifname, key, val) {
  * @param {string} ifname - ApCli interface name.
  */
 export function trigger_apcli(ifname) {
-	exec_mwctl(ifname, "ApCliEnable", "1");
-	exec_mwctl(ifname, "ApCliAutoConnect", "3");
+	return exec_mwctl(ifname, [ "set", "ApCliEnable=1" ]) &&
+		exec_mwctl(ifname, [ "set", "ApCliAutoConnect=3" ]);
 };
 
 /**
- * Apply AP-only runtime iwpriv hooks after hostapd brings the VIF up.
+ * Apply AP runtime parameters after hostapd brings the BSS up.
  *
  * These hooks cover private driver controls that are still outside hostapd DAT
  * generation. Non-AP interfaces are ignored.
@@ -244,14 +251,27 @@ export function trigger_apcli(ifname) {
  * @param {Object} iface_cfg - wifi-iface config projected from UCI:
  *   mode - UCI interface mode, ap or sta.
  * @param {string} mtwifi_ifname - Real mtwifi interface name.
+ * @returns {boolean} true when all applicable hooks succeed.
  */
 export function apply_runtime_hooks(iface_cfg, mtwifi_ifname) {
 	if (iface_cfg.mode != "ap")
-		return;
+		return true;
 
-	for (let uci_k, v in defs.IWPRIV_AP_CFGS) {
-		// v[0]=cmd, v[1]=default
-		let val = iface_cfg[uci_k] || v[1];
-		exec_mwctl(mtwifi_ifname, v[0], val);
+	for (let key, args in defs.MWCTL_AP_CFGS) {
+		let rule = schemas.iface[key];
+		let value = iface_cfg[key] ?? rule.default;
+
+		if (!(value >= rule.minimum && value <= rule.maximum &&
+		      value == int(value))) {
+			log.warn(`[Driver] ${mtwifi_ifname}: invalid ${key}=${sprintf('%J', value)}, ` +
+				`using default ${rule.default}`);
+			value = rule.default;
+		}
+
+		let cmd = map(args, arg => sprintf(arg, value));
+		if (!exec_mwctl(mtwifi_ifname, cmd))
+			return false;
 	}
+
+	return true;
 };

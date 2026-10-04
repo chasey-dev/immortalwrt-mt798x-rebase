@@ -86,11 +86,19 @@
             "description": "List of MAC addresses for filtering"
         },
         "kicklow": {
-            "type": "string",
+            "type": "number",
+            "minimum": -100,
+            "maximum": 0,
+            "multipleOf": 1,
+            "default": 0,
             "description": "RSSI threshold to kick low signal clients"
         },
         "assocthres": {
-            "type": "string",
+            "type": "number",
+            "minimum": -100,
+            "maximum": 0,
+            "multipleOf": 1,
+            "default": 0,
             "description": "RSSI threshold for association"
         },
         "wpa_group_rekey": {

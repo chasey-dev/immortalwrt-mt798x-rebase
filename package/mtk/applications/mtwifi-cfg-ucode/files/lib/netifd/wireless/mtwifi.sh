@@ -181,6 +181,14 @@ function normalize_device_config(config) {
 function normalize_iface_config(config, ifname) {
     config.ifname = ifname;
 
+    /*
+     * wifi-scripts' common schema does not define these driver parameters.
+     * Remove them from this wpad copy to avoid unknown-option warnings.
+     * Driver runtime hooks use the original interface config.
+     */
+    for (let key in defs.MWCTL_AP_CFGS)
+        delete config[key];
+
     validate("iface", config);
 }
 
@@ -286,6 +294,27 @@ function prepare_wpad_data(data, iface_items, phy) {
 }
 
 /**
+ * Wait for hostapd to finish AP setup before applying private BSS parameters.
+ * A netdev can exist while hostapd is still creating or initializing its BSS.
+ */
+function wait_for_ap(ifname) {
+    let deadline = clock(true)[0] + 30;
+    let status;
+
+    while (clock(true)[0] < deadline) {
+        status = global.ubus.call(`hostapd.${ifname}`, "get_status");
+        if (status?.status == "ENABLED" && fs.access(`/sys/class/net/${ifname}`)) {
+            log.debug(`[Setup] AP BSS ready: ${ifname}`);
+            return true;
+        }
+        sleep(250);
+    }
+
+    log.error(`[Setup] Timeout waiting for AP BSS ${ifname} (${status?.status ?? "unavailable"})`);
+    return false;
+}
+
+/**
  * Register generated configs with hostapd/wpa_supplicant.
  *
  * cfg.setup() handles DAT and the driver-created primary/ApCli interfaces.
@@ -375,12 +404,15 @@ function setup_wpad(data, cur_dev) {
     for (let item in ap_items) {
         let ifname = item.iface.mtwifi_ifname;
 
-        if (!driver.wait_for_iface(ifname)) {
-            netifd.setup_failed('AP_IFACE_NOT_FOUND');
+        if (!wait_for_ap(ifname)) {
+            netifd.setup_failed('AP_BSS_NOT_READY');
             return false;
         }
 
-        driver.apply_runtime_hooks(item.iface.config, ifname);
+        if (!driver.apply_runtime_hooks(item.iface.config, ifname)) {
+            netifd.setup_failed('AP_RUNTIME_CONFIG_FAILED');
+            return false;
+        }
     }
 
     return true;

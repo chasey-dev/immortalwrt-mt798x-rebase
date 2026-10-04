@@ -86,9 +86,9 @@
 	"DEVICE_CFGS": {
 		"beacon_int": [ "BeaconPeriod", "100" ]
 	},
-	"IWPRIV_AP_CFGS": {
-		"kicklow": [ "KickStaRssiLow", "0" ],
-		"assocthres": [ "AssocReqRssiThres", "0" ]
+	"MWCTL_AP_CFGS": {
+		"kicklow": [ "set", "KickStaRssiLow=%d" ],
+		"assocthres": [ "set", "assocreq_rssi_thres", "%d" ]
 	},
 	"SAE_PWE_2_DAT": {
 		"0": "1",

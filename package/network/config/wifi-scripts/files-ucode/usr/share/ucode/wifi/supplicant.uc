@@ -183,9 +183,12 @@ function setup_sta(data, config) {
 
 	}
 
-	if (config.wpa_pairwise == 'GCMP') {
-		config.pairwise = 'GCMP';
-		config.group = 'GCMP';
+	if (config.wpa_pairwise in [ 'GCMP', 'GCMP-256', 'CCMP-256' ]) {
+		/* These ciphers are absent from the default group cipher list. */
+		config.pairwise = config.wpa_pairwise;
+		config.group = config.wpa_pairwise;
+	} else if (config.wpa_pairwise) {
+		config.pairwise = config.wpa_pairwise;
 	}
 
 	config.key_mgmt ??= 'NONE';

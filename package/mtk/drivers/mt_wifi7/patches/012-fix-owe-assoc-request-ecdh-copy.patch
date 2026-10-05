@@ -1,0 +1,27 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] OWE: Fix ECDH copy in association request parsing
+
+PeerAssocReqCmmSanity() copies the received ECDH element through the
+single-byte ext_id_ecdh member, spanning the group and public key.
+The existing length check bounds this copy to ecdh_ie, but kernel
+FORTIFY reports a field-spanning write when an OWE station associates.
+
+Copying the complete element, including its header, into ecdh_ie avoids
+the field-spanning write. The existing capacity check covers this copy
+and the stored bytes remain unchanged.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/common/fsm/ap_mgmt_assoc.c
++++ b/mt_wifi/common/fsm/ap_mgmt_assoc.c
+@@ -1585,9 +1585,7 @@ BOOLEAN PeerAssocReqCmmSanity
+ 					break;
+ 				}
+ 				os_zero_mem(&ie_lists->ecdh_ie, sizeof(ie_lists->ecdh_ie));
+-				ie_lists->ecdh_ie.ext_ie_id = IE_WLAN_EXTENSION;
+-				ie_lists->ecdh_ie.length = eid_ptr->Len;
+-				NdisMoveMemory(&ie_lists->ecdh_ie.ext_id_ecdh, eid_ptr->Octet, eid_ptr->Len);
++				NdisMoveMemory(&ie_lists->ecdh_ie, eid_ptr, eid_ptr->Len + 2);
+ 			}
+ #endif /*CONFIG_OWE_SUPPORT*/
+ 				break;

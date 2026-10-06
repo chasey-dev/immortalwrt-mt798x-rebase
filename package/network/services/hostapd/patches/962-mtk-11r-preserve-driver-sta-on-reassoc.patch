@@ -1,0 +1,48 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] FT: Preserve MTK driver station entries during reassociation
+
+MTK AP SME creates a station entry when sending an FT authentication
+response or installing a PTK for FT over DS. It stores the reassociation
+request in that entry. Removing it before sending the response
+deauthenticates the station and discards the saved request. A subsequent
+station update does not recreate this state, so the driver cannot send
+the response.
+
+FT reassociation preserves the authenticated entry when MTK AP SME is in
+use. Station parameters are updated through the existing set-station
+operation.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -5159,6 +5159,7 @@ static int add_associated_sta(struct hos
+ 	const u8 *mld_link_addr = NULL;
+ 	bool mld_link_sta = false;
+ 	bool owe_assoc_req = false;
++	bool mtk_ft_reassoc = false;
+ 	u16 eml_cap = 0;
+ 
+ #ifdef CONFIG_IEEE80211BE
+@@ -5218,7 +5219,20 @@ static int add_associated_sta(struct hos
+ 		wpa_auth_sta_key_mgmt(sta->wpa_sm) == WPA_KEY_MGMT_OWE;
+ #endif /* CONFIG_OWE && CONFIG_DRIVER_NL80211_MTK */
+ 
+-	if (!owe_assoc_req && !mld_link_sta && !sta->added_unassoc &&
++#if defined(CONFIG_IEEE80211R_AP) && defined(CONFIG_DRIVER_NL80211_MTK)
++	/*
++	 * MTK AP SME creates a STA entry during FT authentication or PTK
++	 * installation for FT over DS, then saves the reassociation request
++	 * in that entry. Removing it sends a deauth and discards the state
++	 * needed to transmit the reassociation response.
++	 */
++	mtk_ft_reassoc =
++		(hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_MTK_AP_SME) &&
++		reassoc && sta->auth_alg == WLAN_AUTH_FT;
++#endif /* CONFIG_IEEE80211R_AP && CONFIG_DRIVER_NL80211_MTK */
++
++	if (!owe_assoc_req && !mtk_ft_reassoc &&
++	    !mld_link_sta && !sta->added_unassoc &&
+ 	    (!(sta->flags & WLAN_STA_AUTHORIZED) ||
+ 	     (reassoc && sta->ft_over_ds && sta->auth_alg == WLAN_AUTH_FT) ||
+ 	     (!wpa_auth_sta_ft_tk_already_set(sta->wpa_sm) &&

@@ -1,0 +1,62 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] wifi_osal: Return GTK and IGTK transmit sequence numbers
+
+get_key only selects a PN type and invokes cfg80211's callback for BIGTK.
+GTK and IGTK requests reach mt_wifi7 with an empty PN mask and return
+ENOENT. FT responses consequently carry zero-initialized sequence numbers.
+
+Group key queries select GTK, IGTK or BIGTK and pass the requested key
+index to mt_wifi7. Successful queries return the six-byte sequence through
+the callback. Unsupported requests stop before entering the driver, and
+query failures propagate without invoking the callback.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_osal_cfg80211.c
++++ b/mt_osal_cfg80211.c
+@@ -2590,7 +2590,6 @@ static int mt_cfg80211_ops_get_key(
+ {
+ 	struct key_params key_params;
+ 	u8 tx_tsc[MTK_MAX_TSC_SIZE] = {0};
+-	bool b_get_tsc = false;
+ 	struct mt_cfg80211_vndr_ctrl ctrl_data, *ctrl_data_ptr = &ctrl_data;
+ 	int ret = 0;
+ 
+@@ -2602,19 +2601,26 @@ static int mt_cfg80211_ops_get_key(
+ 	memset(&tx_tsc, 0, sizeof(tx_tsc));
+ 	ctrl_data_ptr->data = tx_tsc;
+ 	ctrl_data_ptr->data_len = MTK_MAX_TSC_SIZE;
+-	if (!Pairwise && (KeyIdx == 6 || KeyIdx == 7)) {
+-		key_params.seq = tx_tsc;
+-		key_params.seq_len = MTK_LEN_WPA_TSC;
+-		b_get_tsc = true;
+-		ctrl_data_ptr->uint_val |= MTK_TSC_TYPE_BIGTK_PN;
+-	}
++	if (Pairwise)
++		return -ENOENT;
++	if (KeyIdx <= 3)
++		ctrl_data_ptr->uint_val = MTK_TSC_TYPE_GTK_PN;
++	else if (KeyIdx == 4 || KeyIdx == 5)
++		ctrl_data_ptr->uint_val = MTK_TSC_TYPE_IGTK_PN;
++	else if (KeyIdx == 6 || KeyIdx == 7)
++		ctrl_data_ptr->uint_val = MTK_TSC_TYPE_BIGTK_PN;
++	else
++		return -ENOENT;
++	/* Zero denotes a type-only query from older OSAL versions. */
++	ctrl_data_ptr->u8_val = KeyIdx + 1;
++	key_params.seq = tx_tsc;
++	key_params.seq_len = MTK_LEN_WPA_TSC;
+ 	ret = mt_cfg80211_ops_ctrl(pWiphy, pNdev, mtk_ops_get_key,
+ 			ctrl_data_ptr, sizeof(struct mt_cfg80211_vndr_ctrl));
+-	if (b_get_tsc && !ret){
+-		pCallback(pCookie, &key_params);
+-		return 0;
+-	}
+-	return -ENOENT;
++	if (ret)
++		return ret;
++	pCallback(pCookie, &key_params);
++	return 0;
+ }
+ 
+ static int mt_cfg80211_ops_del_key(

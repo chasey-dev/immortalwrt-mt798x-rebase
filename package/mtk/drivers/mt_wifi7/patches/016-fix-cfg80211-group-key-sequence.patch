@@ -1,0 +1,170 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] mt_wifi: Fix group key PN queries from cfg80211
+
+CFG80211DRV_OpsKeyGet() omits GTK when selecting a hardware PN query.
+GTK queries consequently use an empty PN mask and WCID zero instead of
+the BSS group key entry.
+
+IGTK IPN is maintained in PmfCfg.IPN and inserted by PMF_FillMMIE().
+IGTK queries use this software counter instead of a firmware PN query.
+OSAL supplies the requested key index so queries for a different key
+cannot return the active key's sequence number.
+
+GTK queries select the BSS group WCID. Firmware query failures propagate
+through ASIC helpers instead of reporting zero-initialized output as a
+successful query. Only successful BIGTK queries set reinstall state.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/hw_ctrl/cmm_asic.c
++++ b/mt_wifi/hw_ctrl/cmm_asic.c
+@@ -942,15 +942,14 @@ INT AsicSetMacMaxLen(RTMP_ADAPTER *pAd)
+ }
+ 
+ 
+-VOID AsicGetTxTsc(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, UINT32 pn_type_mask, UCHAR *pTxTsc)
++BOOLEAN AsicGetTxTsc(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, UINT32 pn_type_mask, UCHAR *pTxTsc)
+ {
+ 	struct _RTMP_ARCH_OP *arch_ops = hc_get_arch_ops(pAd->hdev_ctrl);
+ 
+-	if (arch_ops->archGetTxTsc) {
+-		arch_ops->archGetTxTsc(pAd, wdev, pn_type_mask, pTxTsc);
+-		return;
+-	}
++	if (arch_ops->archGetTxTsc)
++		return arch_ops->archGetTxTsc(pAd, wdev, pn_type_mask, pTxTsc);
+ 	AsicNotSupportFunc(pAd, __func__);
++	return FALSE;
+ }
+ 
+ VOID AsicSetSMPS(RTMP_ADAPTER *pAd, UINT16 Wcid, UCHAR smps)
+--- a/mt_wifi/hw_ctrl/cmm_asic_mt_fw.c
++++ b/mt_wifi/hw_ctrl/cmm_asic_mt_fw.c
+@@ -843,13 +843,14 @@ VOID MtAsicSetSMPSByFw(
+ 	CmdExtWtblUpdate(pAd, Wcid, SET_WTBL, (PUCHAR)&CmdWtblSmPs, sizeof(CMD_WTBL_SMPS_T));
+ }
+ 
+-VOID MtAsicGetTxTscByFw(
++BOOLEAN MtAsicGetTxTscByFw(
+ 	IN struct _RTMP_ADAPTER *pAd,
+ 	IN struct wifi_dev *wdev,
+ 	IN UINT32 pn_type_mask,
+ 	OUT UCHAR * pTxTsc)
+ {
+ 	CMD_WTBL_PN_T cmdWtblPn[MAX_TSC_TYPE];
++	INT32 ret;
+ 	USHORT wcid = 0;
+ 	UCHAR tsc_cnt = 0;
+ #ifdef WIFI_UNIFIED_COMMAND
+@@ -883,10 +884,14 @@ VOID MtAsicGetTxTscByFw(
+ 	}
+ #ifdef WIFI_UNIFIED_COMMAND
+ 	if (cap->uni_cmd_support)
+-		UniCmdSetRecSecPnInfo(pAd, wcid, QUERY_WTBL, (uint8_t *)&cmdWtblPn, tsc_cnt * sizeof(CMD_WTBL_PN_T), tsc_cnt);
++		ret = UniCmdSetRecSecPnInfo(pAd, wcid, QUERY_WTBL,
++			(uint8_t *)&cmdWtblPn, tsc_cnt * sizeof(CMD_WTBL_PN_T), tsc_cnt);
+ 	else
+ #endif /* WIFI_UNIFIED_COMMAND */
+-		CmdExtWtblUpdate(pAd, wcid, QUERY_WTBL, (PUCHAR)&cmdWtblPn, tsc_cnt * sizeof(CMD_WTBL_PN_T));
++		ret = CmdExtWtblUpdate(pAd, wcid, QUERY_WTBL,
++			(PUCHAR)&cmdWtblPn, tsc_cnt * sizeof(CMD_WTBL_PN_T));
++	if (ret != NDIS_STATUS_SUCCESS)
++		return FALSE;
+ 
+ 	tsc_cnt = 0;
+ 
+@@ -910,6 +915,7 @@ VOID MtAsicGetTxTscByFw(
+ 						6, DBG_CAT_SEC, CATSEC_BCNPROT, DBG_LVL_DEBUG);
+ 		tsc_cnt++;
+ 	}
++	return TRUE;
+ }
+ 
+ UINT8 mtf_read_skip_tx(IN struct _RTMP_ADAPTER *pAd, UINT16 wcid)
+--- a/mt_wifi/include/hw_ctrl/cmm_asic.h
++++ b/mt_wifi/include/hw_ctrl/cmm_asic.h
+@@ -353,7 +353,8 @@ INT AsicSetMacTxRx(struct _RTMP_ADAPTER
+ INT AsicSetAutoFallBack(struct _RTMP_ADAPTER *pAd, BOOLEAN enable);
+ INT AsicAutoFallbackInit(struct _RTMP_ADAPTER *pAd);
+ 
+-VOID AsicGetTxTsc(struct _RTMP_ADAPTER *pAd, struct wifi_dev *wdev, UINT32 pn_type_mask, UCHAR *pTxTsc);
++BOOLEAN AsicGetTxTsc(struct _RTMP_ADAPTER *pAd, struct wifi_dev *wdev,
++	UINT32 pn_type_mask, UCHAR *pTxTsc);
+ VOID AsicSetSMPS(struct _RTMP_ADAPTER *pAd, UINT16 Wcid, UCHAR smps);
+ VOID AsicTurnOffRFClk(struct _RTMP_ADAPTER *pAd, UCHAR Channel);
+ 
+@@ -563,7 +564,8 @@ typedef struct _RTMP_ARCH_OP {
+ 	VOID (*archUniCmdSetSlotTime)(struct _RTMP_ADAPTER *pAd, UINT32 SlotTime, UINT32 SifsTime, struct wifi_dev *wdev);
+ #endif /* WIFI_UNIFIED_COMMAND */
+ 	INT (*archSetMacMaxLen)(struct _RTMP_ADAPTER *pAd);
+-	VOID (*archGetTxTsc)(struct _RTMP_ADAPTER *pAd, struct wifi_dev *wdev, UINT32 pn_type_mask, UCHAR *pTxTsc);
++	BOOLEAN (*archGetTxTsc)(struct _RTMP_ADAPTER *pAd, struct wifi_dev *wdev,
++		UINT32 pn_type_mask, UCHAR *pTxTsc);
+ 	VOID (*archAddSharedKeyEntry)(struct _RTMP_ADAPTER *pAd, UCHAR BssIndex, UCHAR KeyIdx, struct _CIPHER_KEY *pCipherKey);
+ 	VOID (*archRemoveSharedKeyEntry)(struct _RTMP_ADAPTER *pAd, UCHAR BssIndex, UCHAR KeyIdx);
+ 	VOID (*archAddPairwiseKeyEntry)(struct _RTMP_ADAPTER *pAd, UINT16 wcid, PCIPHER_KEY pCipherKey);
+--- a/mt_wifi/include/hw_ctrl/cmm_asic_mt_fw.h
++++ b/mt_wifi/include/hw_ctrl/cmm_asic_mt_fw.h
+@@ -110,7 +110,7 @@ VOID MtAsicSetSMPSByFw(
+ 	IN UINT16 Wcid,
+ 	IN UCHAR Smps);
+ 
+-VOID MtAsicGetTxTscByFw(
++BOOLEAN MtAsicGetTxTscByFw(
+ 	IN struct _RTMP_ADAPTER *pAd,
+ 	IN struct wifi_dev *wdev,
+ 	IN UINT32 pn_type_mask,
+--- a/mt_wifi/os/linux/cfg80211/cfg80211drv.c
++++ b/mt_wifi/os/linux/cfg80211/cfg80211drv.c
+@@ -3912,15 +3912,44 @@ static int CFG80211DRV_OpsKeyGet(
+ 		}
+ 	} else
+ 		return -RTMP_IO_EFAULT;
+-	NdisZeroMemory(&tx_tsc, sizeof(tx_tsc));
+-	if (ctrl_data->uint_val & MTK_TSC_TYPE_IGTK_PN)
+-		pn_type_mask |= TSC_TYPE_IGTK_PN_MASK;
+-	else if (ctrl_data->uint_val & MTK_TSC_TYPE_BIGTK_PN)
+-		pn_type_mask |= TSC_TYPE_BIGTK_PN_MASK;
+ 	tx_tsc = ctrl_data->data;
+-	AsicGetTxTsc(pAd, wdev, pn_type_mask, tx_tsc);
++	if (ctrl_data->uint_val & MTK_TSC_TYPE_IGTK_PN) {
++#ifdef DOT11W_PMF_SUPPORT
++		UCHAR key_idx = wdev->SecConfig.PmfCfg.IGTK_KeyIdx;
++
++		if (key_idx != 4 && key_idx != 5)
++			return -RTMP_IO_EINVAL;
++		if (ctrl_data->u8_val && ctrl_data->u8_val != key_idx + 1)
++			return -RTMP_IO_EINVAL;
++		/* PMF_FillMMIE() uses this software IPN for group management frames. */
++		NdisMoveMemory(tx_tsc, wdev->SecConfig.PmfCfg.IPN[key_idx - 4],
++			LEN_WPA_TSC);
++		return 0;
++#else
++		return -RTMP_IO_EOPNOTSUPP;
++#endif
++	}
++	/* u8_val carries key index + 1, or zero for a type-only query. */
++	if (ctrl_data->uint_val & MTK_TSC_TYPE_GTK_PN) {
++		if (ctrl_data->u8_val &&
++		    ctrl_data->u8_val != wdev->SecConfig.GroupKeyId + 1)
++			return -RTMP_IO_EINVAL;
++		pn_type_mask |= TSC_TYPE_GTK_PN_MASK;
++	} else if (ctrl_data->uint_val & MTK_TSC_TYPE_BIGTK_PN) {
++#ifdef BCN_PROTECTION_SUPPORT
++		if (ctrl_data->u8_val &&
++		    ctrl_data->u8_val != wdev->SecConfig.bcn_prot_cfg.bigtk_key_idx + 1)
++			return -RTMP_IO_EINVAL;
++#endif
++		pn_type_mask |= TSC_TYPE_BIGTK_PN_MASK;
++	}
++	if (!pn_type_mask)
++		return -RTMP_IO_EINVAL;
++	if (!AsicGetTxTsc(pAd, wdev, pn_type_mask, tx_tsc))
++		return -RTMP_IO_EFAULT;
+ #ifdef BCN_PROTECTION_SUPPORT
+-	wdev->SecConfig.Bigtk_Reinstall = 1;
++	if (pn_type_mask & TSC_TYPE_BIGTK_PN_MASK)
++		wdev->SecConfig.Bigtk_Reinstall = 1;
+ #endif
+ 	return 0;
+ }

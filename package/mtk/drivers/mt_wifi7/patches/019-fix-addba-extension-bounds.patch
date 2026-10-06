@@ -1,0 +1,31 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] mt_wifi: Check ADDBA extension bounds before reading fields
+
+parse_addba_option_element() reads the next element length before checking
+whether its header fits in the received options. This also reads past the
+valid input after the last complete element. An ADDBA extension with zero
+payload length reaches Octet[0] without a content byte.
+
+Checking the header before its length field and requiring an extension
+content byte keeps parsing within the supplied options. Truncated elements
+stop parsing and empty extensions are skipped.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/common/ba_action.c
++++ b/mt_wifi/common/ba_action.c
+@@ -2755,9 +2755,13 @@ void parse_addba_option_element(
+ 	UINT32 length = 0;
+ 
+ 	eid = (PEID_STRUCT) option_ie;
+-	while ((length + 2 + eid->Len) <= option_le_len) {
++	while (length + 2 <= option_le_len &&
++	       length + 2 + eid->Len <= option_le_len) {
+ 		switch (eid->Eid) {
+ 		case IE_ADDBA_EXT:
++			if (eid->Len < 1)
++				break;
++
+ 			MTWF_DBG(NULL, DBG_CAT_PROTO, CATPROTO_BA,
+ 				DBG_LVL_INFO,
+ 				"- IE_ADDBA_EXT: 0x%x\n",

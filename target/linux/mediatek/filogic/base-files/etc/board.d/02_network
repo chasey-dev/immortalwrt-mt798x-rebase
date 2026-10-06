@@ -117,6 +117,10 @@ mediatek_setup_interfaces()
 	tplink,tl-xtr8488)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5" eth1
 		;;
+	clx,s20l|\
+	clx,s20m)
+		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" wan
+		;;
 	clx,s20p)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5 lan6" eth1
 		;;

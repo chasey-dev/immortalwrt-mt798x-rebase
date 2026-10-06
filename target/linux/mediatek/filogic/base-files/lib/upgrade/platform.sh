@@ -174,6 +174,8 @@ platform_do_upgrade() {
 	acer,vero-w6m|\
 	airpi,ap3000m|\
 	arcadyan,mozart|\
+	clx,s20l|\
+	clx,s20m|\
 	clx,s20p|\
 	glinet,gl-mt2500|\
 	glinet,gl-mt2500-airoha|\
@@ -452,6 +454,8 @@ platform_copy_config() {
 	acer,vero-w6m|\
 	airpi,ap3000m|\
 	arcadyan,mozart|\
+	clx,s20l|\
+	clx,s20m|\
 	clx,s20p|\
 	glinet,gl-mt2500|\
 	glinet,gl-mt2500-airoha|\

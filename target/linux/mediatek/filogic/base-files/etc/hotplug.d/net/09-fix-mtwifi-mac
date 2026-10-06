@@ -40,6 +40,13 @@ mtwifi_set_macs()
 
         set_macs_to_dat "$b0_mac" "$b1_mac"
 		;;
+    clx,s20l|\
+    clx,s20p)
+        local b0_mac="$(mmc_get_mac_binary factory 0x4)"
+        local b1_mac="$(mmc_get_mac_binary factory 0x30)"
+
+        set_macs_to_dat "$b0_mac" "$b1_mac"
+        ;;
     cudy,ap3000outdoor-v1|\
 	cudy,ap3000-v1|\
 	cudy,m3000-v1|\

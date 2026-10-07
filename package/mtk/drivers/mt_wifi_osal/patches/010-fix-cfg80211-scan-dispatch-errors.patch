@@ -1,0 +1,29 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] cfg80211: propagate scan dispatch errors
+
+mt_cfg80211_ops_scan() returns zero even when dispatch fails before the
+driver accepts the request. cfg80211 then waits for a completion that
+cannot arrive.
+
+The callback now returns the dispatch result so cfg80211 can release
+rejected requests. This requires the driver scan callback to return zero
+after accepting a request, including when it reports an aborted scan
+during startup. Propagating a negative return after that notification
+would submit the same request to both completion and rejection cleanup.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_osal_cfg80211.c
++++ b/mt_osal_cfg80211.c
+@@ -2379,10 +2379,9 @@ static int mt_cfg80211_ops_scan(
+ 	MT_DEBUG_TRACE("80211> %s ==>\n", pNdev->name);
+ 	ctrl_data_ptr->uint_val = pWdev->iftype;
+ 	ctrl_data_ptr->data = pRequest;
+-	mt_cfg80211_ops_ctrl(wiphy, pNdev, mtk_ops_scan,
++	return mt_cfg80211_ops_ctrl(wiphy, pNdev, mtk_ops_scan,
+ 			ctrl_data_ptr, sizeof(struct mt_cfg80211_vndr_ctrl));
+ 
+-	return 0;
+ }
+ 
+ static void mt_cfg80211_ops_abort_scan(

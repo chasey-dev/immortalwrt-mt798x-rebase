@@ -1,0 +1,261 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] cfg80211: complete scans without the command queue
+
+CMDTHREAD_SCAN_END can be lost when command allocation or enqueueing
+fails, or when adapter shutdown discards queued commands. The pending
+request is then never passed to cfg80211_scan_done().
+
+Scan cleanup now calls the completion handler directly. Adapter shutdown
+completes any remaining request after MLME and management threads exit.
+Cancellation restores the channel before reporting completion and sets
+opAbortScan so scan_next_channel() cannot select another channel while
+the cfg80211 scanning flag is still set.
+
+The notification lock protects request acceptance and completion. An
+existing request cannot be overwritten, and the saved request and scanning
+flag are cleared together before cfg80211 is notified. The scan callback
+returns zero after accepting a request, including when a startup failure
+reports an aborted scan. This allows OSAL to propagate errors for requests
+rejected before acceptance without also rejecting completed requests.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/common/cmm_cmd.c
++++ b/mt_wifi/common/cmm_cmd.c
+@@ -557,12 +557,6 @@ static NTSTATUS RegHint11DHdlr(RTMP_ADAP
+ 	return NDIS_STATUS_SUCCESS;
+ }
+ 
+-static NTSTATUS RT_Mac80211_ScanEnd(RTMP_ADAPTER *pAd, IN PCmdQElmt CMDQelmt)
+-{
+-	RT_CFG80211_SCAN_END(pAd, FALSE);
+-	return NDIS_STATUS_SUCCESS;
+-}
+-
+ static NTSTATUS RT_Mac80211_ConnResultInfom(RTMP_ADAPTER *pAd, IN PCmdQElmt CMDQelmt)
+ {
+ 	CFG80211_CONN_RESULT_INFORM(pAd, pAd->StaCfg[0].MlmeAux.Bssid, 0,
+@@ -715,7 +709,6 @@ static MT_CMD_TABL_T CMDHdlrTable[] = {
+ #if  defined(LINUX) && defined(RT_CFG80211_SUPPORT)
+ 	{CMDTHREAD_REG_HINT, RegHintHdlr},
+ 	{CMDTHREAD_REG_HINT_11D, RegHint11DHdlr},
+-	{CMDTHREAD_SCAN_END, RT_Mac80211_ScanEnd},
+ 	{CMDTHREAD_CONNECT_RESULT_INFORM, RT_Mac80211_ConnResultInfom},
+ #endif
+ #ifdef PHY_ICS_SUPPORT
+--- a/mt_wifi/common/fsm/fsm_cntl.c
++++ b/mt_wifi/common/fsm/fsm_cntl.c
+@@ -651,7 +651,7 @@ full_reset:
+ 
+ 	mark_scan_end_on_wdev(pAd);
+ #ifdef APCLI_CFG80211_SUPPORT
+-	RTEnqueueInternalCmd(pAd, CMDTHREAD_SCAN_END, NULL, 0);
++	RT_CFG80211_SCAN_END(pAd, FALSE);
+ #endif /* APCLI_CFG80211_SUPPORT */
+ 
+ 	return TRUE;
+--- a/mt_wifi/common/fsm/fsm_sync.c
++++ b/mt_wifi/common/fsm/fsm_sync.c
+@@ -2990,6 +2990,7 @@ BOOLEAN sync_fsm_ops_init(struct wifi_de
+ VOID sync_fsm_cancel_req_action(RTMP_ADAPTER *pAd, struct wifi_dev *wdev)
+ {
+ 	BOOLEAN Cancelled;
++	BOOLEAN scan_cancelled = FALSE;
+ 	SCAN_ACTION_INFO scan_action_info = {0};
+ 	SCAN_CTRL *ScanCtrl = get_scan_ctrl_by_wdev(pAd, wdev);
+ 	USHORT Status = MLME_STATE_MACHINE_REJECT;
+@@ -3006,7 +3007,7 @@ VOID sync_fsm_cancel_req_action(RTMP_ADA
+ 			break;
+ 
+ 		case SYNC_FSM_LISTEN:
+-			cntl_scan_conf(wdev, Status);
++			scan_cancelled = TRUE;
+ 			break;
+ 
+ 		default:
+@@ -3029,8 +3030,12 @@ VOID sync_fsm_cancel_req_action(RTMP_ADA
+ #endif /* CONFIG_STA_SUPPORT */
+ 	RTMPCancelTimer(&ScanCtrl->ScanTimer, &Cancelled);
+ 	ScanCtrl->Channel = 0;
++	if (scan_cancelled)
++		ScanCtrl->opAbortScan = TRUE;
+ 	scan_next_channel(pAd, wdev, &scan_action_info);
+ 	sync_fsm_state_transition(wdev, SYNC_FSM_IDLE);
++	if (scan_cancelled)
++		cntl_scan_conf(wdev, Status);
+ }
+ 
+ #ifdef CONFIG_STA_SUPPORT
+--- a/mt_wifi/common/mlme.c
++++ b/mt_wifi/common/mlme.c
+@@ -5798,7 +5798,7 @@ VOID MlmeRestartStateMachine(RTMP_ADAPTE
+ #endif /* CONFIG_STA_SUPPORT */
+ 	/* CFG_TODO for SCAN */
+ #ifdef RT_CFG80211_SUPPORT
+-	RTEnqueueInternalCmd(pAd, CMDTHREAD_SCAN_END, NULL, 0);
++	RT_CFG80211_SCAN_END(pAd, FALSE);
+ #endif /* RT_CFG80211_SUPPORT */
+ }
+ 
+--- a/mt_wifi/common/rtmp_init_inf.c
++++ b/mt_wifi/common/rtmp_init_inf.c
+@@ -965,6 +965,11 @@ VOID RTMPDrvClose(VOID *pAdSrc, VOID *ne
+ 	bcn_bpcc_TaskExit(pAd);
+ 	/* Close kernel threads*/
+ 	RtmpMgmtTaskExit(pAd);
++#ifdef RT_CFG80211_SUPPORT
++	/* MLME and command threads no longer use the pending scan request. */
++	if (pAd->pCfg80211_CB)
++		CFG80211OS_ScanEnd(pAd, TRUE);
++#endif
+ #ifdef RTMP_MAC_PCI
+ 		if (RTMP_TEST_FLAG(pAd, fRTMP_ADAPTER_INTERRUPT_ACTIVE)) {
+ 			DISABLE_TX_RX(pAd, RTMP_HALT);
+--- a/mt_wifi/include/cmm_cmd.h
++++ b/mt_wifi/include/cmm_cmd.h
+@@ -95,7 +95,6 @@ enum {
+ 	/*CFG 802.11*/
+ 	CMDTHREAD_REG_HINT,
+ 	CMDTHREAD_REG_HINT_11D,
+-	CMDTHREAD_SCAN_END,
+ 	CMDTHREAD_CONNECT_RESULT_INFORM,
+ 	/*P2P*/
+ 	CMDTHREAD_SET_P2P_LINK_DOWN,
+--- a/mt_wifi/os/linux/cfg80211/cfg80211_util.c
++++ b/mt_wifi/os/linux/cfg80211/cfg80211_util.c
+@@ -491,25 +491,20 @@ VOID CFG80211OS_ScanEnd(
+ 	IN BOOLEAN FlgIsAborted)
+ {
+ 	CFG80211_CB *pCfg80211_CB = pAd->pCfg80211_CB;
++	struct cfg80211_scan_request *request;
+ 
+ 	NdisAcquireSpinLock(&pCfg80211_CB->scan_notify_lock);
+-
+-	if (pCfg80211_CB->pCfg80211_ScanReq) {
++	request = pCfg80211_CB->pCfg80211_ScanReq;
++	if (request) {
+ 		struct cfg80211_scan_info info = {
+ 			.aborted = FlgIsAborted,
+ 		};
+-		MTWF_DBG(NULL, DBG_CAT_CFG80211, CATCFG80211_CMM, DBG_LVL_NOTICE,
+-			"80211> cfg80211_scan_done\n");
+-		cfg80211_scan_done(pCfg80211_CB->pCfg80211_ScanReq, &info);
+ 
+ 		pCfg80211_CB->pCfg80211_ScanReq = NULL;
+-	} else
+-		MTWF_DBG(NULL, DBG_CAT_CFG80211, CATCFG80211_CMM, DBG_LVL_ERROR,
+-			"80211> cfg80211_scan_done ==> NULL\n");
+-
++		pAd->cfg80211_ctrl.FlgCfg80211Scanning = FALSE;
++		cfg80211_scan_done(request, &info);
++	}
+ 	NdisReleaseSpinLock(&pCfg80211_CB->scan_notify_lock);
+-
+-	pAd->cfg80211_ctrl.FlgCfg80211Scanning = FALSE;
+ }
+ 
+ 
+--- a/mt_wifi/os/linux/cfg80211/cfg80211drv.c
++++ b/mt_wifi/os/linux/cfg80211/cfg80211drv.c
+@@ -3491,7 +3491,18 @@ static int CFG80211DRV_OpsScan(
+ 	MTWF_DBG(NULL, DBG_CAT_CHN, CATCHN_SCAN, DBG_LVL_NOTICE,
+ 		"80211> ==> iftype = %d\n", iftype);
+ 
++	if (!pAd || !wdev || !pAd->pCfg80211_CB ||
++		RTMP_TEST_FLAG(pAd, fRTMP_ADAPTER_HALT_IN_PROGRESS))
++		return -ENETDOWN;
++
+ 	pCfg80211_CB = pAd->pCfg80211_CB;
++	NdisAcquireSpinLock(&pCfg80211_CB->scan_notify_lock);
++	if (pCfg80211_CB->pCfg80211_ScanReq) {
++		NdisReleaseSpinLock(&pCfg80211_CB->scan_notify_lock);
++		return -EBUSY;
++	}
++	pCfg80211_CB->pCfg80211_ScanReq = ctrl_data->data;
++	NdisReleaseSpinLock(&pCfg80211_CB->scan_notify_lock);
+ 	apIndex = wdev->func_idx;
+ 	staIndex = wdev->func_idx;
+ 	if (iftype == NL80211_IFTYPE_STATION) {
+@@ -3501,7 +3512,6 @@ static int CFG80211DRV_OpsScan(
+ 		} else {
+ 			MTWF_DBG(pAd, DBG_CAT_CHN, CATCHN_SCAN, DBG_LVL_ERROR,
+ 				"Invaliad APCLI index i/f end scan\n");
+-			pCfg80211_CB->pCfg80211_ScanReq = ctrl_data->data; /* used in scan end */
+ 			CFG80211OS_ScanEnd(pAd, TRUE);
+ 			return 0;
+ 		}
+@@ -3512,7 +3522,6 @@ static int CFG80211DRV_OpsScan(
+ 		} else {
+ 			MTWF_DBG(pAd, DBG_CAT_CHN, CATCHN_SCAN, DBG_LVL_ERROR,
+ 				"Invaliad Ap index, i/f end Scan.\n");
+-			pCfg80211_CB->pCfg80211_ScanReq = ctrl_data->data; /* used in scan end */
+ 			CFG80211OS_ScanEnd(pAd, TRUE);
+ 			return 0;
+ 		}
+@@ -3520,20 +3529,18 @@ static int CFG80211DRV_OpsScan(
+ 		MTWF_DBG(pAd, DBG_CAT_CHN, CATCHN_SCAN, DBG_LVL_ERROR,
+ 			"Invaliad interface type, i/f end Scan, interface type=%d.\n",
+ 			iftype);
+-		pCfg80211_CB->pCfg80211_ScanReq = ctrl_data->data; /* used in scan end */
+ 		CFG80211OS_ScanEnd(pAd, TRUE);
+ 		return 0;
+ 	}
+ 
+ 	MTWF_DBG(NULL, DBG_CAT_CHN, CATCHN_SCAN, DBG_LVL_INFO,
+ 		"========================================================================\n");
+-	pCfg80211_CB->pCfg80211_ScanReq = ctrl_data->data; /* used in scan end */
+ 
+ 	/* Driver ICOTL Sanity Check */
+ 	if (RTMP_DRIVER_IOCTL_SANITY_CHECK(pAd, NULL) != NDIS_STATUS_SUCCESS) {
+ 		MTWF_DBG(pAd, DBG_CAT_CHN, CATCHN_SCAN, DBG_LVL_ERROR, "80211> Network is down!\n");
+ 		CFG80211OS_ScanEnd(pAd, TRUE);
+-		return -ENETDOWN;
++		return 0;
+ 	}
+ 
+ 	/*do dfs cac check for 5G band*/
+@@ -3545,7 +3552,7 @@ static int CFG80211DRV_OpsScan(
+ 			MTWF_DBG(pAd, DBG_CAT_CHN, CATCHN_SCAN, DBG_LVL_INFO,
+ 			"still in silence mode, can not trigger scan\n");
+ 			CFG80211OS_ScanEnd(pAd, TRUE);
+-			return -EBUSY;
++			return 0;
+ 		}
+ 	}
+ #endif
+@@ -3554,7 +3561,7 @@ static int CFG80211DRV_OpsScan(
+ 		MTWF_DBG(pAd, DBG_CAT_CHN, CATCHN_SCAN, DBG_LVL_ERROR,
+ 		"TakeChannelOpCharge fail for SCAN!!\n");
+ 		CFG80211OS_ScanEnd(pAd, TRUE);
+-		return -EBUSY;
++		return 0;
+ 	}
+ 
+ 	if (RTMP_DRIVER_80211_SCAN(pAd, iftype) != NDIS_STATUS_SUCCESS) {
+@@ -3562,7 +3569,7 @@ static int CFG80211DRV_OpsScan(
+ 			"\n\n\n\n\n80211> BUSY - SCANNING\n\n\n\n\n");
+ 		CFG80211OS_ScanEnd(pAd, TRUE);
+ 		ReleaseChannelOpChargeByBand(pAd, 0, CH_OP_OWNER_SCAN);
+-		return -EBUSY;
++		return 0;
+ 	}
+ 
+ 	if (pCfg80211_CB->pCfg80211_ScanReq->ie_len != 0) {
+@@ -3594,7 +3601,7 @@ static int CFG80211DRV_OpsScan(
+ 				"Alloc memory fail\n");
+ 			CFG80211OS_ScanEnd(pAd, TRUE);
+ 			ReleaseChannelOpChargeByBand(pAd, 0, CH_OP_OWNER_SCAN);
+-			return -ENOMEM;
++			return 0;
+ 		}
+ 		os_zero_mem((PVOID) pChanList,
+ 			sizeof(UINT32) * (pCfg80211_CB->pCfg80211_ScanReq->n_channels));
+@@ -3621,7 +3628,7 @@ static int CFG80211DRV_OpsScan(
+ 				"no channel list for SCAN!!\n");
+ 		CFG80211OS_ScanEnd(pAd, TRUE);
+ 		ReleaseChannelOpChargeByBand(pAd, 0, CH_OP_OWNER_SCAN);
+-		return -EINVAL;
++		return 0;
+ 	}
+ 
+ 	memset(&scan_cmd, 0, sizeof(RT_CMD_STA_IOCTL_SCAN));

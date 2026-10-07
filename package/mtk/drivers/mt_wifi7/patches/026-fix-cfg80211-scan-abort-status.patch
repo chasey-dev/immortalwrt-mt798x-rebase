@@ -1,0 +1,35 @@
+From: chasey-dev <ellenyoung0912@gmail.com>
+Subject: [PATCH] cfg80211: report scan aborts and failures
+
+cntl_scan_conf() discards its MLME status and always reports a successful
+scan to cfg80211. Aborted scans therefore produce NEW_SCAN_RESULTS and
+can trigger BSS cache expiration for NL80211_SCAN_FLAG_FLUSH requests.
+
+Completion now sets aborted for non-success MLME status and state-machine
+resets. Using the status argument preserves the result after channel
+restoration clears opAbortScan.
+
+Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
+--- a/mt_wifi/common/fsm/fsm_cntl.c
++++ b/mt_wifi/common/fsm/fsm_cntl.c
+@@ -651,7 +651,7 @@ full_reset:
+ 
+ 	mark_scan_end_on_wdev(pAd);
+ #ifdef APCLI_CFG80211_SUPPORT
+-	RT_CFG80211_SCAN_END(pAd, FALSE);
++	RT_CFG80211_SCAN_END(pAd, status != MLME_SUCCESS);
+ #endif /* APCLI_CFG80211_SUPPORT */
+ 
+ 	return TRUE;
+--- a/mt_wifi/common/mlme.c
++++ b/mt_wifi/common/mlme.c
+@@ -5798,7 +5798,7 @@ VOID MlmeRestartStateMachine(RTMP_ADAPTE
+ #endif /* CONFIG_STA_SUPPORT */
+ 	/* CFG_TODO for SCAN */
+ #ifdef RT_CFG80211_SUPPORT
+-	RT_CFG80211_SCAN_END(pAd, FALSE);
++	RT_CFG80211_SCAN_END(pAd, TRUE);
+ #endif /* RT_CFG80211_SUPPORT */
+ }
+ 

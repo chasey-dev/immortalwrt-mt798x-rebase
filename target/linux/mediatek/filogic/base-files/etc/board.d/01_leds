@@ -244,7 +244,12 @@ openembed,som7981)
 	ucidef_set_led_netdev "lanlink" "LANLINK" "green:lan" "eth1" "link"
 	;;
 openfi,6c)
-	ucidef_set_led_netdev "lan" "LAN" "green:lan" "eth0" "link tx rx"
+	# green:lan 与 eth0 在本板上都不存在(DTS 里是 green:status/wan/wlan/mobile,
+	# 实体网口是 eth1),原来那条等于没配,四盏灯一个都不亮。
+	ucidef_set_led_heartbeat "status" "Status" "green:status"
+	ucidef_set_led_netdev "wan" "WAN" "green:wan" "eth1" "link tx rx"
+	ucidef_set_led_default "wlan" "WLAN" "green:wlan" "1"
+	ucidef_set_led_default "mobile" "Mobile" "green:mobile" "0"
 	;;
 openwrt,one)
 	ucidef_set_led_netdev "wanact" "WANACT" "mdio-bus:0f:green:wan" "eth0" "rx tx"

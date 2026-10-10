@@ -2319,7 +2319,13 @@ define Device/keenetic_kn-3811
   DEVICE_MODEL := KN-3811
   DEVICE_DTS := mt7981b-keenetic-kn-3811
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES :=  kmod-usb3 automount
+  # 必须与 dts 里 compatible 的第一项一致,否则 sysupgrade 会拒绝该镜像
+  SUPPORTED_DEVICES += openfi,6c
+  # M.2 上的 5G 模组走 USB:补上数据通道与 AT 口所需驱动。
+  # 展锐平台模组不支持 QMI,故不加 qmi-wwan。
+  DEVICE_PACKAGES := kmod-usb3 kmod-usb-storage automount \
+                     kmod-usb-net-cdc-ncm kmod-usb-net-rndis kmod-usb-net-cdc-ether \
+                     kmod-usb-serial-option kmod-usb-serial-wwan
   UBINIZE_OPTS := -E 5
   BLOCKSIZE := 128k
   PAGESIZE := 2048

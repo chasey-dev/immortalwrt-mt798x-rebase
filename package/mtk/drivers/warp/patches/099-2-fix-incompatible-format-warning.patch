@@ -1,0 +1,88 @@
+--- a/warp_main.c
++++ b/warp_main.c
+@@ -438,11 +438,11 @@ warp_probe(struct platform_device *pdev)
+ 		warp_fwdl_get_wo_heartbeat(&warp->woif.fwdl_ctrl, &heart_beat, warp->idx);
+ 		warp_dbg(WARP_DBG_ERR, "%s()wo heartbeat: 0x%x!\n", __func__, heart_beat);
+ 		/* dump WO PC LR log for 2 times*/
+-		warp_dbg(WARP_DBG_ERR, "%s()======WO PC LR dump======\n", __func__, heart_beat);
++		warp_dbg(WARP_DBG_ERR, "%s()======WO PC LR dump, heartbeat=0x%x======\n", __func__, heart_beat);
+ 		for (i = 0; i < 2; i++) {
+ 			warp_wo_pc_lr_cr_dump(warp->idx);
+ 		}
+-		warp_dbg(WARP_DBG_ERR, "%s()======WO PC LR dump======\n", __func__, heart_beat);
++		warp_dbg(WARP_DBG_ERR, "%s()======WO PC LR dump, heartbeat=0x%x======\n", __func__, heart_beat);
+ 	}
+ #endif
+ 	warp_dbg(WARP_DBG_INF, "%s(): platform device probe is done\n", __func__);
+--- a/mcu/warp_wo.c
++++ b/mcu/warp_wo.c
+@@ -466,7 +466,7 @@ static void bus_rx_task(unsigned long da
+ 				rx_ctrl->dbg_ddone_check = 0;
+ 			}
+ 			} else {
+-				warp_dbg(WARP_DBG_ERR, "wriong ddone bit 0x%x: %d ", cidx, (rxd->ctrl & WED_CTL_DMA_DONE));
++				warp_dbg(WARP_DBG_ERR, "wriong ddone bit 0x%x: %lu ", cidx, (rxd->ctrl & WED_CTL_DMA_DONE));
+ 			}
+ 		}
+ 
+--- a/warp_bm_v2.c
++++ b/warp_bm_v2.c
+@@ -1216,7 +1216,7 @@ wed_rx_budget_ring_init(
+ 					desc->alloc_va,
+ 					desc->alloc_size, DMA_TO_DEVICE);
+ 	if (dma_mapping_error(&wed->pdev->dev, desc->alloc_pa)) {
+-		warp_dbg(WARP_DBG_ERR, "%s(): FATAL, DMA map ERROR, %ld\n", __func__, desc->alloc_va);
++		warp_dbg(WARP_DBG_ERR, "%s(): FATAL, DMA map ERROR, %p\n", __func__, desc->alloc_va);
+ 		warp_os_free_mem(res->desc[idx].alloc_va);
+ 		ret = -1;
+ 		goto err;
+--- a/warp_proc.c
++++ b/warp_proc.c
+@@ -453,7 +453,7 @@ warp_proc_ctrl_write(struct file *file,
+ 	struct warp_entry *warp = (struct warp_entry *)pde_data(file_inode(file));
+ 
+ 	if (len1 > 64 || len1 == 0) {
+-		warp_dbg(WARP_DBG_OFF, "%s(): invalid length len1 %d!\n", __func__, len1);
++		warp_dbg(WARP_DBG_OFF, "%s(): invalid length len1 %zu!\n", __func__, len1);
+ 		goto end;
+ 	}
+ 
+--- a/regs/reg_v2/warp_hw_v2.c
++++ b/regs/reg_v2/warp_hw_v2.c
+@@ -3048,14 +3048,14 @@ warp_reset_hw(struct wed_entry *wed, u32
+ 
+ 		if (ret < 0) {
+ 			warp_dbg(WARP_DBG_ERR, "%s(): wed_tx reset check fail,ret=%d\n", __func__, ret);
+-			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__, ret);
++			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__);
+ 		}
+ 		/* TX free done reset - rx path */
+ 		ret = reset_rx_traffic(wed, reset_type);
+ 
+ 		if (ret < 0) {
+ 			warp_dbg(WARP_DBG_ERR, "%s(): wed_rx reset check fail,ret=%d\n", __func__, ret);
+-			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__, ret);
++			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__);
+ 		}
+ 
+ #ifdef WED_RX_D_SUPPORT
+@@ -3064,7 +3064,7 @@ warp_reset_hw(struct wed_entry *wed, u32
+ 
+ 		if (ret < 0) {
+ 			warp_dbg(WARP_DBG_ERR, "%s(): wed_rx_data check fail,ret=%d\n", __func__, ret);
+-			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__, ret);
++			warp_dbg(WARP_DBG_ERR, "%s(): check ser_busy_cnt: echo 18 > wed\n", __func__);
+ 		}
+ #endif
+ 
+--- a/mcu/warp_ccif.c
++++ b/mcu/warp_ccif.c
+@@ -84,7 +84,7 @@ static int ccif_init(struct woif_bus *bu
+ 	ccif->base_addr = of_iomap(node, idx);
+ 	ccif->irq = irq_of_parse_and_map(node, idx);
+ 
+-	warp_dbg(WARP_DBG_INF, "%s(): ccif: %p, addr: %lx, irq:%d!\n",
++	warp_dbg(WARP_DBG_INF, "%s(): ccif: %p, addr: %p, irq:%d!\n",
+ 		__func__, ccif, ccif->base_addr, ccif->irq);
+ 
+ 	/*initial virtual ring*/

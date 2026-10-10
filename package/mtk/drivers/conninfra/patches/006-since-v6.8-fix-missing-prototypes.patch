@@ -1,0 +1,410 @@
+--- a/base/ring.c
++++ b/base/ring.c
+@@ -101,7 +101,7 @@ unsigned int ring_overwrite_prepare(unsi
+ 	return seg->remain;
+ }
+ 
+-void __ring_segment_prepare(unsigned int from, unsigned int sz,
++static void __ring_segment_prepare(unsigned int from, unsigned int sz,
+ 						struct ring_segment *seg,
+ 						struct ring *ring)
+ {
+--- a/base/osal.c
++++ b/base/osal.c
+@@ -82,7 +82,7 @@ int ftrace_flag = 1;
+ */
+ 
+ 
+-int get_default_bin_image_file(char *path)
++static int __maybe_unused get_default_bin_image_file(char *path)
+ {
+ 	if(osal_strlen(BIN_TO_STR(EEPROM_NAME)))
+ 		osal_sprintf(path, "/lib/firmware/%s", BIN_TO_STR(EEPROM_NAME));
+@@ -717,7 +717,7 @@ int osal_test_and_set_bit(unsigned int b
+ 	return iRet;
+ }
+ 
+-int _osal_fifo_init(OSAL_FIFO *pFifo, unsigned char *buf, unsigned int size)
++static int _osal_fifo_init(OSAL_FIFO *pFifo, unsigned char *buf, unsigned int size)
+ {
+ 	struct kfifo *fifo = NULL;
+ 	int ret = -1;
+@@ -751,7 +751,7 @@ int _osal_fifo_init(OSAL_FIFO *pFifo, un
+ 	return (ret < 0) ? (-1) : (0);
+ }
+ 
+-int _osal_fifo_deinit(OSAL_FIFO *pFifo)
++static int _osal_fifo_deinit(OSAL_FIFO *pFifo)
+ {
+ 	struct kfifo *fifo = NULL;
+ 
+@@ -769,7 +769,7 @@ int _osal_fifo_deinit(OSAL_FIFO *pFifo)
+ 	return 0;
+ }
+ 
+-int _osal_fifo_size(OSAL_FIFO *pFifo)
++static int _osal_fifo_size(OSAL_FIFO *pFifo)
+ {
+ 	struct kfifo *fifo = NULL;
+ 	int ret = 0;
+@@ -789,7 +789,7 @@ int _osal_fifo_size(OSAL_FIFO *pFifo)
+ }
+ 
+ /*returns unused bytes in fifo*/
+-int _osal_fifo_avail_size(OSAL_FIFO *pFifo)
++static int _osal_fifo_avail_size(OSAL_FIFO *pFifo)
+ {
+ 	struct kfifo *fifo = NULL;
+ 	int ret = 0;
+@@ -809,7 +809,7 @@ int _osal_fifo_avail_size(OSAL_FIFO *pFi
+ }
+ 
+ /*returns used bytes in fifo*/
+-int _osal_fifo_len(OSAL_FIFO *pFifo)
++static int _osal_fifo_len(OSAL_FIFO *pFifo)
+ {
+ 	struct kfifo *fifo = NULL;
+ 	int ret = 0;
+@@ -828,7 +828,7 @@ int _osal_fifo_len(OSAL_FIFO *pFifo)
+ 	return ret;
+ }
+ 
+-int _osal_fifo_is_empty(OSAL_FIFO *pFifo)
++static int _osal_fifo_is_empty(OSAL_FIFO *pFifo)
+ {
+ 	struct kfifo *fifo = NULL;
+ 	int ret = 0;
+@@ -847,7 +847,7 @@ int _osal_fifo_is_empty(OSAL_FIFO *pFifo
+ 	return ret;
+ }
+ 
+-int _osal_fifo_is_full(OSAL_FIFO *pFifo)
++static int _osal_fifo_is_full(OSAL_FIFO *pFifo)
+ {
+ 	struct kfifo *fifo = NULL;
+ 	int ret = 0;
+@@ -866,7 +866,7 @@ int _osal_fifo_is_full(OSAL_FIFO *pFifo)
+ 	return ret;
+ }
+ 
+-int _osal_fifo_data_in(OSAL_FIFO *pFifo, const void *buf, unsigned int len)
++static int _osal_fifo_data_in(OSAL_FIFO *pFifo, const void *buf, unsigned int len)
+ {
+ 	struct kfifo *fifo = NULL;
+ 	int ret = 0;
+@@ -891,7 +891,7 @@ int _osal_fifo_data_in(OSAL_FIFO *pFifo,
+ 	return ret;
+ }
+ 
+-int _osal_fifo_data_out(OSAL_FIFO *pFifo, void *buf, unsigned int len)
++static int _osal_fifo_data_out(OSAL_FIFO *pFifo, void *buf, unsigned int len)
+ {
+ 	struct kfifo *fifo = NULL;
+ 	int ret = 0;
+@@ -916,7 +916,7 @@ int _osal_fifo_data_out(OSAL_FIFO *pFifo
+ 	return ret;
+ }
+ 
+-int _osal_fifo_reset(OSAL_FIFO *pFifo)
++static int _osal_fifo_reset(OSAL_FIFO *pFifo)
+ {
+ 	struct kfifo *fifo = NULL;
+ 
+--- a/base/msg_thread.c
++++ b/base/msg_thread.c
+@@ -291,7 +291,7 @@ void msg_opq_dump(const char *qName, str
+  *  msg_evt_thread API
+  */
+ 
+-int msg_evt_put_op_to_free_queue(struct msg_thread_ctx *ctx, struct msg_op *op)
++static int msg_evt_put_op_to_free_queue(struct msg_thread_ctx *ctx, struct msg_op *op)
+ {
+ 	if (msg_evt_put_op_to_q(&ctx->free_op_q, op))
+ 		return -1;
+@@ -299,7 +299,7 @@ int msg_evt_put_op_to_free_queue(struct
+ }
+ 
+ 
+-struct msg_op *msg_evt_get_free_op(struct msg_thread_ctx *ctx)
++static struct msg_op *msg_evt_get_free_op(struct msg_thread_ctx *ctx)
+ {
+ 	struct msg_op *op = NULL;
+ 
+@@ -313,7 +313,7 @@ struct msg_op *msg_evt_get_free_op(struc
+ 	return op;
+ }
+ 
+-int msg_evt_put_op_to_active(struct msg_thread_ctx *ctx, struct msg_op *op)
++static int msg_evt_put_op_to_active(struct msg_thread_ctx *ctx, struct msg_op *op)
+ {
+ 	P_OSAL_SIGNAL signal = NULL;
+ 	int wait_ret = -1;
+@@ -468,7 +468,7 @@ int msg_thread_send_wait_3(struct msg_th
+ 
+ }
+ 
+-void msg_op_history_save(struct osal_op_history *log_history, struct msg_op *op)
++static void msg_op_history_save(struct osal_op_history *log_history, struct msg_op *op)
+ {
+ 	struct osal_op_history_entry *entry = NULL;
+ 	struct ring_segment seg;
+@@ -508,7 +508,7 @@ void msg_op_history_save(struct osal_op_
+ 	spin_unlock_irqrestore(&(log_history->lock), flags);
+ }
+ 
+-unsigned int msg_evt_wait_event_checker(P_OSAL_THREAD thread)
++static unsigned int msg_evt_wait_event_checker(P_OSAL_THREAD thread)
+ {
+ 	struct msg_thread_ctx *ctx = NULL;
+ 
+@@ -519,13 +519,13 @@ unsigned int msg_evt_wait_event_checker(
+ 	return 0;
+ }
+ 
+-int msg_evt_set_current_op(struct msg_thread_ctx *ctx, struct msg_op *op)
++static int msg_evt_set_current_op(struct msg_thread_ctx *ctx, struct msg_op *op)
+ {
+ 	ctx->cur_op = op;
+ 	return 0;
+ }
+ 
+-int msg_evt_opid_handler(struct msg_thread_ctx *ctx, struct msg_op_data *op)
++static int msg_evt_opid_handler(struct msg_thread_ctx *ctx, struct msg_op_data *op)
+ {
+ 	int opid, ret;
+ 
+--- a/platform/consys_hw.c
++++ b/platform/consys_hw.c
+@@ -167,7 +167,7 @@ int consys_hw_dump_bus_status(void)
+ 	return consys_reg_mng_dump_bus_status();
+ }
+ 
+-int consys_hw_dump_cpupcr(enum conn_dump_cpupcr_type dump_type, int times, unsigned long interval_us)
++static int __maybe_unused consys_hw_dump_cpupcr(enum conn_dump_cpupcr_type dump_type, int times, unsigned long interval_us)
+ {
+ 	return consys_reg_mng_dump_cpupcr(dump_type, times, interval_us);
+ }
+--- a/platform/mt7981/mt7981_pos.c
++++ b/platform/mt7981/mt7981_pos.c
+@@ -116,7 +116,7 @@ static const struct spi_op spi_op_array[
+ *                  F U N C T I O N   D E C L A R A T I O N S
+ ********************************************************************************
+ */
+-bool _is_flash_content_valid(void)
++static bool __maybe_unused _is_flash_content_valid(void)
+ {
+ 	unsigned short eeFlashId = 0;
+ 
+@@ -128,7 +128,7 @@ bool _is_flash_content_valid(void)
+ 		return false;
+ }
+ 
+-int _consys_check_adie_cfg(void)
++static int _consys_check_adie_cfg(void)
+ {
+ 	int ret = 0;
+ 	unsigned int hw_adie_type = 0;
+@@ -286,7 +286,7 @@ int consys_tx_rx_bus_slp_prot_ctrl(bool
+ 	return 0;
+ }
+ 
+-int _consys_polling_chipid_int(unsigned int retry, unsigned int sleep_ms)
++static int _consys_polling_chipid_int(unsigned int retry, unsigned int sleep_ms)
+ {
+ 	unsigned int count = retry + 1;
+ 	unsigned int consys_hw_ver = consys_get_hw_ver();
+@@ -890,7 +890,7 @@ static int _connsys_a_die_sw_cntl(enum s
+ 	return 0;
+ }
+ 
+-int _connsys_a_die_cfg_7976(unsigned char adie_idx)
++static int _connsys_a_die_cfg_7976(unsigned char adie_idx)
+ {
+ 	int check;
+ 	unsigned int adie_chip_id = 0x0;
+@@ -1081,7 +1081,7 @@ static int _connsys_a_die_form_patch_797
+ 	return 0;
+ }
+ 
+-int _connsys_a_die_cfg_7975(unsigned char adie_idx)
++static int _connsys_a_die_cfg_7975(unsigned char adie_idx)
+ {
+ 	int check;
+ 	unsigned int adie_chip_id = 0x0;
+@@ -1170,7 +1170,7 @@ int connsys_a_die_cfg(void)
+ 	return ret;
+ }
+ 
+-int _connsys_afe_wbg_cal_7976(unsigned char wbg_idx, unsigned char rfspi_idx)
++static int _connsys_afe_wbg_cal_7976(unsigned char wbg_idx, unsigned char rfspi_idx)
+ {
+ 	int check;
+ 	unsigned long afe_ctl_addr = 0;
+@@ -1224,7 +1224,7 @@ int _connsys_afe_wbg_cal_7976(unsigned c
+ 	return 0;
+ }
+ 
+-int _connsys_afe_wbg_cal_7975(unsigned char wbg_idx, unsigned char rfspi_idx)
++static int _connsys_afe_wbg_cal_7975(unsigned char wbg_idx, unsigned char rfspi_idx)
+ {
+ 	int check;
+ 	unsigned long afe_ctl_addr = 0;
+@@ -1306,7 +1306,7 @@ int connsys_afe_wbg_cal(void)
+ 	return ret;
+ }
+ 
+-int _connsys_subsys_pll_initial(unsigned char wbg_idx)
++static int _connsys_subsys_pll_initial(unsigned char wbg_idx)
+ {
+ 	unsigned long afe_ctl_addr = 0;
+ 
+@@ -1444,7 +1444,7 @@ int consys_conninfra_top_sleep(void)
+ 	return 0;
+ }
+ 
+-int _consys_adie_top_ck_en_on_off_ctrl(unsigned char rfspi_idx, enum consys_drv_type type, unsigned char on)
++static int _consys_adie_top_ck_en_on_off_ctrl(unsigned char rfspi_idx, enum consys_drv_type type, unsigned char on)
+ {
+ 	int check = 0;
+ 	unsigned long slp_ctl_addr = 0;
+@@ -1657,7 +1657,7 @@ int consys_wmcpu_idle_loop_check(void)
+ 	return 0;
+ }
+ 
+-void _consys_check_sku_cfg(void)
++static void _consys_check_sku_cfg(void)
+ {
+ 	unsigned int hw_sku_type = 0;
+ 
+--- a/platform/mt7986/mt7986_pos.c
++++ b/platform/mt7986/mt7986_pos.c
+@@ -133,7 +133,7 @@ static const struct spi_op spi_op_array[
+ *                  F U N C T I O N   D E C L A R A T I O N S
+ ********************************************************************************
+ */
+-bool _is_flash_content_valid(void)
++static bool _is_flash_content_valid(void)
+ {
+ 	unsigned short eeFlashId = 0;
+ 
+@@ -148,7 +148,7 @@ bool _is_flash_content_valid(void)
+ 	}
+ }
+ 
+-int _consys_check_adie_cfg(void)
++static int _consys_check_adie_cfg(void)
+ {
+ 	int ret = 0;
+ 	unsigned int hw_adie_type = 0;
+@@ -173,7 +173,7 @@ int _consys_check_adie_cfg(void)
+ 	return ret;
+ }
+ 
+-void _consys_check_sku_cfg(void)
++static void _consys_check_sku_cfg(void)
+ {
+ 	unsigned int hw_sku_type;
+ 
+@@ -439,7 +439,7 @@ int consys_tx_rx_bus_slp_prot_ctrl(bool
+ 	return 0;
+ }
+ 
+-int _consys_polling_chipid_int(unsigned int retry, unsigned int sleep_ms)
++static int _consys_polling_chipid_int(unsigned int retry, unsigned int sleep_ms)
+ {
+ 	unsigned int count = retry + 1;
+ 	unsigned int consys_hw_ver = consys_get_hw_ver();
+@@ -1058,7 +1058,7 @@ static int _connsys_a_die_sw_cntl(enum s
+ 	return 0;
+ }
+ 
+-int _connsys_a_die_cfg_7976(unsigned char adie_idx)
++static int _connsys_a_die_cfg_7976(unsigned char adie_idx)
+ {
+ 	int check;
+ 	unsigned int adie_chip_id = 0x0;
+@@ -1241,7 +1241,7 @@ static int _connsys_a_die_form_patch_797
+ 	return 0;
+ }
+ 
+-int _connsys_a_die_cfg_7975(unsigned char adie_idx)
++static int _connsys_a_die_cfg_7975(unsigned char adie_idx)
+ {
+ 	int check;
+ 	unsigned int adie_chip_id = 0x0;
+@@ -1331,7 +1331,7 @@ int connsys_a_die_cfg(void)
+ 	return ret;
+ }
+ 
+-int _connsys_afe_wbg_cal_7976(unsigned char wbg_idx, unsigned char rfspi_idx)
++static int _connsys_afe_wbg_cal_7976(unsigned char wbg_idx, unsigned char rfspi_idx)
+ {
+ 	int check;
+ 	unsigned long afe_ctl_addr = 0;
+@@ -1385,7 +1385,7 @@ int _connsys_afe_wbg_cal_7976(unsigned c
+ 	return 0;
+ }
+ 
+-int _connsys_afe_wbg_cal_7975(unsigned char wbg_idx, unsigned char rfspi_idx)
++static int _connsys_afe_wbg_cal_7975(unsigned char wbg_idx, unsigned char rfspi_idx)
+ {
+ 	int check;
+ 	unsigned long afe_ctl_addr = 0;
+@@ -1489,7 +1489,7 @@ int connsys_afe_wbg_cal(void)
+ 	return ret;
+ }
+ 
+-int _connsys_subsys_pll_initial(unsigned char wbg_idx)
++static int _connsys_subsys_pll_initial(unsigned char wbg_idx)
+ {
+ 	unsigned long afe_ctl_addr = 0;
+ 
+@@ -1628,7 +1628,7 @@ int consys_conninfra_top_sleep(void)
+ 	return 0;
+ }
+ 
+-int _consys_adie_top_ck_en_on_off_ctrl(unsigned char rfspi_idx, enum consys_drv_type type, unsigned char on)
++static int _consys_adie_top_ck_en_on_off_ctrl(unsigned char rfspi_idx, enum consys_drv_type type, unsigned char on)
+ {
+ 	int check = 0;
+ 	unsigned long slp_ctl_addr = 0;
+@@ -1688,7 +1688,7 @@ int consys_adie_top_ck_en_on_off_ctrl(en
+ 	return ret;
+ }
+ 
+-bool _is_wmcpu_run_allow(void)
++static bool _is_wmcpu_run_allow(void)
+ {
+ 	if (EEPROM_content_valid) {
+ 		if (one_adie_dbdc) {
+@@ -1881,7 +1881,7 @@ int consys_wmcpu_idle_loop_check(void)
+ 	return 0;
+ }
+ 
+-int _connsys_a_die_chip_id_confirm(unsigned char adie_idx)
++static int _connsys_a_die_chip_id_confirm(unsigned char adie_idx)
+ {
+ 	int check;
+ 	unsigned int adie_chip_id = 0x0;
+--- a/platform/mt7981/mt7981_emi.c
++++ b/platform/mt7981/mt7981_emi.c
+@@ -32,7 +32,7 @@
+ *                            P U B L I C   D A T A
+ ********************************************************************************
+ */
+-unsigned int consys_emi_get_fw_emi_size(void)
++static unsigned int consys_emi_get_fw_emi_size(void)
+ {
+ 	return 0x100000;
+ }
+--- a/platform/mt7986/mt7986_emi.c
++++ b/platform/mt7986/mt7986_emi.c
+@@ -32,7 +32,7 @@
+ *                            P U B L I C   D A T A
+ ********************************************************************************
+ */
+-unsigned int consys_emi_get_fw_emi_size(void)
++static unsigned int consys_emi_get_fw_emi_size(void)
+ {
+ 	return 0x100000;
+ }

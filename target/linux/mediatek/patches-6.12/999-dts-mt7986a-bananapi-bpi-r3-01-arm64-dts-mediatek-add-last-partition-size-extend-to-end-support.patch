@@ -1,0 +1,36 @@
+---
+[v1] arm64: dts: mediatek: mt7986a: Add mtd partition extend to end support
+Add "mtd-extend-to-end" in mt7986a bananapi r3 spim nand/nor related dts.
+Partition with "mtd-extend-to-end" will extend to the end of
+parent partiton and note that the size of partition in reg must be
+set to 0 like reg = <0x0200000 0x0>.
+---
+v1: Add mtd partition extend to end support.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-bananapi-bpi-r3-nand.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-bananapi-bpi-r3-nand.dtso
+@@ -34,8 +34,9 @@
+ 
+ 			partition@200000 {
+ 				label = "ubi";
+-				reg = <0x200000 0x7e00000>;
++				reg = <0x200000 0x0>;
+ 				compatible = "linux,ubi";
++				mtd-extend-to-end;
+ 
+ 				volumes {
+ 					nand_rootdisk: ubi-volume-fit {
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-bananapi-bpi-r3-nor.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-bananapi-bpi-r3-nor.dtso
+@@ -54,8 +54,9 @@
+ 
+ 			nor_rootdisk: partition@c00000 {
+ 				label = "fit";
+-				reg = <0xc00000 0x1400000>;
++				reg = <0xc00000 0x0>;
+ 				compatible = "denx,fit";
++				mtd-extend-to-end;
+ 			};
+ 		};
+ 	};

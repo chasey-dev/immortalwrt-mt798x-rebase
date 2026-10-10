@@ -1,0 +1,11 @@
+--- a/mt_wifi/embedded/include/security/dot11i_wpa.h
++++ b/mt_wifi/embedded/include/security/dot11i_wpa.h
+@@ -214,7 +214,7 @@ typedef	struct GNU_PACKED _KEY_DESCRIPTE
+ 	UCHAR		KeyIv[LEN_KEY_DESC_IV];
+ 	UCHAR		KeyRsc[LEN_KEY_DESC_RSC];
+ 	UCHAR		KeyId[LEN_KEY_DESC_ID];
+-	UCHAR		KeyMicAndData[0];
++	UCHAR		KeyMicAndData[]; /* C99: use flexible array member */
+ }	KEY_DESCRIPTER, *PKEY_DESCRIPTER;
+ 
+ typedef	struct GNU_PACKED _EAPOL_PACKET {

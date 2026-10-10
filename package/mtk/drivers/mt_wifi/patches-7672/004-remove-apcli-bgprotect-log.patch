@@ -1,0 +1,11 @@
+--- a/mt_wifi/embedded/fsm/sta_mgmt_sync.c
++++ b/mt_wifi/embedded/fsm/sta_mgmt_sync.c
+@@ -520,7 +520,7 @@ static BOOLEAN sta_rx_peer_response_upda
+ 				}
+ 
+ 				HW_SET_PROTECT(pAd, wdev, PROT_PROTOCOL, 0, 0);
+-				MTWF_DBG(pAd, DBG_CAT_CLIENT, DBG_SUBCAT_ALL, DBG_LVL_WARN,
++				MTWF_DBG(pAd, DBG_CAT_CLIENT, DBG_SUBCAT_ALL, DBG_LVL_INFO,
+ 						 "SYNC - AP changed B/G protection to %d\n", bUseBGProtection);
+ 			}
+ 

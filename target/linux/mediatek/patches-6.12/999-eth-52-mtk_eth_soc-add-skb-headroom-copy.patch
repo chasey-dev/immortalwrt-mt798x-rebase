@@ -1,0 +1,148 @@
+---
+[v2] mtk_eth_soc: Add SKB headroom copy support for ip fragmentation
+
+SKB headroom copy support is missing in ip fragmentation, we add it
+in this patch, ensuring PPE binding of the flows of large UDP packets
+that are IP fragmented before tunnel encapsulation.
+
+---
+v2: Add SKB headroom copy support for ip fragmentation
+v1: Add SKB headroom copy support for tunnel packets
+---
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -5363,4 +5363,5 @@ extern struct net_device *blackhole_netd
+ 		atomic_long_add((VAL), &(DEV)->stats.__##FIELD)
+ #define DEV_STATS_READ(DEV, FIELD) atomic_long_read(&(DEV)->stats.__##FIELD)
+ 
++extern int (*mtk_gso_skb_copy_head)(struct sk_buff *new, struct sk_buff *old);
+ #endif	/* _LINUX_NETDEVICE_H */
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -182,6 +182,9 @@ static DEFINE_READ_MOSTLY_HASHTABLE(napi
+ 
+ static DECLARE_RWSEM(devnet_rename_sem);
+ 
++int (*mtk_gso_skb_copy_head)(struct sk_buff *new, struct sk_buff *old) = NULL;
++EXPORT_SYMBOL(mtk_gso_skb_copy_head);
++
+ static inline void dev_base_seq_inc(struct net *net)
+ {
+ 	unsigned int val = net->dev_base_seq + 1;
+@@ -3792,6 +3795,9 @@ static struct sk_buff *validate_xmit_skb
+ 		if (IS_ERR(segs)) {
+ 			goto out_kfree_skb;
+ 		} else if (segs) {
++			if (mtk_gso_skb_copy_head)
++				mtk_gso_skb_copy_head(segs, skb);
++
+ 			consume_skb(skb);
+ 			skb = segs;
+ 		}
+--- a/net/ipv4/ip_output.c
++++ b/net/ipv4/ip_output.c
+@@ -85,6 +85,9 @@
+ #include <linux/netlink.h>
+ #include <linux/tcp.h>
+ 
++int (*mtk_ip_frag_skb_copy_head)(struct sk_buff *new, struct sk_buff *old) = NULL;
++EXPORT_SYMBOL(mtk_ip_frag_skb_copy_head);
++
+ static int
+ ip_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
+ 	    unsigned int mtu,
+@@ -698,7 +701,7 @@ struct sk_buff *ip_frag_next(struct sk_b
+ 	}
+ 
+ 	/* Allocate buffer */
+-	skb2 = alloc_skb(len + state->hlen + state->ll_rs, GFP_ATOMIC);
++	skb2 = alloc_skb(len + state->hlen + state->ll_rs + NET_SKB_PAD + NET_IP_ALIGN, GFP_ATOMIC);
+ 	if (!skb2)
+ 		return ERR_PTR(-ENOMEM);
+ 
+@@ -707,7 +710,7 @@ struct sk_buff *ip_frag_next(struct sk_b
+ 	 */
+ 
+ 	ip_copy_metadata(skb2, skb);
+-	skb_reserve(skb2, state->ll_rs);
++	skb_reserve(skb2, state->ll_rs + NET_SKB_PAD + NET_IP_ALIGN);
+ 	skb_put(skb2, len + state->hlen);
+ 	skb_reset_network_header(skb2);
+ 	skb2->transport_header = skb2->network_header + state->hlen;
+@@ -754,6 +757,9 @@ struct sk_buff *ip_frag_next(struct sk_b
+ 
+ 	ip_send_check(iph);
+ 
++	if (mtk_ip_frag_skb_copy_head)
++		mtk_ip_frag_skb_copy_head(skb2, skb);
++
+ 	return skb2;
+ }
+ EXPORT_SYMBOL(ip_frag_next);
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -7431,6 +7431,9 @@ static int mtk_probe(struct platform_dev
+ 	schedule_delayed_work(&eth->reset.monitor_work,
+ 			      MTK_DMA_MONITOR_TIMEOUT);
+ 
++	mtk_gso_skb_copy_head = mtk_skb_copy_head;
++	mtk_ip_frag_skb_copy_head = mtk_skb_copy_head;
++
+ 	return 0;
+ 
+ err_unreg_netdev:
+@@ -7459,6 +7462,9 @@ static void mtk_remove(struct platform_d
+ 	struct mtk_mac *mac;
+ 	int i;
+ 
++	mtk_gso_skb_copy_head = NULL;
++	mtk_ip_frag_skb_copy_head = NULL;
++
+ 	if (eth->esw_base)
+ 		iounmap(eth->esw_base);
+ 
+--- a/drivers/net/ethernet/mediatek/mtk_tnl.h
++++ b/drivers/net/ethernet/mediatek/mtk_tnl.h
+@@ -45,4 +45,34 @@ struct mtk_tnl_desc {
+ #define is_tnl_tag_valid(skb) (skb_tnl_magic_tag(skb) == TNL_MAGIC_TAG)
+ #define skb_tnl_is_pppoe(skb) (((struct mtk_tnl_desc *)((skb)->head))->is_pppoe)
+ 
++static inline int mtk_skb_copy_head(struct sk_buff *new, struct sk_buff *old)
++{
++	struct sk_buff *temp = new;
++	int need_copy = 0;
++	int is_esp = 0;
++
++	if (skb_tnl_tops(old))
++		need_copy = 1;
++
++	if (old->inner_protocol == IPPROTO_ESP &&
++	    skb_tnl_cdrt(old) && is_tnl_tag_valid(old)) {
++		need_copy = 1;
++		is_esp = 1;
++	}
++
++	while (temp) {
++		if (skb_cow_head(temp, skb_headroom(old)))
++			return -ENOMEM;
++
++		if (need_copy) {
++			memcpy(temp->head, old->head, skb_headroom(old));
++			if (is_esp)
++				temp->inner_protocol = IPPROTO_ESP;
++		}
++
++		temp = temp->next;
++	}
++
++	return 0;
++}
+ #endif /* MTK_TNL_H */
+--- a/include/net/ip.h
++++ b/include/net/ip.h
+@@ -842,4 +842,5 @@ void ip_sock_set_recverr(struct sock *sk
+ void ip_sock_set_tos(struct sock *sk, int val);
+ void  __ip_sock_set_tos(struct sock *sk, int val);
+ 
++extern int (*mtk_ip_frag_skb_copy_head)(struct sk_buff *new, struct sk_buff *old);
+ #endif	/* _IP_H */

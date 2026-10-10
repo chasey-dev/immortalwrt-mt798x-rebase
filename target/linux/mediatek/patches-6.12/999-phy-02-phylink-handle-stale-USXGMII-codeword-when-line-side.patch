@@ -1,0 +1,37 @@
+From fa07d116537af15c4c2ea360646ccf00be720eb6 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Thu, 1 Oct 2026 11:33:49 +0800
+Subject: [PATCH] net: phylink: handle stale USXGMII codeword when line side link is
+ down
+
+Some PHYs do not update the USXGMII AN codeword until the line side
+link is up. Add handling to avoid decoding stale codeword in such case.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/phy/phylink.c | 9 ++++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/net/phy/phylink.c b/drivers/net/phy/phylink.c
+index 6059fe6..17265c7 100644
+--- a/drivers/net/phy/phylink.c
++++ b/drivers/net/phy/phylink.c
+@@ -3852,6 +3852,15 @@ static void phylink_decode_sgmii_word(struct phylink_link_state *state,
+ void phylink_decode_usxgmii_word(struct phylink_link_state *state,
+ 				 uint16_t lpa)
+ {
++	/*
++	 * Some PHYs do not update the USXGMII AN codeword until the line side
++	 * link is up. Add handling to avoid decoding stale codeword in such case.
++	 */
++	if (!(lpa & MDIO_USXGMII_LINK)) {
++		state->link = false;
++		return;
++	}
++
+ 	switch (lpa & MDIO_USXGMII_SPD_MASK) {
+ 	case MDIO_USXGMII_10:
+ 		state->speed = SPEED_10;
+-- 
+2.45.2
+

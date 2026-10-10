@@ -1,0 +1,22 @@
+--- a/platform/mt7981/mt7981_pos.c
++++ b/platform/mt7981/mt7981_pos.c
+@@ -58,7 +58,7 @@ struct spi_op {
+ *                              C O N S T A N T S
+ ********************************************************************************
+ */
+-const static char* g_spi_system_name[SYS_SPI_MAX] = {
++static const char* g_spi_system_name[SYS_SPI_MAX] = {
+ 	"SYS_SPI_WF1",
+ 	"SYS_SPI_WF",
+ 	"SYS_SPI_BT",
+--- a/platform/mt7986/mt7986_pos.c
++++ b/platform/mt7986/mt7986_pos.c
+@@ -75,7 +75,7 @@ struct spi_op {
+ *                              C O N S T A N T S
+ ********************************************************************************
+ */
+-const static char* g_spi_system_name[SYS_SPI_MAX] = {
++static const char* g_spi_system_name[SYS_SPI_MAX] = {
+ 	"SYS_SPI_WF1",
+ 	"SYS_SPI_WF",
+ 	"SYS_SPI_BT",

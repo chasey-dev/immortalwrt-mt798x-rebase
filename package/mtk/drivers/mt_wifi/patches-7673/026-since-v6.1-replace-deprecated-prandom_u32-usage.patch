@@ -1,0 +1,13 @@
+--- a/mt_wifi/embedded/common/rt_os_util.c
++++ b/mt_wifi/embedded/common/rt_os_util.c
+@@ -260,7 +260,9 @@ INT32  RtPrivIoctlSetVal(VOID)
+ 
+ UINT32 MtRandom32(VOID)
+ {
+-#if (LINUX_VERSION_CODE  >= KERNEL_VERSION(3, 8, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0))
++	return get_random_u32();
++#elif (LINUX_VERSION_CODE  >= KERNEL_VERSION(3, 8, 0))
+ 	return prandom_u32();
+ #else /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0) */
+ 	return random32();

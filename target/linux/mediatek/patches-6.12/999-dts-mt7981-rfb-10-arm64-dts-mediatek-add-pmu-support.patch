@@ -1,0 +1,27 @@
+---
+[v1] arm64: dts: mediatek: add pmu support for mt7981
+
+Add PMU (Performance Monitoring Unit) device node for MT7981b SoC. This
+enables hardware performance monitoring support using ARM Cortex-A53 PMU
+driver with GIC_PPI 7 interrupt, following the same configuration as MT7987.
+---
+v1: Add PMU support for MT7981b to enable perf hardware events monitoring.
+---
+
+Index: kernel/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
+===================================================================
+--- kernel.orig/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
++++ kernel/arch/arm64/boot/dts/mediatek/mt7981b.dtsi
+@@ -56,6 +56,12 @@
+ 		method = "smc";
+ 	};
+
++	pmu {
++		compatible = "arm,cortex-a53-pmu";
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_PPI 7 IRQ_TYPE_LEVEL_LOW>;
++	};
++
+ 	fan: pwm-fan {
+ 		compatible = "pwm-fan";
+ 		/* cooling level (0, 1, 2, 3) : (0% duty, 50% duty, 75% duty, 100% duty) */

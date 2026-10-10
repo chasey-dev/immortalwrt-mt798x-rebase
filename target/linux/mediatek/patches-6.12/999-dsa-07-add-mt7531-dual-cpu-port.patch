@@ -1,0 +1,80 @@
+---
+[v1] net: dsa: mt7530: add dual-cpu-port support
+
+Add dual-cpu-port support.
+---
+v1: add dual-cpu-port support
+---
+
+From 55e528d7a636fd030347c9db6a3e530eebf14a36 Mon Sep 17 00:00:00 2001
+From: "neal.yen" <neal.yen@mediatek.com>
+Date: Thu, 28 May 2026 15:10:38 +0800
+Subject: [PATCH] net: dsa: add dual-cpu-port support
+
+---
+ drivers/net/dsa/mt7530.c | 42 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/drivers/net/dsa/mt7530.c b/drivers/net/dsa/mt7530.c
+index 74bcefb..00d00d6 100644
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -3152,6 +3152,47 @@ static int mt7988_setup(struct dsa_switch *ds)
+ 	return mt7531_setup_common(ds);
+ }
+ 
++static struct dsa_port *
++mt753x_get_cpu_port_from_dn(struct dsa_switch *ds, int port)
++{
++	struct dsa_port *dp = dsa_to_port(ds, port);
++	struct dsa_port *cpu_dp;
++	u32 cpu_pid;
++
++	if (!dp || !dp->dn)
++		return NULL;
++
++	if (of_property_read_u32(dp->dn, "cpu-port", &cpu_pid))
++		return NULL;
++
++	cpu_dp = dsa_to_port(ds, cpu_pid);
++	if (!cpu_dp || !dsa_port_is_cpu(cpu_dp)) {
++		dev_err(ds->dev, "port%d: cpu-port <%u> is not a valid CPU port\n",
++			port, cpu_pid);
++		return NULL;
++	}
++
++	dev_info(ds->dev, "port%d → CPU P%u [from DTS cpu-port]\n",
++		 port, cpu_pid);
++
++	return cpu_dp;
++}
++
++static int mt753x_port_setup(struct dsa_switch *ds, int port)
++{
++	struct dsa_port *dp = dsa_to_port(ds, port);
++	struct dsa_port *cpu_dp;
++
++	if (!dsa_port_is_user(dp))
++		return 0;
++
++	cpu_dp = mt753x_get_cpu_port_from_dn(ds, port);
++	if (cpu_dp)
++		dp->cpu_dp = cpu_dp;
++
++	return 0;
++}
++
+ const struct dsa_switch_ops mt7530_switch_ops = {
+ 	.get_tag_protocol	= mtk_get_tag_protocol,
+ 	.setup			= mt753x_setup,
+@@ -3165,6 +3206,7 @@ const struct dsa_switch_ops mt7530_switch_ops = {
+ 	.port_change_mtu	= mt7530_port_change_mtu,
+ 	.port_max_mtu		= mt7530_port_max_mtu,
+ 	.port_stp_state_set	= mt7530_stp_state_set,
++	.port_setup		= mt753x_port_setup,
+ 	.port_pre_bridge_flags	= mt7530_port_pre_bridge_flags,
+ 	.port_bridge_flags	= mt7530_port_bridge_flags,
+ 	.port_bridge_join	= mt7530_port_bridge_join,
+-- 
+2.45.2
+

@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+/dts-v1/;
+#include "../dts/mt7986a-netcore-n60-pro.dts"
+
+/ {
+	model = "Netcore N60 Pro (MTK U-Boot layout)";
+	compatible = "netcore,n60-pro-mtkuboot", "mediatek,mt7986a";
+
+	/delete-node/ chosen;
+
+	chosen {
+		bootargs = "console=ttyS0,115200n1 loglevel=8  \
+				earlycon=uart8250,mmio32,0x11002000";
+	};
+};
+
+&spi0 {
+	flash@0 {
+		mediatek,nmbm;
+		mediatek,bmt-max-ratio = <1>;
+		mediatek,bmt-max-reserved-blocks = <64>;
+
+		partitions {
+			/delete-node/ partition@580000;
+
+			partition@180000 {
+				label = "Factory";
+			};
+
+			partition@580000 {
+				label = "ubi";
+				reg = <0x0580000 0x7280000>;
+			};
+		};
+	};
+};

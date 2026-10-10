@@ -1,0 +1,75 @@
+--- a/mt_wifi/embedded/common/wdev.c
++++ b/mt_wifi/embedded/common/wdev.c
+@@ -623,8 +623,13 @@ INT32 wdev_attr_update(RTMP_ADAPTER *pAd
+ 				 __func__, wdev->wdev_idx, MAC2STR(wdev->if_addr)));
+ 
+ 		if (wdev->if_dev) {
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0))
+ 			NdisMoveMemory(RTMP_OS_NETDEV_GET_PHYADDR(wdev->if_dev),
+ 						   wdev->if_addr, MAC_ADDR_LEN);
++#else
++			/* in Linux 5.17 or greater, dev_addr is a const and use dev_addr_set() instead */
++			dev_addr_set(wdev->if_dev, wdev->if_addr);
++#endif
+ 		}
+ 
+ 		COPY_MAC_ADDR(wdev->bssid, wdev->if_addr);
+@@ -637,7 +642,12 @@ INT32 wdev_attr_update(RTMP_ADAPTER *pAd
+ 				__func__, wdev->wdev_idx, MAC2STR(wdev->if_addr)));
+ 
+ 		if (wdev->if_dev)
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0))
+ 			NdisMoveMemory(RTMP_OS_NETDEV_GET_PHYADDR(wdev->if_dev), wdev->if_addr, MAC_ADDR_LEN);
++#else
++			/* in Linux 5.17 or greater, dev_addr is a const and use dev_addr_set() instead */
++			dev_addr_set(wdev->if_dev, wdev->if_addr);
++#endif
+ 		break;
+ #endif
+ 	default:
+--- a/mt_wifi/embedded/sta/sta.c
++++ b/mt_wifi/embedded/sta/sta.c
+@@ -580,8 +580,13 @@ INT sta_inf_open(struct wifi_dev *wdev)
+ 		if (!pAd->CommonCfg.bcfg80211Disabled) {
+ 			AsicSetWdevIfAddr(pAd, wdev, OPMODE_STA);
+ 			if (wdev->if_dev) {
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0))
+ 				NdisMoveMemory(RTMP_OS_NETDEV_GET_PHYADDR(wdev->if_dev),
+ 					wdev->if_addr, MAC_ADDR_LEN);
++#else
++				/* in Linux 5.17 or greater, dev_addr is a const and use dev_addr_set() instead */
++				dev_addr_set(wdev->if_dev, wdev->if_addr);
++#endif
+ 			}
+ 		}
+ #endif /* IWCOMMAND_CFG80211_SUPPORT */
+--- a/mt_wifi/os/linux/rt_linux.c
++++ b/mt_wifi/os/linux/rt_linux.c
+@@ -1700,7 +1700,12 @@ int RtmpOSNetDevAddrSet(
+ 		}
+ 	}
+ #endif /* CONFIG_STA_SUPPORT */
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0))
+ 	os_move_mem(net_dev->dev_addr, pMacAddr, 6);
++#else
++	/* in Linux 5.17 or greater, dev_addr is a const and use dev_addr_set() instead */
++	dev_addr_set(net_dev, pMacAddr);
++#endif
+ 	return 0;
+ }
+ 
+@@ -2033,9 +2038,14 @@ int RtmpOSNetDevAttach(
+ 			pNetDev->wireless_handlers = pDevOpHook->iw_handler;
+ 
+ #endif /* CONFIG_WIRELESS_EXT */
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0))
+ 		/* copy the net device mac address to the net_device structure. */
+ 		os_move_mem(pNetDev->dev_addr, &pDevOpHook->devAddr[0],
+ 					MAC_ADDR_LEN);
++#else
++		/* in Linux 5.17 or greater, dev_addr is a const and use dev_addr_set() instead */
++		dev_addr_set(pNetDev, &pDevOpHook->devAddr[0]);
++#endif
+ 		rtnl_locked = pDevOpHook->needProtcted;
+ 	}
+ 

@@ -1,0 +1,251 @@
+---
+[v3] netfilter: nf_flow_table: teardown flows on bridge FDB roaming
+
+Without this patch, the traffic may stop over 30 seconds when a station
+roams between bridge ports.
+---
+v3: Replace the netlink-polling roam handler with a bridge FDB switchdev
+    notifier. br_fdb_update() emits SWITCHDEV_FDB_DEL_TO_DEVICE with the
+    stale port on every roam, so hook that instead of polling a kernel
+    netlink socket from a self-requeueing work item. Also drops the
+    dev->ieee80211_ptr filter (wired roams now covered) and the unused
+    eth->debug_level knob.
+v2: Replace mtk_flow_offload_teardown_by_roaming() with
+    flow_offload_teardown_by_mac(). The old helper derived the 5-tuples from
+    the PPE bind entries, so flows that were never bound to hardware were
+    left behind and kept using the client's previous output port. Walking the
+    software flowtables by destination MAC instead covers both bound and
+    unbound flows.
+v1: Add PPE roaming handler to delete the PPE BIND entry related to the
+    WiFi roaming station.
+---
+
+From 79ba7f4667a0848dbdf4546a361f8f74cdf1e6da Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Wed, 24 Sep 2025 12:52:33 +0800
+Subject: [PATCH] netfilter: nf_flow_table: teardown flows on bridge FDB roaming
+
+Without this patch, the traffic may stop over 30 seconds when a station
+roams between bridge ports.
+
+The switchdev notifier approach is ported from a downstream patch by
+Chad Monroe <chad@monroe.io> ("netfilter: nf_flow_table: invalidate flows
+on bridge FDB roaming"). It differs in four ways: no per-flowtable
+direct-xmit counter, the gc pass and offload flush are gated on an actual
+match rather than run for every flowtable on every event, flows already
+marked NF_FLOW_TEARDOWN are skipped, and the !netif_oper_up() filter is
+dropped to cover carrier loss, which only emits NETDEV_CHANGE.
+
+Based-on-patch-by: Chad Monroe <chad@monroe.io>
+Link: https://github.com/cmonroe/target-mediatek/blob/smartrg-master/mediatek/patches-6.18/990-01-smartrg-netfilter-nf_flow_table-invalidate-flows-on-bridge-FDB-roaming.patch
+---
+ net/netfilter/nf_flow_table_core.c            | 164 ++++++++++++++++++++
+ 1 file changed, 164 insertions(+)
+
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -5,6 +5,7 @@
+ #include <linux/netfilter.h>
+ #include <linux/rhashtable.h>
+ #include <linux/netdevice.h>
++#include <linux/etherdevice.h>
+ #include <net/ip.h>
+ #include <net/ip6_route.h>
+ #include <net/netfilter/nf_flow_table.h>
+@@ -13,10 +14,24 @@
+ #include <net/netfilter/nf_conntrack_core.h>
+ #include <net/netfilter/nf_conntrack_l4proto.h>
+ #include <net/netfilter/nf_conntrack_tuple.h>
++#if IS_ENABLED(CONFIG_NET_SWITCHDEV)
++#include <net/switchdev.h>
++#endif
+ 
+ static DEFINE_MUTEX(flowtable_lock);
+ static LIST_HEAD(flowtables);
+ 
++#if IS_ENABLED(CONFIG_NET_SWITCHDEV)
++static struct workqueue_struct *flow_mac_cleanup_wq;
++
++struct flow_mac_cleanup_work {
++	struct work_struct	work;
++	struct net		*net;
++	u8			mac[ETH_ALEN];
++	bool			found;
++};
++#endif
++
+ static void
+ flow_offload_fill_dir(struct flow_offload *flow,
+ 		      enum flow_offload_tuple_dir dir)
+@@ -372,6 +387,132 @@ void flow_offload_teardown_by_tuple(stru
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_teardown_by_tuple);
+ 
++#if IS_ENABLED(CONFIG_NET_SWITCHDEV)
++static void nf_flow_table_do_cleanup_mac(struct nf_flowtable *flowtable,
++					 struct flow_offload *flow, void *data)
++{
++	const struct flow_offload_tuple *t = &flow->tuplehash[0].tuple;
++	struct flow_mac_cleanup_work *cleanup = data;
++	int dir;
++
++	if (test_bit(NF_FLOW_TEARDOWN, &flow->flags))
++		return;
++
++	if (!net_eq(nf_ct_net(flow->ct), cleanup->net))
++		return;
++
++	for (dir = 0; dir < FLOW_OFFLOAD_DIR_MAX; dir++) {
++		const struct flow_offload_tuple *ft = &flow->tuplehash[dir].tuple;
++
++		/* out unions with dst_cache, only valid for XMIT_DIRECT */
++		if (ft->xmit_type != FLOW_OFFLOAD_XMIT_DIRECT)
++			continue;
++
++		if (ether_addr_equal(ft->out.h_dest, cleanup->mac)) {
++			if (t->l3proto == NFPROTO_IPV4)
++				pr_debug("nf_flow_table: teardown flow %pI4:%u->%pI4:%u proto=%u for roaming mac=%pM\n",
++					 &t->src_v4, ntohs(t->src_port),
++					 &t->dst_v4, ntohs(t->dst_port),
++					 t->l4proto, cleanup->mac);
++			else
++				pr_debug("nf_flow_table: teardown flow %pI6c:%u->%pI6c:%u proto=%u for roaming mac=%pM\n",
++					 &t->src_v6, ntohs(t->src_port),
++					 &t->dst_v6, ntohs(t->dst_port),
++					 t->l4proto, cleanup->mac);
++			flow_offload_teardown(flow);
++			cleanup->found = true;
++			return;
++		}
++	}
++}
++
++/* Tear down the flows going to @mac, so they get rebuilt for wherever it lives
++ * now. Takes flowtable_lock, so it cannot run from the notifier.
++ */
++static void flow_mac_cleanup_work_handler(struct work_struct *work)
++{
++	struct flow_mac_cleanup_work *cleanup =
++		container_of(work, struct flow_mac_cleanup_work, work);
++	struct nf_flowtable *flowtable;
++
++	pr_debug("nf_flow_table: processing roaming cleanup for mac=%pM\n",
++		 cleanup->mac);
++
++	mutex_lock(&flowtable_lock);
++	list_for_each_entry(flowtable, &flowtables, list) {
++		cleanup->found = false;
++		nf_flow_table_iterate(flowtable,
++				      nf_flow_table_do_cleanup_mac, cleanup);
++		if (!cleanup->found)
++			continue;
++
++		/* teardown only set a flag: run gc now to queue the hw destroy,
++		 * then wait for the driver. Same as nf_flow_table_gc_cleanup().
++		 */
++		flush_delayed_work(&flowtable->gc_work);
++		nf_flow_table_offload_flush(flowtable);
++	}
++	mutex_unlock(&flowtable_lock);
++
++	pr_debug("nf_flow_table: roaming cleanup complete for mac=%pM\n",
++		 cleanup->mac);
++
++	put_net(cleanup->net);
++	kfree(cleanup);
++}
++
++/* Queue a teardown of every offloaded flow going to @mac. Callable from atomic
++ * context: the work item does the walking.
++ */
++static void nf_flow_table_cleanup_mac(struct net *net, const u8 *mac)
++{
++	struct flow_mac_cleanup_work *cleanup;
++
++	cleanup = kmalloc(sizeof(*cleanup), GFP_ATOMIC);
++	if (!cleanup)
++		return;
++
++	cleanup->net = get_net(net);
++	ether_addr_copy(cleanup->mac, mac);
++	INIT_WORK(&cleanup->work, flow_mac_cleanup_work_handler);
++	queue_work(flow_mac_cleanup_wq, &cleanup->work);
++}
++
++/* br_fdb_update() emits SWITCHDEV_FDB_DEL_TO_DEVICE with the stale port before
++ * it repoints fdb->dst, so this fires on every bridge FDB roam.
++ */
++static int nf_flow_table_switchdev_event(struct notifier_block *nb,
++					 unsigned long event, void *ptr)
++{
++	struct switchdev_notifier_fdb_info *fdb_info = ptr;
++	struct net_device *dev;
++
++	if (event != SWITCHDEV_FDB_DEL_TO_DEVICE)
++		return NOTIFY_DONE;
++
++	if (!fdb_info || !fdb_info->addr || !fdb_info->info.dev)
++		return NOTIFY_DONE;
++
++	if (fdb_info->is_local || is_multicast_ether_addr(fdb_info->addr))
++		return NOTIFY_DONE;
++
++	dev = fdb_info->info.dev;
++	if (netif_is_bridge_master(dev))
++		return NOTIFY_DONE;
++
++	pr_debug("nf_flow_table: FDB roaming detected del mac=%pM from port=%s\n",
++		 fdb_info->addr, dev->name);
++
++	nf_flow_table_cleanup_mac(dev_net(dev), fdb_info->addr);
++
++	return NOTIFY_DONE;
++}
++
++static struct notifier_block flow_offload_switchdev_notifier = {
++	.notifier_call = nf_flow_table_switchdev_event,
++};
++#endif
++
+ struct flow_offload_tuple_rhash *
+ flow_offload_lookup(struct nf_flowtable *flow_table,
+ 		    struct flow_offload_tuple *tuple)
+@@ -719,8 +860,26 @@ static int __init nf_flow_table_module_i
+ 	if (ret)
+ 		goto out_bpf;
+ 
++#if IS_ENABLED(CONFIG_NET_SWITCHDEV)
++	flow_mac_cleanup_wq = alloc_workqueue("nf_ft_mac_cleanup", WQ_UNBOUND, 0);
++	if (!flow_mac_cleanup_wq) {
++		ret = -ENOMEM;
++		goto out_wq;
++	}
++
++	ret = register_switchdev_notifier(&flow_offload_switchdev_notifier);
++	if (ret)
++		goto out_switchdev;
++#endif
++
+ 	return 0;
+ 
++#if IS_ENABLED(CONFIG_NET_SWITCHDEV)
++out_switchdev:
++	destroy_workqueue(flow_mac_cleanup_wq);
++out_wq:
++	unregister_netdevice_notifier(&flow_offload_netdev_notifier);
++#endif
+ out_bpf:
+ 	nf_flow_table_offload_exit();
+ out_offload:
+@@ -730,6 +889,11 @@ out_offload:
+ 
+ static void __exit nf_flow_table_module_exit(void)
+ {
++#if IS_ENABLED(CONFIG_NET_SWITCHDEV)
++	unregister_switchdev_notifier(&flow_offload_switchdev_notifier);
++	/* flushes any cleanup work still queued */
++	destroy_workqueue(flow_mac_cleanup_wq);
++#endif
+ 	unregister_netdevice_notifier(&flow_offload_netdev_notifier);
+ 	nf_flow_table_offload_exit();
+ 	unregister_pernet_subsys(&nf_flow_table_net_ops);

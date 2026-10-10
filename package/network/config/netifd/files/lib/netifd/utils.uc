@@ -54,10 +54,13 @@ export function handler_load(path, cb)
 		system(`./${script} "" "dump" >&${f.fileno()}`);
 		chdir(prev_dir);
 		f.seek();
-		while (!f.error()) {
-			let data = trim(f.read("line"));
+		while (true) {
+			let data = f.read("line");
+			if (data == null || data == "")
+				break;
+
 			try {
-				data = json(data);
+				data = json(trim(data));
 			} catch (e) {
 				continue;
 			}

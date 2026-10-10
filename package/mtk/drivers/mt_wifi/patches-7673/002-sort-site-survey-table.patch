@@ -1,0 +1,10 @@
+--- a/mt_wifi/embedded/common/cmm_info.c
++++ b/mt_wifi/embedded/common/cmm_info.c
+@@ -6970,6 +6970,7 @@ VOID RTMPIoctlGetSiteSurvey(
+ 		OS_WAIT(3000);
+ 	}
+ 
++	BssTableSortByRssi(ScanTab,FALSE);
+ 
+ 	for (i = bss_start_idx; i < ScanTab->BssNr; i++) {
+ 		pBss = &ScanTab->BssEntry[i];

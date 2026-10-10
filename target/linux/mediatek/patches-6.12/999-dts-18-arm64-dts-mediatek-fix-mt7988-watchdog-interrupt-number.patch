@@ -1,0 +1,80 @@
+---
+[v1] arm64: dts: mediatek: fix mt7988 watchdog interrupt number
+
+The MT7988 TOPRGU watchdog interrupt is GIC_SPI 74, not GIC_SPI 110.
+Fix the interrupt number so the watchdog pretimeout (bark) IRQ reaches
+the mtk_wdt driver.
+
+Background:
+mtk_wdt_probe() requests the IRQ from DTS. On success it sets
+pretimeout = timeout / 2, and mtk_wdt_start() enables
+WDT_MODE_DUAL_EN | WDT_MODE_IRQ_EN. In dual mode, the 1st timeout
+raises an IRQ instead of resetting the SoC. Only a 2nd timeout causes
+a HW reset.
+
+SPI 110 is a valid GIC line, so devm_request_irq() still succeeds with
+the wrong number. The driver therefore enables dual mode, but the WDT
+asserts SPI 74, which no driver has requested and the GIC never
+enabled. The bark is lost, the 2nd timeout fires, and every watchdog
+timeout looks like a full system hang (HW reset).
+
+Flow after the 1st timeout (pretimeout):
+
+  | Step | SPI 110 (wrong)           | SPI 74 (correct)                 |
+  |------|---------------------------|----------------------------------|
+  | 1    | WDT asserts SPI 74        | WDT asserts SPI 74               |
+  | 2    | no handler, IRQ ignored   | mtk_wdt_isr()                    |
+  | 3    | -                         | watchdog_notify_pretimeout()     |
+  | 4    | -                         | pretimeout_panic() -> panic()    |
+  | 5    | -                         | PANIC_TIMEOUT=1 -> emergency     |
+  |      |                           | restart -> machine_restart()     |
+  | 6    | -                         | psci_sys_reset() (prio 129)      |
+  |      |                           | -> SMC PSCI SYSTEM_RESET         |
+  | 7    | -                         | ATF mtk_plat_system_reset()      |
+  |      |                           | -> mtk_wdt_soft_reset()          |
+  |      |                           | -> write WDT_SWRST (0x1209)      |
+  | 8    | 2nd timeout -> HW reset   | -                                |
+  | Next | WDT_STA = 0x80000000      | WDT_STA = 0x40000000             |
+  | boot | "Watchdog timeout"        | "Software reset (reboot)"        |
+  | log  | no panic log/backtrace    | panic log + backtrace on console |
+
+Reboot reason in WDT_STA (0x1001c00c), printed by BL2
+mtk_wdt_print_status() as "WDT: [xxxxxxxx] <reason>":
+
+  | Bit | Reason   | Triggered by                                      |
+  |-----|----------|---------------------------------------------------|
+  | 31  | HW reset | WDT counter expiry with no IRQ handling:          |
+  |     |          | - dual mode 2nd timeout (bark lost / CPUs hung)   |
+  |     |          | - dual + IRQ disabled, WDT enabled and not fed    |
+  | 30  | SW reset | Write to WDT_SWRST:                               |
+  |     |          | - reboot cmd / panic via PSCI -> ATF              |
+  |     |          | - mtk_wdt_restart() (prio 128, PSCI is used 1st)  |
+  |     |          | - pretimeout panic (needs correct IRQ, this fix)  |
+
+WDT_MODE combinations (WDT_MODE_EN = 1, not fed):
+
+  | DUAL_EN | IRQ_EN | IRQ route | 1st timeout  | 2nd timeout | Result   |
+  |---------|--------|-----------|--------------|-------------|----------|
+  | 0       | 0      | -         | reset        | -           | HW reset |
+  | 1       | 1      | no (110)  | IRQ lost     | HW reset    | HW reset |
+  | 1       | 1      | yes (74)  | IRQ -> panic | -           | SW reset |
+
+After this fix a HW reset again means a real hard hang (IRQs dead on
+all CPUs). A plain userspace/kernel stall (watchdog not fed, IRQs still
+alive) now panics with a backtrace and ends with a SW reset.
+
+---
+v1: Fix mt7988 watchdog interrupt number from GIC_SPI 110 to GIC_SPI 74
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -219,7 +219,7 @@
+ 		watchdog: watchdog@1001c000 {
+ 			compatible = "mediatek,mt7988-wdt";
+ 			reg = <0 0x1001c000 0 0x1000>;
+-			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
++			interrupts = <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
+ 			#reset-cells = <1>;
+ 		};
+ 

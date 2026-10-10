@@ -1,0 +1,67 @@
+--- a/mt_wifi/os/linux/rbus_prop_dev.c
++++ b/mt_wifi/os/linux/rbus_prop_dev.c
+@@ -89,12 +89,22 @@ static int DEVINIT mt_rbus_probe(struct
+ 
+ 	MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_INFO, "===> rt2880_probe\n");
+ 
+-	if (!pci_set_dma_mask(pdev, DMA_BIT_MASK(32))) {
++	if (
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
++		!pci_set_dma_mask(pdev, DMA_BIT_MASK(32))
++#else /* pci_set_dma_mask is deprecated since version 5.18, just wrapper */
++		!dma_set_mask(&pdev->dev, DMA_BIT_MASK(32))
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
++	) {
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 		/*
+ 		 * pci_set_consistent_dma_mask() will always be able to set the same
+ 		 * or a smaller mask as pci_set_dma_mask()
+ 		 */
+ 		pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32));
++#else /* pci_set_consistent_dma_mask is deprecated since version 5.18, just wrapper */
++		dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	} else {
+ 		MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_ERROR,
+ 				 "set DMA mask failed!errno=%d\n", rv);
+--- a/mt_wifi/os/linux/pci_main_dev.c
++++ b/mt_wifi/os/linux/pci_main_dev.c
+@@ -267,7 +267,13 @@ static int mt_pci_dev_set(struct pci_dev
+ 
+ #if defined(PLATFORM_M_STB)
+ 	if (IS_ENABLED(CONFIG_ARM64) && (!IS_ENABLED(CONFIG_ZONE_DMA))) {
+-		if ((rv = pci_set_dma_mask(pdev, DMA_BIT_MASK(64))) != 0) {
++		if (
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
++			(rv = pci_set_dma_mask(pdev, DMA_BIT_MASK(64))) != 0
++#else /* pci_set_dma_mask is deprecated since version 5.18, just wrapper */
++			(rv = dma_set_mask(&pdev->dev, DMA_BIT_MASK(64))) != 0
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
++		) {
+ 			MTWF_DBG(NULL, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_ERROR,
+ 					 "set DMA mask failed!errno=%d\n", rv);
+ 			return rv;
+@@ -281,12 +287,22 @@ static int mt_pci_dev_set(struct pci_dev
+ 	}
+ 	else
+ #endif
+-	if (!pci_set_dma_mask(pdev, DMA_BIT_MASK(32))) {
++	if (
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
++		!pci_set_dma_mask(pdev, DMA_BIT_MASK(32))
++#else /* pci_set_dma_mask is deprecated since version 5.18, just wrapper */
++		!dma_set_mask(&pdev->dev, DMA_BIT_MASK(32))
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
++	) {
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 		/*
+ 		 * pci_set_consistent_dma_mask() will always be able to set the same
+ 		 * or a smaller mask as pci_set_dma_mask()
+ 		 */
+ 		pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32));
++#else /* pci_set_consistent_dma_mask is deprecated since version 5.18, just wrapper */
++		dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	} else {
+ 		MTWF_DBG(NULL, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_ERROR,
+ 				 "set DMA mask failed!errno=%d\n", rv);

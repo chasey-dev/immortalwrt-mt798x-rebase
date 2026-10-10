@@ -1,0 +1,1056 @@
+---
+[v1] kdb: add switch diagnostic command
+
+Add the switch command for MT7988, MT7530, and MT7531 switch register and PHY
+diagnostics. It supports MMIO access on MT7988 and MDIO-bus access for
+MT7530/MT7531 switches from KDB.
+---
+v1: Add the KDB switch register and PHY diagnostic command.
+---
+
+From f6a2a866d69c5bf88625a66b4e57ad76f8c722f4 Mon Sep 17 00:00:00 2001
+From: Evan Zhang <evan.zhang@mediatek.com>
+Date: Mon, 10 Aug 2026 17:04:41 +0800
+Subject: [PATCH] kdb: add switch diagnostic command
+
+Add a KDB command for MT753x and MT7988 switch diagnostics.
+
+Signed-off-by: Evan Zhang <Evan.Zhang@mediatek.com>
+---
+
+diff --git a/kernel/debug/kdb/Makefile b/kernel/debug/kdb/Makefile
+index 846a279..7f4c251 100644
+--- a/kernel/debug/kdb/Makefile
++++ b/kernel/debug/kdb/Makefile
+@@ -6,7 +6,7 @@
+ # Copyright (c) 2009 Wind River Systems, Inc. All Rights Reserved.
+ #
+ 
+-obj-y := kdb_io.o kdb_main.o kdb_support.o kdb_bt.o gen-kdb_cmds.o kdb_bp.o kdb_debugger.o kdb_dis.o kdb_regs.o kdb_mii.o
++obj-y := kdb_io.o kdb_main.o kdb_support.o kdb_bt.o gen-kdb_cmds.o kdb_bp.o kdb_debugger.o kdb_dis.o kdb_regs.o kdb_mii.o kdb_switch.o
+ obj-$(CONFIG_KDB_KEYBOARD)    += kdb_keyboard.o
+ 
+ clean-files := gen-kdb_cmds.c
+diff --git a/kernel/debug/kdb/kdb_switch.c b/kernel/debug/kdb/kdb_switch.c
+new file mode 100644
+index 0000000..71a73fc
+--- /dev/null
++++ b/kernel/debug/kdb/kdb_switch.c
+@@ -0,0 +1,1015 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ *   Copyright (C) 2026 MediaTek Inc.
++ */
++
++/*
++ * kdb_switch.c: KDB commands for MT753x/MT7988 switch register read/write
++ *
++ * KDB command notes:
++ *   Two access modes are supported, selected by command-line option:
++ *
++ *   MMIO mode (MT7988, default):
++ *     switch [-p <phys_base>] reg r/w/d <offset>
++ *     Physical address = phys_base + offset.  Default phys_base = 0x15020000.
++ *     Uses fixmap technique (FIX_TEXT_POKE0) — safe in KDB context, no locks.
++ *     PHY access uses MT7531 PHY IAC register at offset 0x701C (also MMIO).
++ *
++ *   MDIO mode (MT7531, standalone chip via MDIO bus):
++ *     switch -i <busname> reg r/w/d <offset>
++ *     Accesses switch registers via MDIO using the MT7530 page protocol:
++ *       page = offset[15:6] → write to MDIO reg 0x1f
++ *       r    = offset[5:2]  → MDIO reg for low 16 bits
++ *       hi is always at MDIO reg 0x10
++ *     PHY access uses MDIO bus->read/write directly (CL22/CL45).
++ *     Direct bus->read/write() calls are used (not mdiobus_read/write())
++ *     to avoid mutex deadlock in KDB context.
++ *     The MT7531 MDIO address (phy_id for switch regs) defaults to 0x1f
++ *     but can be overridden with -a <phy_id>.
++ *
++ * This file is subject to the terms and conditions of the GNU General Public
++ * License.  See the file "COPYING" in the main directory of this archive
++ * for more details.
++ */
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/io.h>
++#include <linux/phy.h>
++#include <linux/mdio.h>
++#include <linux/kdb.h>
++#include <asm/fixmap.h>
++#include <asm/pgtable-prot.h>
++#include "kdb_private.h"
++
++/*
++ * Default MT7988 switch MMIO physical base address.
++ * From arch/arm64/boot/dts/mediatek/mt7988a.dtsi:
++ *   switch@15020000 { reg = <0 0x15020000 0 0x8000>; }
++ */
++#define MT7988_SW_BASE		0x15020000UL
++#define MT7988_SW_SIZE		0x8000
++
++/*
++ * Default MDIO bus name for MT7531 standalone mode.
++ * Same default as kdb_mii.c.
++ */
++#define KDB_SW_DEFAULT_BUS	"mdio-bus"
++
++/*
++ * MT7530/MT7531 switch register access port (phy_id for MDIO mode).
++ * The original switch_ioctl.c uses phy_id=0x1f for all switch register
++ * accesses via RAETH_MII_READ/WRITE ioctl.
++ */
++#define MT7530_SW_PHY_ID	0x1f
++
++/* Maximum port/PHY numbers */
++#define KDB_SW_MAX_PORT		6
++#define KDB_SW_MAX_PHY_PORT	4
++
++/*
++ * MT7531 PHY IAC register (Indirect Access Control) — offset from switch base.
++ * Used for CL22 and CL45 PHY access on MT7531/MT7988 (MMIO mode).
++ */
++#define MT7531_PHY_IAC		0x701C
++#define  MT7531_PHY_ACS_ST	BIT(31)
++#define  MT7531_MDIO_REG_ADDR(x)	(((x) & 0x1f) << 25)
++#define  MT7531_MDIO_DEV_ADDR(x)	(((x) & 0x1f) << 25)
++#define  MT7531_MDIO_PHY_ADDR(x)	(((x) & 0x1f) << 20)
++#define  MT7531_MDIO_CMD(x)		(((x) & 0x3) << 18)
++#define  MT7531_MDIO_ST(x)		(((x) & 0x3) << 16)
++#define  MT7531_MDIO_RW_DATA_MASK	0xffff
++
++/* MDIO_ST values */
++#define MT7531_MDIO_ST_CL45	0
++#define MT7531_MDIO_ST_CL22	1
++
++/* MDIO command values */
++#define MT7531_MDIO_ADDR_CMD	0
++#define MT7531_MDIO_WRITE_CMD	1
++#define MT7531_MDIO_READ_CMD	2
++#define MT7531_MDIO_READ_CL45	3
++
++#define MT7531_MDIO_CL22_READ	(MT7531_MDIO_ST(MT7531_MDIO_ST_CL22) | \
++				 MT7531_MDIO_CMD(MT7531_MDIO_READ_CMD))
++#define MT7531_MDIO_CL22_WRITE	(MT7531_MDIO_ST(MT7531_MDIO_ST_CL22) | \
++				 MT7531_MDIO_CMD(MT7531_MDIO_WRITE_CMD))
++#define MT7531_MDIO_CL45_ADDR	(MT7531_MDIO_ST(MT7531_MDIO_ST_CL45) | \
++				 MT7531_MDIO_CMD(MT7531_MDIO_ADDR_CMD))
++#define MT7531_MDIO_CL45_READ	(MT7531_MDIO_ST(MT7531_MDIO_ST_CL45) | \
++				 MT7531_MDIO_CMD(MT7531_MDIO_READ_CL45))
++#define MT7531_MDIO_CL45_WRITE	(MT7531_MDIO_ST(MT7531_MDIO_ST_CL45) | \
++				 MT7531_MDIO_CMD(MT7531_MDIO_WRITE_CMD))
++
++/*
++ * Access context: holds either MMIO base or MDIO bus info.
++ * mode == 0: MMIO (MT7988)
++ * mode == 1: MDIO (MT7531)
++ */
++struct kdb_sw_ctx {
++	int mode;		/* 0=MMIO, 1=MDIO */
++	/* MMIO mode */
++	unsigned long sw_base;	/* physical base address */
++	/* MDIO mode */
++	struct mii_bus *bus;	/* MDIO bus */
++	int phy_id;		/* MDIO phy_id for switch regs (default 0x1f) */
++};
++
++/* ------------------------------------------------------------------ */
++/* Helper: parse a hex argument (always base-16, no "0x" prefix needed)*/
++/* ------------------------------------------------------------------ */
++static int kdb_sw_getarg(const char *arg, unsigned long *val)
++{
++	int ret;
++
++	ret = kstrtoul(arg, 16, val);
++	if (ret) {
++		kdb_printf("switch: invalid hex argument '%s'\n", arg);
++		return KDB_BADINT;
++	}
++	return 0;
++}
++
++/* ================================================================== */
++/* MMIO helpers (MT7988)                                               */
++/* Uses FIX_TEXT_POKE0 fixmap slot — safe in KDB context.             */
++/* ================================================================== */
++static u32 kdb_sw_mmio_read(phys_addr_t phys)
++{
++	phys_addr_t page_base = phys & PAGE_MASK;
++	unsigned long offset  = (unsigned long)(phys & ~PAGE_MASK);
++	void __iomem *vaddr;
++	u32 val;
++
++	__set_fixmap(FIX_TEXT_POKE0, page_base, FIXMAP_PAGE_IO);
++	vaddr = (void __iomem *)(fix_to_virt(FIX_TEXT_POKE0) + offset);
++	val = readl(vaddr);
++	clear_fixmap(FIX_TEXT_POKE0);
++	return val;
++}
++
++static void kdb_sw_mmio_write(phys_addr_t phys, u32 val)
++{
++	phys_addr_t page_base = phys & PAGE_MASK;
++	unsigned long offset  = (unsigned long)(phys & ~PAGE_MASK);
++	void __iomem *vaddr;
++
++	__set_fixmap(FIX_TEXT_POKE0, page_base, FIXMAP_PAGE_IO);
++	vaddr = (void __iomem *)(fix_to_virt(FIX_TEXT_POKE0) + offset);
++	writel(val, vaddr);
++	clear_fixmap(FIX_TEXT_POKE0);
++}
++
++/* ================================================================== */
++/* Switch register read/write — dispatches to MMIO or MDIO            */
++/* ================================================================== */
++
++/*
++ * MMIO register read: physical address = sw_base + offset
++ */
++static int kdb_sw_reg_read_mmio(unsigned long sw_base, unsigned int offset,
++				unsigned int *value)
++{
++	if (offset >= MT7988_SW_SIZE) {
++		kdb_printf("switch: offset 0x%x out of range (max 0x%x)\n",
++			   offset, MT7988_SW_SIZE - 1);
++		return KDB_BADADDR;
++	}
++	*value = kdb_sw_mmio_read((phys_addr_t)(sw_base + offset));
++	return 0;
++}
++
++static int kdb_sw_reg_write_mmio(unsigned long sw_base, unsigned int offset,
++				 unsigned int value)
++{
++	if (offset >= MT7988_SW_SIZE) {
++		kdb_printf("switch: offset 0x%x out of range (max 0x%x)\n",
++			   offset, MT7988_SW_SIZE - 1);
++		return KDB_BADADDR;
++	}
++	kdb_sw_mmio_write((phys_addr_t)(sw_base + offset), (u32)value);
++	return 0;
++}
++
++/*
++ * MDIO register read (MT7531 page protocol):
++ *   page = offset[15:6] → write to MDIO reg 0x1f
++ *   r    = offset[5:2]  → MDIO reg for low 16 bits
++ *   hi is always at MDIO reg 0x10
++ * Matches mt7530_regmap_read() in drivers/net/dsa/mt7530-mdio.c.
++ */
++static int kdb_sw_reg_read_mdio(struct mii_bus *bus, int phy_id,
++				unsigned int offset, unsigned int *value)
++{
++	unsigned int page, r;
++	int lo, hi;
++
++	page = (offset >> 6) & 0x3ff;
++	r    = (offset >> 2) & 0xf;
++
++	/* Select page */
++	bus->write(bus, phy_id, 0x1f, (u16)page);
++
++	lo = bus->read(bus, phy_id, r);
++	hi = bus->read(bus, phy_id, 0x10);
++
++	if (lo < 0 || hi < 0) {
++		kdb_printf("switch: MDIO reg_read failed at offset=0x%x\n",
++			   offset);
++		return KDB_BADADDR;
++	}
++
++	*value = ((unsigned int)(hi & 0xffff) << 16) |
++		  (unsigned int)(lo & 0xffff);
++	return 0;
++}
++
++static int kdb_sw_reg_write_mdio(struct mii_bus *bus, int phy_id,
++				 unsigned int offset, unsigned int value)
++{
++	unsigned int page, r;
++	int err;
++
++	page = (offset >> 6) & 0x3ff;
++	r    = (offset >> 2) & 0xf;
++
++	/* Select page */
++	bus->write(bus, phy_id, 0x1f, (u16)page);
++
++	/* Write low 16 bits */
++	err = bus->write(bus, phy_id, r, (u16)(value & 0xffff));
++	if (err) {
++		kdb_printf("switch: MDIO reg_write lo failed err=%d\n", err);
++		return KDB_BADADDR;
++	}
++
++	/* Write high 16 bits — always to MDIO reg 0x10 */
++	err = bus->write(bus, phy_id, 0x10, (u16)((value >> 16) & 0xffff));
++	if (err) {
++		kdb_printf("switch: MDIO reg_write hi failed err=%d\n", err);
++		return KDB_BADADDR;
++	}
++
++	return 0;
++}
++
++/* Unified reg read/write dispatchers */
++static int kdb_sw_reg_read(struct kdb_sw_ctx *ctx, unsigned int offset,
++			   unsigned int *value)
++{
++	if (ctx->mode == 0)
++		return kdb_sw_reg_read_mmio(ctx->sw_base, offset, value);
++	else
++		return kdb_sw_reg_read_mdio(ctx->bus, ctx->phy_id, offset,
++					    value);
++}
++
++static int kdb_sw_reg_write(struct kdb_sw_ctx *ctx, unsigned int offset,
++			    unsigned int value)
++{
++	if (ctx->mode == 0)
++		return kdb_sw_reg_write_mmio(ctx->sw_base, offset, value);
++	else
++		return kdb_sw_reg_write_mdio(ctx->bus, ctx->phy_id, offset,
++					     value);
++}
++
++/* ================================================================== */
++/* PHY IAC helpers (MMIO mode — MT7988/MT7531 internal PHY access)    */
++/* ================================================================== */
++
++static int kdb_sw_iac_wait(unsigned long sw_base)
++{
++	int i;
++	u32 val;
++
++	for (i = 0; i < 100000; i++) {
++		val = kdb_sw_mmio_read((phys_addr_t)(sw_base + MT7531_PHY_IAC));
++		if (!(val & MT7531_PHY_ACS_ST))
++			return 0;
++	}
++	kdb_printf("switch: PHY IAC timeout\n");
++	return -1;
++}
++
++/* ================================================================== */
++/* PHY CL22 read/write                                                 */
++/* ================================================================== */
++
++/* MMIO mode: via PHY IAC register */
++static int kdb_sw_phy_cl22_read_mmio(unsigned long sw_base, int port, int reg)
++{
++	u32 val;
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = MT7531_MDIO_CL22_READ |
++	      MT7531_MDIO_PHY_ADDR(port) |
++	      MT7531_MDIO_REG_ADDR(reg);
++	kdb_sw_mmio_write((phys_addr_t)(sw_base + MT7531_PHY_IAC),
++			  val | MT7531_PHY_ACS_ST);
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = kdb_sw_mmio_read((phys_addr_t)(sw_base + MT7531_PHY_IAC));
++	val &= MT7531_MDIO_RW_DATA_MASK;
++
++	kdb_printf(" Phy read reg=0x%x, value=0x%x\n", reg, val);
++	return 0;
++}
++
++static int kdb_sw_phy_cl22_write_mmio(unsigned long sw_base, int port, int reg,
++				      u16 data)
++{
++	u32 val;
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = MT7531_MDIO_CL22_WRITE |
++	      MT7531_MDIO_PHY_ADDR(port) |
++	      MT7531_MDIO_REG_ADDR(reg) |
++	      data;
++	kdb_sw_mmio_write((phys_addr_t)(sw_base + MT7531_PHY_IAC),
++			  val | MT7531_PHY_ACS_ST);
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	/* Read back to confirm */
++	val = MT7531_MDIO_CL22_READ |
++	      MT7531_MDIO_PHY_ADDR(port) |
++	      MT7531_MDIO_REG_ADDR(reg);
++	kdb_sw_mmio_write((phys_addr_t)(sw_base + MT7531_PHY_IAC),
++			  val | MT7531_PHY_ACS_ST);
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = kdb_sw_mmio_read((phys_addr_t)(sw_base + MT7531_PHY_IAC));
++	val &= MT7531_MDIO_RW_DATA_MASK;
++
++	kdb_printf(" Phy write reg=0x%x, value=0x%x\n", reg, val);
++	return 0;
++}
++
++/* MDIO mode: direct bus->read/write (no mutex — KDB context) */
++static int kdb_sw_phy_cl22_read_mdio(struct mii_bus *bus, int port, int reg)
++{
++	int val;
++
++	val = bus->read(bus, port, reg);
++	if (val < 0) {
++		kdb_printf(" Phy read reg fail (port=%d reg=0x%x err=%d)\n",
++			   port, reg, val);
++		return KDB_BADADDR;
++	}
++	kdb_printf(" Phy read reg=0x%x, value=0x%x\n",
++		   reg, (unsigned int)val & 0xffff);
++	return 0;
++}
++
++static int kdb_sw_phy_cl22_write_mdio(struct mii_bus *bus, int port, int reg,
++				      u16 data)
++{
++	int err, readback;
++
++	err = bus->write(bus, port, reg, data);
++	if (err) {
++		kdb_printf(" Phy write reg fail (port=%d reg=0x%x err=%d)\n",
++			   port, reg, err);
++		return KDB_BADADDR;
++	}
++
++	readback = bus->read(bus, port, reg);
++	if (readback < 0)
++		kdb_printf(" Phy write reg fail (readback err=%d)\n", readback);
++	else
++		kdb_printf(" Phy write reg=0x%x, value=0x%x\n",
++			   reg, (unsigned int)readback & 0xffff);
++	return 0;
++}
++
++/* Unified CL22 dispatchers */
++static int kdb_sw_phy_cl22_read(struct kdb_sw_ctx *ctx, int port, int reg)
++{
++	if (ctx->mode == 0)
++		return kdb_sw_phy_cl22_read_mmio(ctx->sw_base, port, reg);
++	else
++		return kdb_sw_phy_cl22_read_mdio(ctx->bus, port, reg);
++}
++
++static int kdb_sw_phy_cl22_write(struct kdb_sw_ctx *ctx, int port, int reg,
++				 u16 data)
++{
++	if (ctx->mode == 0)
++		return kdb_sw_phy_cl22_write_mmio(ctx->sw_base, port, reg,
++						  data);
++	else
++		return kdb_sw_phy_cl22_write_mdio(ctx->bus, port, reg, data);
++}
++
++/* ================================================================== */
++/* PHY CL45 read/write                                                 */
++/* ================================================================== */
++
++/* MMIO mode: via PHY IAC register */
++static int kdb_sw_phy_cl45_read_mmio(unsigned long sw_base, int port,
++				     int devad, int reg)
++{
++	u32 val;
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = MT7531_MDIO_CL45_ADDR |
++	      MT7531_MDIO_PHY_ADDR(port) |
++	      MT7531_MDIO_DEV_ADDR(devad) |
++	      (u32)reg;
++	kdb_sw_mmio_write((phys_addr_t)(sw_base + MT7531_PHY_IAC),
++			  val | MT7531_PHY_ACS_ST);
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = MT7531_MDIO_CL45_READ |
++	      MT7531_MDIO_PHY_ADDR(port) |
++	      MT7531_MDIO_DEV_ADDR(devad);
++	kdb_sw_mmio_write((phys_addr_t)(sw_base + MT7531_PHY_IAC),
++			  val | MT7531_PHY_ACS_ST);
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = kdb_sw_mmio_read((phys_addr_t)(sw_base + MT7531_PHY_IAC));
++	val &= MT7531_MDIO_RW_DATA_MASK;
++
++	kdb_printf(" Phy read dev_num=0x%x, reg=0x%x, value=0x%x\n",
++		   devad, reg, val);
++	return 0;
++}
++
++static int kdb_sw_phy_cl45_write_mmio(unsigned long sw_base, int port,
++				      int devad, int reg, u16 data)
++{
++	u32 val;
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = MT7531_MDIO_CL45_ADDR |
++	      MT7531_MDIO_PHY_ADDR(port) |
++	      MT7531_MDIO_DEV_ADDR(devad) |
++	      (u32)reg;
++	kdb_sw_mmio_write((phys_addr_t)(sw_base + MT7531_PHY_IAC),
++			  val | MT7531_PHY_ACS_ST);
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = MT7531_MDIO_CL45_WRITE |
++	      MT7531_MDIO_PHY_ADDR(port) |
++	      MT7531_MDIO_DEV_ADDR(devad) |
++	      data;
++	kdb_sw_mmio_write((phys_addr_t)(sw_base + MT7531_PHY_IAC),
++			  val | MT7531_PHY_ACS_ST);
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	/* Read back to confirm */
++	val = MT7531_MDIO_CL45_ADDR |
++	      MT7531_MDIO_PHY_ADDR(port) |
++	      MT7531_MDIO_DEV_ADDR(devad) |
++	      (u32)reg;
++	kdb_sw_mmio_write((phys_addr_t)(sw_base + MT7531_PHY_IAC),
++			  val | MT7531_PHY_ACS_ST);
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = MT7531_MDIO_CL45_READ |
++	      MT7531_MDIO_PHY_ADDR(port) |
++	      MT7531_MDIO_DEV_ADDR(devad);
++	kdb_sw_mmio_write((phys_addr_t)(sw_base + MT7531_PHY_IAC),
++			  val | MT7531_PHY_ACS_ST);
++
++	if (kdb_sw_iac_wait(sw_base))
++		return KDB_BADADDR;
++
++	val = kdb_sw_mmio_read((phys_addr_t)(sw_base + MT7531_PHY_IAC));
++	val &= MT7531_MDIO_RW_DATA_MASK;
++
++	kdb_printf(" Phy write dev_num=0x%x reg=0x%x, value=0x%x\n",
++		   devad, reg, val);
++	return 0;
++}
++
++/* MDIO mode: direct bus->read_c45/write_c45 */
++static int kdb_sw_phy_cl45_read_mdio(struct mii_bus *bus, int port, int devad,
++				     int reg)
++{
++	int val;
++
++	if (!bus->read_c45) {
++		kdb_printf("switch: bus has no read_c45 op\n");
++		return KDB_BADADDR;
++	}
++	val = bus->read_c45(bus, port, devad, reg);
++	if (val < 0) {
++		kdb_printf(" Phy read reg fail (port=%d dev=0x%x reg=0x%x err=%d)\n",
++			   port, devad, reg, val);
++		return KDB_BADADDR;
++	}
++	kdb_printf(" Phy read dev_num=0x%x, reg=0x%x, value=0x%x\n",
++		   devad, reg, (unsigned int)val & 0xffff);
++	return 0;
++}
++
++static int kdb_sw_phy_cl45_write_mdio(struct mii_bus *bus, int port, int devad,
++				      int reg, u16 data)
++{
++	int err, readback;
++
++	if (!bus->write_c45 || !bus->read_c45) {
++		kdb_printf("switch: bus missing cl45 read/write ops\n");
++		return KDB_BADADDR;
++	}
++	err = bus->write_c45(bus, port, devad, reg, data);
++	if (err) {
++		kdb_printf(" Phy write reg fail (port=%d dev=0x%x reg=0x%x err=%d)\n",
++			   port, devad, reg, err);
++		return KDB_BADADDR;
++	}
++	readback = bus->read_c45(bus, port, devad, reg);
++	if (readback < 0)
++		kdb_printf(" Phy write reg fail (readback err=%d)\n", readback);
++	else
++		kdb_printf(" Phy write dev_num=0x%x reg=0x%x, value=0x%x\n",
++			   devad, reg, (unsigned int)readback & 0xffff);
++	return 0;
++}
++
++/* Unified CL45 dispatchers */
++static int kdb_sw_phy_cl45_read(struct kdb_sw_ctx *ctx, int port, int devad,
++				int reg)
++{
++	if (ctx->mode == 0)
++		return kdb_sw_phy_cl45_read_mmio(ctx->sw_base, port, devad,
++						 reg);
++	else
++		return kdb_sw_phy_cl45_read_mdio(ctx->bus, port, devad, reg);
++}
++
++static int kdb_sw_phy_cl45_write(struct kdb_sw_ctx *ctx, int port, int devad,
++				 int reg, u16 data)
++{
++	if (ctx->mode == 0)
++		return kdb_sw_phy_cl45_write_mmio(ctx->sw_base, port, devad,
++						  reg, data);
++	else
++		return kdb_sw_phy_cl45_write_mdio(ctx->bus, port, devad, reg,
++						  data);
++}
++
++/* ================================================================== */
++/* PHY dump: dump all 32 registers of a given PHY address (CL22)      */
++/* ================================================================== */
++static int kdb_sw_phy_dump(struct kdb_sw_ctx *ctx, int phy_addr)
++{
++	int i, port;
++
++	if (phy_addr == 32) {
++		for (port = 0; port <= KDB_SW_MAX_PHY_PORT; port++) {
++			kdb_printf("\n===PHY addr %d===\n", port);
++			for (i = 0; i < 32; i++) {
++				int val;
++
++				if (ctx->mode == 0) {
++					u32 cmd, rval;
++
++					if (kdb_sw_iac_wait(ctx->sw_base))
++						continue;
++					cmd = MT7531_MDIO_CL22_READ |
++					      MT7531_MDIO_PHY_ADDR(port) |
++					      MT7531_MDIO_REG_ADDR(i);
++					kdb_sw_mmio_write(
++						(phys_addr_t)(ctx->sw_base +
++							      MT7531_PHY_IAC),
++						cmd | MT7531_PHY_ACS_ST);
++					if (kdb_sw_iac_wait(ctx->sw_base))
++						continue;
++					rval = kdb_sw_mmio_read(
++						(phys_addr_t)(ctx->sw_base +
++							      MT7531_PHY_IAC));
++					val = (int)(rval & MT7531_MDIO_RW_DATA_MASK);
++				} else {
++					val = ctx->bus->read(ctx->bus, port, i);
++				}
++				if (val < 0)
++					kdb_printf(" reg%02d: read error\n", i);
++				else
++					kdb_printf(" reg%02d: 0x%04x\n", i,
++						   (unsigned int)val & 0xffff);
++			}
++		}
++		} else {
++			kdb_printf("\n===PHY addr %d===\n", phy_addr);
++			for (i = 0; i < 32; i++) {
++				int val;
++
++				if (ctx->mode == 0) {
++					u32 cmd, rval;
++
++					if (kdb_sw_iac_wait(ctx->sw_base))
++						continue;
++					cmd = MT7531_MDIO_CL22_READ |
++					      MT7531_MDIO_PHY_ADDR(phy_addr) |
++					      MT7531_MDIO_REG_ADDR(i);
++					kdb_sw_mmio_write(
++						(phys_addr_t)(ctx->sw_base +
++							      MT7531_PHY_IAC),
++						cmd | MT7531_PHY_ACS_ST);
++					if (kdb_sw_iac_wait(ctx->sw_base))
++						continue;
++					rval = kdb_sw_mmio_read(
++						(phys_addr_t)(ctx->sw_base +
++							      MT7531_PHY_IAC));
++					val = (int)(rval & MT7531_MDIO_RW_DATA_MASK);
++				} else {
++					val = ctx->bus->read(ctx->bus, phy_addr, i);
++				}
++				if (val < 0)
++					kdb_printf(" reg%02d: read error\n", i);
++				else
++					kdb_printf(" reg%02d: 0x%04x\n", i,
++						   (unsigned int)val & 0xffff);
++			}
++		}
++		return 0;
++	}
++
++	/* ================================================================== */
++	/* Usage / help                                                         */
++	/* ================================================================== */
++static void kdb_sw_usage(void)
++{
++		kdb_printf("switch [-i <busname>] [-a <phy_id>] [-p <phys_base>] <subcmd> ...\n");
++		kdb_printf("  Default bus: '%s'\n", KDB_SW_DEFAULT_BUS);
++		kdb_printf("  -i <busname>  : MDIO mode (MT7531), use named MDIO bus\n");
++		kdb_printf("  -a <phy_id>   : MDIO phy_id for switch regs (default 0x%x)\n",
++				  MT7530_SW_PHY_ID);
++		kdb_printf("  -p <phys_base>: MMIO mode (MT7988), physical base (default 0x%lx)\n",
++				  MT7988_SW_BASE);
++		kdb_printf("\n");
++		kdb_printf("Register operations (same as: switch reg r/w/d):\n");
++		kdb_printf("  switch reg r [offset]              - read switch register\n");
++		kdb_printf("  switch reg w [offset] [value]      - write switch register\n");
++		kdb_printf("  switch reg d [offset]              - dump 16 regs from offset\n");
++		kdb_printf("\n");
++		kdb_printf("PHY operations:\n");
++		kdb_printf("  switch phy                         - dump all PHY regs (CL22)\n");
++		kdb_printf("  switch phy [phy_addr]              - dump specific PHY (CL22)\n");
++		kdb_printf("  switch phy cl22 r [port] [reg]     - CL22 read\n");
++		kdb_printf("  switch phy cl22 w [port] [reg] [v] - CL22 write\n");
++		kdb_printf("  switch phy cl45 r [port] [dev] [reg]     - CL45 read\n");
++		kdb_printf("  switch phy cl45 w [port] [dev] [reg] [v] - CL45 write\n");
++	}
++
++	/* ================================================================== */
++	/* Main KDB command handler                                             */
++	/* ================================================================== */
++static int kdb_switch_cmd(int argc, const char **argv)
++{
++		struct kdb_sw_ctx ctx;
++		int argi = 1;		/* argv index, argv[0] is command name */
++		int ret;
++		unsigned long tmp;
++
++		/* Defaults: MMIO mode, MT7988 base */
++		ctx.mode   = 0;
++		ctx.sw_base = MT7988_SW_BASE;
++		ctx.bus    = NULL;
++		ctx.phy_id = MT7530_SW_PHY_ID;
++
++		/* Parse options: -i <busname>, -a <phy_id>, -p <phys_base> */
++		while (argi <= argc) {
++			if (!argv[argi])
++				break;
++			if (strcmp(argv[argi], "-i") == 0) {
++				if (argi + 1 > argc) {
++					kdb_printf("switch: -i requires a bus name\n");
++					return KDB_ARGCOUNT;
++				}
++				argi++;
++				ctx.bus = mdio_find_bus(argv[argi]);
++				if (!ctx.bus) {
++					kdb_printf("switch: MDIO bus '%s' not found\n",
++						   argv[argi]);
++					return KDB_BADADDR;
++				}
++				ctx.mode = 1;
++				argi++;
++			} else if (strcmp(argv[argi], "-a") == 0) {
++				if (argi + 1 > argc) {
++					kdb_printf("switch: -a requires a phy_id\n");
++					return KDB_ARGCOUNT;
++				}
++				argi++;
++				ret = kdb_sw_getarg(argv[argi], &tmp);
++				if (ret)
++					return ret;
++				ctx.phy_id = (int)tmp;
++				argi++;
++			} else if (strcmp(argv[argi], "-p") == 0) {
++				if (argi + 1 > argc) {
++					kdb_printf("switch: -p requires a phys_base\n");
++					return KDB_ARGCOUNT;
++				}
++				argi++;
++				ret = kdb_sw_getarg(argv[argi], &tmp);
++				if (ret)
++					return ret;
++				ctx.sw_base = tmp;
++				ctx.mode = 0;
++				argi++;
++			} else {
++				break;
++			}
++		}
++
++		/* Remaining args: subcmd */
++		if (argi > argc || !argv[argi]) {
++			kdb_sw_usage();
++			return 0;
++		}
++
++		/* ---- reg subcmd ---- */
++		if (strcmp(argv[argi], "reg") == 0) {
++			argi++;
++			if (argi > argc || !argv[argi]) {
++				kdb_printf("switch: 'reg' requires r/w/d\n");
++				kdb_sw_usage();
++				return KDB_ARGCOUNT;
++			}
++
++			if (strcmp(argv[argi], "r") == 0) {
++				unsigned int offset, value;
++
++				argi++;
++				if (argi > argc || !argv[argi]) {
++					kdb_printf("switch: 'reg r' requires an offset\n");
++					kdb_sw_usage();
++					return KDB_ARGCOUNT;
++				}
++				ret = kdb_sw_getarg(argv[argi], &tmp);
++				if (ret)
++					return ret;
++				offset = (unsigned int)tmp;
++
++				ret = kdb_sw_reg_read(&ctx, offset, &value);
++				if (ret)
++					return ret;
++				kdb_printf(" offset=0x%x, value=0x%08x\n",
++					   offset, value);
++
++			} else if (strcmp(argv[argi], "w") == 0) {
++				unsigned int offset, value;
++
++				argi++;
++				if (argi + 1 > argc || !argv[argi] ||
++				    !argv[argi + 1]) {
++					kdb_printf("switch: 'reg w' requires offset and value\n");
++					kdb_sw_usage();
++					return KDB_ARGCOUNT;
++				}
++				ret = kdb_sw_getarg(argv[argi], &tmp);
++				if (ret)
++					return ret;
++				offset = (unsigned int)tmp;
++				argi++;
++				ret = kdb_sw_getarg(argv[argi], &tmp);
++				if (ret)
++					return ret;
++				value = (unsigned int)tmp;
++
++				ret = kdb_sw_reg_write(&ctx, offset, value);
++				if (ret)
++					return ret;
++
++				/* Read back to confirm */
++				ret = kdb_sw_reg_read(&ctx, offset, &value);
++				if (ret)
++					return ret;
++				kdb_printf(" offset=0x%x, value=0x%08x\n",
++					   offset, value);
++
++			} else if (strcmp(argv[argi], "d") == 0) {
++				unsigned int offset, value;
++				int k;
++
++				argi++;
++				if (argi > argc || !argv[argi]) {
++					kdb_printf("switch: 'reg d' requires an offset\n");
++					kdb_sw_usage();
++					return KDB_ARGCOUNT;
++				}
++				ret = kdb_sw_getarg(argv[argi], &tmp);
++				if (ret)
++					return ret;
++				offset = (unsigned int)tmp;
++
++				for (k = 0; k < 16; k++) {
++					ret = kdb_sw_reg_read(&ctx, offset + k * 4,
++							      &value);
++					if (ret)
++						break;
++					kdb_printf(" offset=0x%x, value=0x%08x\n",
++						   offset + k * 4, value);
++				}
++
++			} else {
++				kdb_printf("switch: unknown reg subcmd '%s'\n",
++					   argv[argi]);
++				kdb_sw_usage();
++				return KDB_ARGCOUNT;
++			}
++
++		/* ---- phy subcmd ---- */
++		} else if (strcmp(argv[argi], "phy") == 0) {
++			argi++;
++
++			/* No more args: dump all PHYs */
++			if (argi > argc || !argv[argi])
++				return kdb_sw_phy_dump(&ctx, 32);
++
++			/* Numeric arg: dump specific PHY */
++			if (argv[argi][0] >= '0' && argv[argi][0] <= '9') {
++				ret = kdb_sw_getarg(argv[argi], &tmp);
++				if (ret)
++					return ret;
++				return kdb_sw_phy_dump(&ctx, (int)tmp);
++			}
++
++			/* cl22 / cl45 */
++			if (strcmp(argv[argi], "cl22") == 0) {
++				argi++;
++				if (argi > argc || !argv[argi]) {
++					kdb_printf("switch: 'phy cl22' requires r/w\n");
++					return KDB_ARGCOUNT;
++				}
++
++				if (strcmp(argv[argi], "r") == 0) {
++					unsigned long port, reg;
++
++					argi++;
++					if (argi + 1 > argc || !argv[argi] ||
++					    !argv[argi + 1]) {
++						kdb_printf("switch: 'phy cl22 r' requires ");
++						kdb_printf("port and reg\n");
++						return KDB_ARGCOUNT;
++					}
++					ret = kdb_sw_getarg(argv[argi], &port);
++					if (ret)
++						return ret;
++					argi++;
++					ret = kdb_sw_getarg(argv[argi], &reg);
++					if (ret)
++						return ret;
++					return kdb_sw_phy_cl22_read(&ctx, (int)port,
++								    (int)reg);
++
++				} else if (strcmp(argv[argi], "w") == 0) {
++					unsigned long port, reg, val;
++
++					argi++;
++					if (argi + 2 > argc || !argv[argi] ||
++					    !argv[argi + 1] || !argv[argi + 2]) {
++						kdb_printf("switch: 'phy cl22 w' requires ");
++						kdb_printf("port, reg, value\n");
++						return KDB_ARGCOUNT;
++					}
++					ret = kdb_sw_getarg(argv[argi], &port);
++					if (ret)
++						return ret;
++					argi++;
++					ret = kdb_sw_getarg(argv[argi], &reg);
++					if (ret)
++						return ret;
++					argi++;
++					ret = kdb_sw_getarg(argv[argi], &val);
++					if (ret)
++						return ret;
++					return kdb_sw_phy_cl22_write(&ctx, (int)port,
++								     (int)reg,
++								     (u16)val);
++				} else {
++					kdb_printf("switch: unknown 'phy cl22' subcmd '%s'\n",
++						   argv[argi]);
++					return KDB_ARGCOUNT;
++				}
++
++			} else if (strcmp(argv[argi], "cl45") == 0) {
++				argi++;
++				if (argi > argc || !argv[argi]) {
++					kdb_printf("switch: 'phy cl45' requires r/w\n");
++					return KDB_ARGCOUNT;
++				}
++
++				if (strcmp(argv[argi], "r") == 0) {
++					unsigned long port, devad, reg;
++
++					argi++;
++					if (argi + 2 > argc || !argv[argi] ||
++					    !argv[argi + 1] || !argv[argi + 2]) {
++						kdb_printf("switch: 'phy cl45 r' requires ");
++						kdb_printf("port, dev, reg\n");
++						return KDB_ARGCOUNT;
++					}
++					ret = kdb_sw_getarg(argv[argi], &port);
++					if (ret)
++						return ret;
++					argi++;
++					ret = kdb_sw_getarg(argv[argi], &devad);
++					if (ret)
++						return ret;
++					argi++;
++					ret = kdb_sw_getarg(argv[argi], &reg);
++					if (ret)
++						return ret;
++					return kdb_sw_phy_cl45_read(&ctx, (int)port,
++								    (int)devad,
++								    (int)reg);
++
++				} else if (strcmp(argv[argi], "w") == 0) {
++					unsigned long port, devad, reg, val;
++
++					argi++;
++					if (argi + 3 > argc || !argv[argi] ||
++					    !argv[argi + 1] || !argv[argi + 2] ||
++					    !argv[argi + 3]) {
++						kdb_printf("switch: 'phy cl45 w' requires ");
++						kdb_printf("port, dev, reg, value\n");
++						return KDB_ARGCOUNT;
++					}
++					ret = kdb_sw_getarg(argv[argi], &port);
++					if (ret)
++						return ret;
++					argi++;
++					ret = kdb_sw_getarg(argv[argi], &devad);
++					if (ret)
++						return ret;
++					argi++;
++					ret = kdb_sw_getarg(argv[argi], &reg);
++					if (ret)
++						return ret;
++					argi++;
++					ret = kdb_sw_getarg(argv[argi], &val);
++					if (ret)
++						return ret;
++					return kdb_sw_phy_cl45_write(&ctx, (int)port,
++								     (int)devad,
++								     (int)reg,
++								     (u16)val);
++				} else {
++					kdb_printf("switch: unknown 'phy cl45' subcmd '%s'\n",
++						   argv[argi]);
++					return KDB_ARGCOUNT;
++				}
++
++			} else {
++				kdb_printf("switch: unknown phy subcmd '%s'\n",
++					   argv[argi]);
++				kdb_sw_usage();
++				return KDB_ARGCOUNT;
++			}
++
++		} else {
++			kdb_printf("switch: unknown subcmd '%s'\n", argv[argi]);
++			kdb_sw_usage();
++			return KDB_ARGCOUNT;
++		}
++
++		return 0;
++	}
++
++	static kdbtab_t kdb_switch_cmds[] = {
++		{
++			.name    = "switch",
++			.func    = kdb_switch_cmd,
++			.usage   = "[-i <busname>] [-a <phy_id>] [-p <phys_base>] <subcmd> ...",
++			.help    = "MT753x/MT7988 switch register/PHY access",
++			.minlen  = 0,
++			.flags   = KDB_ENABLE_MEM_READ | KDB_REPEAT_NO_ARGS,
++		},
++	};
++
++static int __init kdb_switch_init(void)
++{
++		kdb_register_table(kdb_switch_cmds, ARRAY_SIZE(kdb_switch_cmds));
++		return 0;
++	}
++
++	late_initcall(kdb_switch_init);
+-- 
+2.45.2

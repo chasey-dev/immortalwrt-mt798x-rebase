@@ -1,0 +1,88 @@
+--- a/mt_wifi/embedded/common/hif_pci.c
++++ b/mt_wifi/embedded/common/hif_pci.c
+@@ -1855,7 +1855,7 @@ static INT rx_scatter_gather_copy(
+ #if defined(CONFIG_WIFI_PAGE_ALLOC_SKB)
+ 			if (drop_scatter == FALSE) {
+ 				dma_sync_single_for_cpu((struct device *)(((POS_COOKIE)(pAd->OS_Cookie))->pDev),
+-										(dma_addr_t)pCurRxD->SDP0, rx_ring->RxBufferSize, PCI_DMA_FROMDEVICE);
++										(dma_addr_t)pCurRxD->SDP0, rx_ring->RxBufferSize, DMA_FROM_DEVICE);
+ 				memcpy((cp_skb_pkt + buf_idx), cur_alloc_va, pCurRxD->SDL0);
+ 				buf_idx += pCurRxD->SDL0;
+ 			}
+@@ -2059,7 +2059,7 @@ struct tx_rx_ctl *tr_ctl = &pAd->tr_ctl;
+ 		}
+ 
+ 		dma_sync_single_for_cpu((struct device *)(((POS_COOKIE)(pAd->OS_Cookie))->pDev),
+-								(dma_addr_t)pRxD->SDP0, rx_ring->RxBufferSize, PCI_DMA_FROMDEVICE);
++								(dma_addr_t)pRxD->SDP0, rx_ring->RxBufferSize, DMA_FROM_DEVICE);
+ 
+ 		RTMP_DCACHE_FLUSH(cur_alloc_pa, pRxCell->DmaBuf.AllocSize);
+ 
+--- a/mt_wifi/os/linux/rt_rbus_pci_util.c
++++ b/mt_wifi/os/linux/rt_rbus_pci_util.c
+@@ -159,7 +159,7 @@ PNDIS_PACKET RTMP_AllocateRxPacketBuffer
+ 	}
+ 
+ 	if (pkt) {
+-		*pa = dma_map_single(pdev, *va, size, PCI_DMA_FROMDEVICE);
++		*pa = dma_map_single(pdev, *va, size, DMA_FROM_DEVICE);
+ 		 if (dma_mapping_error(pdev, *pa)) {
+ 			MTWF_DBG(NULL, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_ERROR, "!!!!dma_mapping_error(pdev, *pa)!!!!\n");
+ 			switch (rx_ring->buf_type) {
+@@ -231,10 +231,10 @@ ra_dma_addr_t linux_pci_map_single(void
+ 	struct device *pdev = (struct device *)pDev;
+ 
+ 	if (direction == RTMP_PCI_DMA_TODEVICE)
+-		direction = PCI_DMA_TODEVICE;
++		direction = DMA_TO_DEVICE;
+ 
+ 	if (direction == RTMP_PCI_DMA_FROMDEVICE)
+-		direction = PCI_DMA_FROMDEVICE;
++		direction = DMA_FROM_DEVICE;
+ 
+ 	/*
+ 	 *	------ Porting Information ------
+@@ -264,10 +264,10 @@ void linux_pci_unmap_single(void *pDev,
+ 	struct device *pdev = (struct device *)pDev;
+ 
+ 	if (direction == RTMP_PCI_DMA_TODEVICE)
+-		direction = PCI_DMA_TODEVICE;
++		direction = DMA_TO_DEVICE;
+ 
+ 	if (direction == RTMP_PCI_DMA_FROMDEVICE)
+-		direction = PCI_DMA_FROMDEVICE;
++		direction = DMA_FROM_DEVICE;
+ 
+ 	if (size > 0)
+ 		dma_unmap_single(pdev, DmaAddr, size, direction);
+--- a/warp_driver/warp/warp_bm_v2.c
++++ b/warp_driver/warp/warp_bm_v2.c
+@@ -1169,7 +1169,7 @@ wed_rx_budget_ring_exit(
+ 	for (i = 0; i < ring_len; i++)
+ 		wed_rx_bm_dma_cb_exit(wed, &ring->cell[i]);
+ 
+-	dma_unmap_single(&wed->pdev->dev, desc->alloc_pa, desc->alloc_size, PCI_DMA_FROMDEVICE);
++	dma_unmap_single(&wed->pdev->dev, desc->alloc_pa, desc->alloc_size, DMA_FROM_DEVICE);
+ 	warp_os_free_mem(desc->alloc_va);
+ 	memset(desc, 0, sizeof(*desc));
+ 
+--- a/mt_wifi/embedded/plug_in/whnat/wed.c
++++ b/mt_wifi/embedded/plug_in/whnat/wed.c
+@@ -231,7 +231,7 @@ struct sk_buff *alloc_dma_tx_pkt(
+ 
+ 	if (pkt) {
+ 		*vaddr = (void *) pkt->data;
+-		*paddr = dma_map_single(&pdev->dev, *vaddr, len, PCI_DMA_TODEVICE);
++		*paddr = dma_map_single(&pdev->dev, *vaddr, len, DMA_TO_DEVICE);
+ 	} else {
+ 		*vaddr = (void *) NULL;
+ 		*paddr = (dma_addr_t) 0;
+@@ -253,7 +253,7 @@ int free_dma_tx_pkt(
+ 	if (pkt == NULL)
+ 		return -1;
+ 
+-	dma_unmap_single(&pdev->dev, pa, len, PCI_DMA_FROMDEVICE);
++	dma_unmap_single(&pdev->dev, pa, len, DMA_FROM_DEVICE);
+ 	dev_kfree_skb_any(pkt);
+ 	return 0;
+ }

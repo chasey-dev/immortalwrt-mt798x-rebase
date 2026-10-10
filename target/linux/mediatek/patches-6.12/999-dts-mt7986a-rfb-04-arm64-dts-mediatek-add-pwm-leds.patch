@@ -1,0 +1,47 @@
+---
+[v2] arm64: dts: mt7986a rfb: add pwm leds
+
+Add PWM LED support for MT7986A RFB. This patch adds pwm-leds node, and
+configured with default on trigger. Pin control is configured with pwm_pins
+for proper PWM output. Status is initially disabled.
+---
+v2: Pinctrl refactor moved some pin configuration nodes to mt7986-pinctrl.dtsi
+    for unified pin control definitions.
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+@@ -28,6 +28,18 @@
+ 		reg = <0 0x40000000 0 0x40000000>;
+ 	};
+ 
++ 	pwm_led: pwm-led {
++		compatible = "pwm-leds";
++		status = "disabled";
++
++		led {
++			pwms = <&pwm 0 50000 0>;
++			max-brightness = <255>;
++			active-low;
++			linux,default-trigger = "default-on";
++		};
++	};
++
+ 	reg_1p8v: regulator-1p8v {
+ 		compatible = "regulator-fixed";
+ 		regulator-name = "fixed-1.8V";
+@@ -356,6 +368,12 @@
+ 	};
+ };
+ 
++&pwm_led {
++ 	pinctrl-names = "default";
++	pinctrl-0 = <&pwm_pins>;
++	status = "okay";
++};
++
+ &uart0 {
+ 	status = "okay";
+ };

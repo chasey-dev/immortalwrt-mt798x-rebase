@@ -1,0 +1,25 @@
+#!/bin/sh
+
+. /etc/openwrt_release
+
+# just hack version >= 25.12
+if awk -v v="$DISTRIB_RELEASE" 'BEGIN { exit !(v < 25.12) }'; then
+    exit 0
+fi
+
+IWINFO_SCRIPT="/usr/bin/iwinfo"
+
+if [ ! -f "$IWINFO_SCRIPT" ] || [ ! -f "$IWINFO_SCRIPT-ucode" ]; then
+    exit 0
+fi
+
+# check magic of script
+MAGIC=$(hexdump -n 2 -e '1/1 "%02x"' "$IWINFO_SCRIPT")
+
+# if magic starts with 2321 means "#!", it is a script
+if [ "$MAGIC" = "2321" ]; then
+    mv "$IWINFO_SCRIPT-ucode" "$IWINFO_SCRIPT"
+    chmod +x "$IWINFO_SCRIPT"
+fi
+
+exit 0

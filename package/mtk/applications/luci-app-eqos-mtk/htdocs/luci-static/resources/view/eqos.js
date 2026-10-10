@@ -92,6 +92,7 @@ return view.extend({
 	render: function(data) {
 		var hosts = data[1] ? data[1].hosts || {} : {};
 		var hostChoices = collectHostChoices(hosts);
+		var smartEnabled = uci.get('eqos', 'config', 'smarthqos') === '1';
 		var m, s, o;
 
 		m = new form.Map('eqos', _('EQoS'),
@@ -101,6 +102,11 @@ return view.extend({
 		s.anonymous = true;
 
 		o = s.option(form.Flag, 'enabled', _('Enable'));
+		o.default = o.disabled;
+		o.rmempty = false;
+
+		o = s.option(form.Flag, 'smarthqos', _('SMART_HWQOS'),
+			_('Automatically assigns fair hardware queues to DHCP clients. Manual device rules are preserved but inactive while enabled.'));
 		o.default = o.disabled;
 		o.rmempty = false;
 
@@ -116,10 +122,12 @@ return view.extend({
 		o.rmempty = false;
 		o.write = integerWrite;
 
-		s = m.section(form.GridSection, 'device', _('Device rules'));
-		s.addremove = true;
+		s = m.section(form.GridSection, 'device', _('Device rules'),
+			smartEnabled ? _('Manual device rules are preserved and will become active again after SMART_HWQOS is disabled.') : null);
+		s.addremove = !smartEnabled;
 		s.anonymous = true;
-		s.sortable = true;
+		s.sortable = !smartEnabled;
+		s.readonly = smartEnabled;
 		s.nodescriptions = true;
 		s.handleAdd = function(ev) {
 			var section_id = uci.add('eqos', 'device');
@@ -138,13 +146,15 @@ return view.extend({
 		o = s.taboption('general', form.Flag, 'enabled', _('Enable'));
 		o.default = o.enabled;
 		o.rmempty = false;
-		o.editable = true;
+		o.editable = !smartEnabled;
+		o.readonly = smartEnabled;
 
 		o = s.taboption('general', form.Value, 'queue', _('Queue ID'),
 			_('Values 1-31 use HNAT HQoS. Values 32 and above use software shaping.'));
 		o.datatype = 'and(uinteger,min(1),max(65535))';
 		o.placeholder = '1';
 		o.rmempty = false;
+		o.readonly = smartEnabled;
 		o.cfgvalue = function(section_id) {
 			return uci.get('eqos', section_id, 'queue') ||
 				uci.get('eqos', section_id, 'comment');
@@ -179,6 +189,7 @@ return view.extend({
 			_('Maximum rate in Mbit/s. Use 0 for no limit.'));
 		o.datatype = 'and(ufloat,min(0),max(1000))';
 		o.rmempty = false;
+		o.readonly = smartEnabled;
 		o.cfgvalue = rateCfgvalue;
 		o.write = rateWrite;
 		o.textvalue = rateText;
@@ -187,6 +198,7 @@ return view.extend({
 			_('Maximum rate in Mbit/s. Use 0 for no limit.'));
 		o.datatype = 'and(ufloat,min(0),max(1000))';
 		o.rmempty = false;
+		o.readonly = smartEnabled;
 		o.cfgvalue = rateCfgvalue;
 		o.write = rateWrite;
 		o.textvalue = rateText;
@@ -195,6 +207,7 @@ return view.extend({
 		o.modalonly = true;
 		o.default = 'ip';
 		o.rmempty = false;
+		o.readonly = smartEnabled;
 		o.value('ip', _('IPv4 address'));
 		o.value('ip6', _('IPv6 address'));
 		o.cfgvalue = function(section_id) {
@@ -214,6 +227,7 @@ return view.extend({
 		o.modalonly = true;
 		o.datatype = 'ip4addr("nomask")';
 		o.rmempty = false;
+		o.readonly = smartEnabled;
 		o.depends('selector', 'ip');
 		o.validate = uniqueAddress;
 		addChoices(o, hostChoices.ip);
@@ -222,6 +236,7 @@ return view.extend({
 		o.modalonly = true;
 		o.datatype = 'ip6addr("nomask")';
 		o.rmempty = false;
+		o.readonly = smartEnabled;
 		o.depends('selector', 'ip6');
 		o.validate = uniqueAddress;
 		addChoices(o, hostChoices.ip6);

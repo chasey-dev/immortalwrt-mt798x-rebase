@@ -614,7 +614,8 @@ define Build/Compile/mt7992
 #Copy Kite FW header for differnet SKUs
 ifeq ($(CONFIG_MTK_HWIFI_FW_HDR_SUPPORT),y)
 ifeq ($(CONFIG_MTK_WIFI7_CHIP_MT7992),y)
-	[ -x $(PKG_BUILD_DIR)/mt_wifi/tools/bin2h ] || $(MAKE) -C $(PKG_BUILD_DIR)/mt_wifi/tools
+	$(HOSTCC) $(HOST_CFLAGS) -o $(PKG_BUILD_DIR)/mt_wifi/tools/bin2h \
+		$(PKG_BUILD_DIR)/mt_wifi/tools/bin2h.c $(HOST_LDFLAGS)
 	TOP_DIR="$(PKG_BUILD_DIR)/mt_wifi" \
 	TOP_BIN_DIR="$(PKG_BUILD_DIR)" \
 	CHIPSET=mt7992 \

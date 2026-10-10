@@ -1,0 +1,13 @@
+--- a/mcu/warp_msg.c
++++ b/mcu/warp_msg.c
+@@ -205,8 +205,8 @@
+ 	while (1) {
+ 		ret = warp_msg_receive(ctrl->module_id, ctrl->wed_idx, &msg_ins);
+ 		if (ret != 0) {
+-			warp_dbg(WARP_DBG_OFF,
+-				 "%s(): module id(%d), wed_idx(%d), something wrong(ret = %d)\n",
++			warp_dbg(WARP_DBG_INF,
++				 "%s(): module id(%d), wed_idx(%d), msg queue closed(ret = %d)\n",
+ 				 __func__, ctrl->module_id, ctrl->wed_idx, ret);
+ 			break;
+ 		}

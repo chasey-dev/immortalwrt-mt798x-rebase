@@ -1,30 +1,158 @@
 msgid ""
-msgstr ""
-"Project-Id-Version: LuCi Chinese Translation\n"
-"Report-Msgid-Bugs-To: \n"
-"Language: zh_Hans\n"
-"MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=UTF-8\n"
-"Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=1; plural=0;\n"
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+msgid "1 lowest .. 10 highest. Maps to upload queue 1-31 / download queue 32-62. Custom rules take precedence over short-packet auto detection."
+msgstr "1 最低 .. 10 最高。映射到上传队列 1-31 / 下载队列 32-62。自定义规则优先于短包自动识别。"
+
+msgid "Active queues only"
+msgstr "仅显示活跃队列"
+
+msgid "Address"
+msgstr "地址"
+
+msgid "Any"
+msgstr "任意"
+
+msgid "Both"
+msgstr "双向"
+
+msgid "Collecting data..."
+msgstr "正在采集数据..."
+
+msgid "DSCP"
+msgstr "DSCP"
+
+msgid "Dest port"
+msgstr "目的端口"
 
 msgid "Device rules"
 msgstr "设备规则"
 
+msgid "Direction"
+msgstr "方向"
+
+msgid "Download"
+msgstr "下载"
+
+msgid "Download queue %s is already used by a device rule."
+msgstr "下载队列 %s 已被设备规则占用。"
+
+msgid "Download queue %s is already used by another rule."
+msgstr "下载队列 %s 已被其他规则占用。"
+
 msgid "EQoS"
 msgstr "网速控制"
+
+msgid "Enable"
+msgstr "启用"
+
+msgid "General Settings"
+msgstr "常规设置"
 
 msgid "Grant UCI access for luci-app-eqos"
 msgstr "授予 luci-app-eqos 访问 UCI 配置的权限"
 
+msgid "HQoS Settings"
+msgstr "HQoS 设置"
+
+msgid "IPv4 address"
+msgstr "IPv4 地址"
+
+msgid "IPv6 address"
+msgstr "IPv6 地址"
+
+msgid "Len"
+msgstr "长度"
+
+msgid "Maximum average packet size (16-128 bytes) treated as a short flow."
+msgstr "视为小包流的平均包长上限（16-128 字节）。"
+
 msgid "Maximum rate in Mbit/s. Use 0 for no limit."
 msgstr "最大速率，单位为 Mbit/s；填 0 表示不限制该方向。"
+
+msgid "Mode"
+msgstr "模式"
 
 msgid "Network speed control service for MediaTek HNAT."
 msgstr "面向 MediaTek HNAT 的网速控制服务。"
 
+msgid "Packet priority settings for MediaTek HNAT."
+msgstr "面向 MediaTek HNAT 的包优先级设置。"
+
+msgid "No data"
+msgstr "无数据"
+
+msgid "Optional DSCP value 0-63, e.g. 46 for EF."
+msgstr "可选 DSCP 值（0-63），如 EF 为 46。"
+
+msgid "Optional, e.g. 443 or 27000-27030."
+msgstr "可选，如 443 或 27000-27030。"
+
+msgid "Optional, e.g. 53 or 27000-27030."
+msgstr "可选，如 53 或 27000-27030。"
+
+msgid "Packets"
+msgstr "包数"
+
+msgid "Packet priority settings"
+msgstr "包优先级设置"
+
+msgid "Packets/s"
+msgstr "包/秒"
+
+msgid "Path"
+msgstr "路径"
+
+msgid "Priority"
+msgstr "优先级"
+
+msgid "Priority settings"
+msgstr "优先规则"
+
+msgid "Priority queue ID"
+msgstr "优先队列编号"
+
+msgid "Priority rules"
+msgstr "优先级规则"
+
+msgid "Protocol"
+msgstr "协议"
+
+msgid "QoS"
+msgstr "QoS"
+
+msgid "Queue"
+msgstr "队列"
+
 msgid "Queue ID"
 msgstr "队列编号"
+
+msgid "Queue Monitor"
+msgstr "队列监控"
+
+msgid "Queue map"
+msgstr "队列映射"
+
+msgid "Rate"
+msgstr "速率"
+
+msgid "Recognizes short flows (TCP ACK / small UDP) in hardware before offload and puts them into the priority queue below. Tune it with \"Short-flow length\" and \"Priority queue ID\". Works on any port, including direct 2.5G."
+msgstr "开启后，硬件会在卸载前自动识别短包流（TCP ACK / 小 UDP），并将其送入下方“优先队列编号”指定的队列。可用“小包长度阈值”和“优先队列编号”调整。任意端口（含 2.5G 直连）均生效。"
+
+msgid "Settings"
+msgstr "设置"
+
+msgid "Short-flow length"
+msgstr "小包长度阈值"
+
+msgid "Short-packet flows (TCP ACK / small UDP) are steered to this hardware queue. On MTK hardware larger queue numbers mean higher priority. To give it a speed limit, add a Device rule below and enter the same number as its Queue ID: Queue ID N limits upload queue N and download queue N+31. Default 14."
+msgstr "短包流（TCP ACK / 小 UDP）会进入这个硬件队列。在 MTK 硬件上，队列编号越大优先级越高。若要给它限速，在下方“设备规则”中新增一条并把 Queue ID 填成相同数字即可：Queue ID 填 N 会同时限制上传队列 N 与下载队列 N+31。默认 14。"
+
+msgid "Short-packet priority"
+msgstr "小包优先"
+
+msgid "Source port"
+msgstr "源端口"
 
 msgid "This value is already in use."
 msgstr "该值已被使用。"
@@ -35,5 +163,27 @@ msgstr "总下载带宽。"
 msgid "Total upload bandwidth."
 msgstr "总上传带宽。"
 
+msgid "Type"
+msgstr "类型"
+
+msgid "Upload"
+msgstr "上传"
+
+msgid "Upload queue %s conflicts with the short-packet priority queue."
+msgstr "上传队列 %s 与小包优先队列冲突。"
+
+msgid "Upload queue %s is already used by a device rule."
+msgstr "上传队列 %s 已被设备规则占用。"
+
+msgid "Upload queue %s is already used by another rule."
+msgstr "上传队列 %s 已被其他规则占用。"
+
 msgid "Values 1-31 use HNAT HQoS. Values 32 and above use software shaping."
 msgstr "编号 1-31 使用 HNAT HQoS；编号 32 及以上使用软件限速。"
+
+msgid "unlimited"
+msgstr "不限"
+
+msgid "unspecified"
+msgstr "未指定"
+

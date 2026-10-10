@@ -3,6 +3,31 @@ config eqos 'config'
 	option download     100
 	option upload       20
 
+# Short-packet QoS (hardware small-packet priority)
+# short_pkt_priority: 0 disabled, 1 enabled
+# short_pkt_len:      max average packet size (bytes) treated as a short flow
+# short_pkt_qid:      hardware queue that short flows (ACK/small UDP) enter.
+#                     On MTK hardware larger queue numbers mean higher priority.
+#                     Default 14.  To rate-limit it, add a Device rule with the
+#                     same Queue ID: Queue ID N limits upload queue N and
+#                     download queue N+31.
+	option short_pkt_priority 0
+	option short_pkt_len     64
+	option short_pkt_qid     14
+
+# Custom priority rules: map traffic to hardware queues by protocol/port/DSCP.
+# priority: 1 (lowest) .. 10 (highest).  The level maps to the upload queue
+# range 1-31 (direction up) and download queue range 32-62 (direction down).
+# Custom rules take precedence over short-packet auto detection.
+#config priority_rule
+#	option enabled   1
+#	option protocol  'udp'
+#	option dport     '27000-27030'
+#	option sport     ''
+#	option dscp      ''
+#	option direction 'up'
+#	option priority  8
+
 # Per-device bandwidth is kbit/s.
 # Slots 1~31 use NETSYS V2/V3 64-QDMA HQoS.
 # Slots 32 and above use tc software shaping with IPv4 or IPv6 selectors.

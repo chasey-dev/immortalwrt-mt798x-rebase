@@ -1,4 +1,3 @@
-
 name: Build N60 Pro - ImmortalWrt 25.12
 
 on:
@@ -14,7 +13,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 30
 
     steps:
       - name: Checkout source
@@ -27,31 +26,33 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "=== Source revision ==="
+          echo "===== Source revision ====="
           git log -1 --format='%H %s'
 
-          echo "=== Search device definitions ==="
+          echo "===== N60 Pro device definitions ====="
           grep -Rni \
             --include='*.mk' \
             --include='*.dts' \
             --include='*.dtsi' \
-            --include='Config.in' \
             'netcore.n60.pro' \
             target/linux/mediatek || true
 
+          echo "===== Check MTK U-Boot profile ====="
           if ! grep -Rqi \
             --include='*.mk' \
             --include='*.dts' \
-            --include='*.dtsi' \
-            'netcore.n60-pro-mtkuboot' \
+            'netcore_n60-pro-mtkuboot' \
             target/linux/mediatek; then
-            echo "::error::Expected N60 Pro mtkuboot definition not found."
-            echo "Inspect the device profile and DTS before compiling."
+            echo "::error::N60 Pro MTK U-Boot definition not found."
             exit 1
           fi
 
+          echo "Device definition exists."
+
       - name: Install build dependencies
+        shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y \
             build-essential clang flex bison g++ gawk \
@@ -62,68 +63,53 @@ jobs:
             device-tree-compiler qemu-utils \
             python3-setuptools python3-pyelftools \
             swig
-          
+
       - name: Update and install feeds
+        shell: bash
         run: |
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-    
-    
-      - name: Update and install feeds
-        run: |
+          set -euo pipefail
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Diagnose target profile configuration
+      - name: Diagnose and validate N60 Pro profile
         shell: bash
         run: |
           set -u
 
-          echo "===== Source revision ====="
-          git log -1 --format='%H %s'
+          echo "===== Write requested configuration ====="
+          cat > .config <<'EOF'
+          CONFIG_TARGET_mediatek=y
+          CONFIG_TARGET_mediatek_filogic=y
+          CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y
+          EOF
 
-          echo "===== Device definition ====="
-          sed -n '80,115p' target/linux/mediatek/image/filogic-ext.mk
+          echo "===== Run make defconfig ====="
+          if ! make defconfig; then
+            echo "::error::make defconfig failed."
+            exit 1
+          fi
 
-          echo "===== Profile symbols and defaults ====="
-          grep -RniE \
-            'DEVICE_netcore_n60-pro-mtkuboot|DEVICE_openwrt_one|TARGET_PROFILE' \
-            target/linux/mediatek 2>/dev/null | head -n 160
-
-          echo "===== Current config ====="
+          echo "===== Final target configuration ====="
           grep -E \
-            'CONFIG_TARGET_PROFILE=|CONFIG_TARGET_mediatek_filogic_DEVICE_(netcore_n60-pro-mtkuboot|netcore_n60-pro|openwrt_one)=' \
-            .config 2>/dev/null || true
+            '^CONFIG_TARGET_(mediatek|mediatek_filogic)=|^CONFIG_TARGET_mediatek_filogic_DEVICE_' \
+            .config || true
 
-          exit 1
+          echo "===== Search generated Kconfig files ====="
+          grep -RniE \
+            'netcore_n60-pro-mtkuboot|DEVICE_netcore_n60-pro' \
+            tmp/.config-target.in \
+            tmp/.config-package.in \
+            target/linux/mediatek 2>/dev/null | head -n 160 || true
 
+          echo "===== Validate selected device ====="
+          if grep -qx \
+            'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' \
+            .config; then
+            echo "PASS: N60 Pro MTK U-Boot profile is selected."
+          else
+            echo "::error::N60 Pro profile was not selected."
+            echo "Do not compile until the profile selection issue is resolved."
+            exit 1
+          fi
 
-      - name: Download sources
-        run: make download -j2
-
-      - name: Compile firmware
-        run: make -j2 V=s
-
-      - name: Collect firmware and checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          OUT="bin/targets/mediatek/filogic"
-
-          test -d "$OUT"
-          find "$OUT" -maxdepth 1 -type f \
-            \( -name '*n60*' -o -name '*N60*' \) -print
-
-          find "$OUT" -maxdepth 1 -type f \
-            \( -name '*.itb' -o -name '*.bin' -o -name '*.tar' \) \
-            -exec sha256sum {} \; > "$OUT/SHA256SUMS.txt"
-
-          cp config.buildinfo "$OUT/"
-
-      - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: N60-Pro-ImmortalWrt-25.12
-          path: bin/targets/mediatek/filogic/
-          if-no-files-found: error
-          retention-days: 14
+          echo "===== Diagnostic complete; firmware build intentionally skipped ====="

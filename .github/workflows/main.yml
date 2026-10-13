@@ -155,6 +155,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Save compiler cache
+      - name: Report compiler cache statistics
         if: always()
         run: ccache -s

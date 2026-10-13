@@ -21,115 +21,100 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Check N60 Pro device definition
+      - name: Check N60 Pro device definitions
         shell: bash
         run: |
           set -euo pipefail
-
           echo "===== Source revision ====="
           git log -1 --format='%H %s'
-
-          echo "===== N60 Pro device definitions ====="
-          grep -Rni \
-            --include='*.mk' \
-            --include='*.dts' \
-            --include='*.dtsi' \
-            'netcore.n60.pro' \
-            target/linux/mediatek || true
-
-          echo "===== Check MTK U-Boot profile ====="
-          grep -Rni \
-            --include='*.mk' \
-            --include='*.dts' \
-            'netcore_n60-pro-mtkuboot' \
-            target/linux/mediatek
+          echo "===== Standard N60 Pro profile ====="
+          grep -Rni --include='*.mk' --include='*.dts' --include='*.dtsi' 'netcore.n60.pro' target/linux/mediatek || true
+          echo "===== MTK U-Boot profile ====="
+          grep -Rni --include='*.mk' --include='*.dts' 'netcore_n60-pro-mtkuboot' target/linux/mediatek
 
       - name: Install build dependencies
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential clang flex bison g++ gawk \
-            gcc-multilib g++-multilib gettext git \
-            libncurses-dev libssl-dev python3-dev \
-            rsync unzip zlib1g-dev file wget \
-            time xsltproc libelf-dev \
-            device-tree-compiler qemu-utils \
-            python3-setuptools python3-pyelftools \
-            swig
+          sudo apt-get install -y             build-essential clang flex bison g++ gawk             gcc-multilib g++-multilib gettext git             libncurses-dev libssl-dev python3-dev             rsync unzip zlib1g-dev file wget             time xsltproc libelf-dev             device-tree-compiler qemu-utils             python3-setuptools python3-pyelftools             swig ccache
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-openwrt-n60pro-ccache-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-n60pro-ccache-${{ github.ref_name }}-
+            ${{ runner.os }}-openwrt-n60pro-ccache-
 
       - name: Update and install feeds
-        shell: bash
         run: |
-          set -euo pipefail
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure and validate N60 Pro
+      - name: Configure and validate both N60 Pro profiles
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p "$HOME/.ccache"
+          ccache --max-size=5G
+          ccache --set-config=compiler_check=content
 
           cat > .config <<'EOF'
           CONFIG_TARGET_mediatek=y
           CONFIG_TARGET_mediatek_filogic=y
+          CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y
           CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y
           CONFIG_PACKAGE_luci=y
+          CONFIG_CCACHE=y
           EOF
 
           make defconfig
 
           echo "===== Final target configuration ====="
-          grep -E \
-            '^CONFIG_TARGET_(mediatek|mediatek_filogic)=|^CONFIG_TARGET_mediatek_filogic_DEVICE_|^CONFIG_PACKAGE_luci=' \
-            .config || true
+          grep -E '^CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro(-mtkuboot)?=y$|^CONFIG_PACKAGE_luci=y$|^CONFIG_CCACHE=y$' .config || true
 
-          if ! grep -qx \
-            'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' \
-            .config; then
-            echo "::error::N60 Pro MTK U-Boot profile was not selected."
+          grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y' .config || {
+            echo "::error::Standard N60 Pro profile was removed by defconfig."
             exit 1
-          fi
-
-          if ! grep -qx 'CONFIG_PACKAGE_luci=y' .config; then
+          }
+          grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' .config || {
+            echo "::error::MTK U-Boot profile was removed by defconfig."
+            exit 1
+          }
+          grep -qx 'CONFIG_PACKAGE_luci=y' .config || {
             echo "::error::LuCI was not enabled."
             exit 1
-          fi
+          }
 
           cp .config config.buildinfo
-          echo "PASS: N60 Pro MTK U-Boot profile and LuCI are selected."
+          echo "PASS: Both profiles remain selected after make defconfig."
 
       - name: Download sources
         run: make download -j2
 
-      - name: Compile firmware
+      - name: Compile both firmware profiles
         run: make -j2 V=s
 
-      - name: Collect N60 Pro firmware and checksums
+      - name: Collect firmware, build metadata and checksums
         shell: bash
         run: |
           set -euo pipefail
-
           OUT="bin/targets/mediatek/filogic"
           DEST="artifacts/N60-Pro"
           test -d "$OUT"
           mkdir -p "$DEST"
 
-          echo "===== Matching N60 Pro output files ====="
-          find "$OUT" -maxdepth 1 -type f \
-            \( -iname '*netcore*n60*' -o -iname '*n60*pro*' \) -print
+          echo "===== Candidate firmware files ====="
+          find "$OUT" -maxdepth 1 -type f             \( -iname '*netcore*n60*' -o -iname '*n60*pro*' \) -print
 
           mapfile -t IMAGES < <(
-            find "$OUT" -maxdepth 1 -type f \
-              \( -iname '*netcore*n60*' -o -iname '*n60*pro*' \) \
-              \( -name '*.bin' -o -name '*.itb' -o -name '*.tar' -o -name '*.gz' \) \
-              -print
+            find "$OUT" -maxdepth 1 -type f               \( -iname '*netcore*n60*' -o -iname '*n60*pro*' \)               \( -name '*.bin' -o -name '*.itb' -o -name '*.tar' -o -name '*.gz' \)               -print
           )
 
           if [ "${#IMAGES[@]}" -eq 0 ]; then
             echo "::error::No N60 Pro firmware images were found."
-            echo "Target output directory contents:"
             find "$OUT" -maxdepth 1 -type f -printf '%f\n'
             exit 1
           fi
@@ -142,7 +127,9 @@ jobs:
             echo "Branch: 25.12"
             echo "Source revision:"
             git log -1 --format='%H %s'
-            echo "Selected profile: netcore_n60-pro-mtkuboot"
+            echo "Selected profiles:"
+            echo "  netcore_n60-pro"
+            echo "  netcore_n60-pro-mtkuboot"
             echo "Build target: mediatek/filogic"
             echo "Firmware images:"
             find "$DEST" -maxdepth 1 -type f -printf '%f\n' | sort
@@ -157,11 +144,17 @@ jobs:
           ls -lh "$DEST"
           echo "===== SHA256SUMS.txt ====="
           cat "$DEST/SHA256SUMS.txt"
+          echo "===== ccache statistics ====="
+          ccache -s
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: N60-Pro-ImmortalWrt-25.12
+          name: N60-Pro-ImmortalWrt-25.12-Both-Profiles
           path: artifacts/N60-Pro/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Save compiler cache
+        if: always()
+        run: ccache -s

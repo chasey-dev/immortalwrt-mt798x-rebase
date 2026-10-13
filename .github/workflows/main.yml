@@ -69,7 +69,12 @@ jobs:
           ./scripts/feeds install -a
     
     
-            - name: Diagnose target profile configuration
+      - name: Update and install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Diagnose target profile configuration
         shell: bash
         run: |
           set -u
@@ -80,21 +85,10 @@ jobs:
           echo "===== Device definition ====="
           sed -n '80,115p' target/linux/mediatek/image/filogic-ext.mk
 
-          echo "===== Target Config.in files ====="
-          find target/linux/mediatek -name 'Config.in' -o -name 'Makefile'
-
           echo "===== Profile symbols and defaults ====="
           grep -RniE \
             'DEVICE_netcore_n60-pro-mtkuboot|DEVICE_openwrt_one|TARGET_PROFILE' \
-            target/linux/mediatek/Makefile \
-            target/linux/mediatek/Config.in \
-            target/linux/mediatek/image \
             target/linux/mediatek 2>/dev/null | head -n 160
-
-          echo "===== Kconfig generated files ====="
-          find tmp -maxdepth 4 \
-            \( -name '.*config*' -o -name 'Config.in' \) \
-            -type f 2>/dev/null | head -n 80
 
           echo "===== Current config ====="
           grep -E \
@@ -102,6 +96,7 @@ jobs:
             .config 2>/dev/null || true
 
           exit 1
+
 
       - name: Download sources
         run: make download -j2

@@ -42,7 +42,7 @@ jobs:
       - name: Restore compiler cache
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
+          path: ~/.cache/ccache
           key: ${{ runner.os }}-openwrt-n60pro-ccache-${{ github.ref_name }}-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-openwrt-n60pro-ccache-${{ github.ref_name }}-
@@ -57,7 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.ccache" artifacts/N60-Pro/standard
+          mkdir -p "$HOME/.cache/ccache" artifacts/N60-Pro/standard
           ccache --max-size=5G
           ccache --set-config=compiler_check=content
 

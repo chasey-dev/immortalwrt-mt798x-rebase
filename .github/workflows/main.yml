@@ -27,9 +27,9 @@ jobs:
           set -euo pipefail
           echo "===== Source revision ====="
           git log -1 --format='%H %s'
-          echo "===== Standard N60 Pro profile ====="
+          echo "===== Standard profile definition ====="
           grep -Rni --include='*.mk' --include='*.dts' --include='*.dtsi' 'netcore.n60.pro' target/linux/mediatek || true
-          echo "===== MTK U-Boot profile ====="
+          echo "===== MTK U-Boot profile definition ====="
           grep -Rni --include='*.mk' --include='*.dts' 'netcore_n60-pro-mtkuboot' target/linux/mediatek
 
       - name: Install build dependencies
@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y             build-essential clang flex bison g++ gawk             gcc-multilib g++-multilib gettext git             libncurses-dev libssl-dev python3-dev             rsync unzip zlib1g-dev file wget             time xsltproc libelf-dev             device-tree-compiler qemu-utils             python3-setuptools python3-pyelftools             swig ccache
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev python3-dev rsync unzip zlib1g-dev file wget time xsltproc libelf-dev device-tree-compiler qemu-utils python3-setuptools python3-pyelftools swig ccache
 
       - name: Restore compiler cache
         uses: actions/cache@v4
@@ -53,11 +53,11 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure and validate both N60 Pro profiles
+      - name: Configure standard OpenWrt-compatible profile first
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.ccache"
+          mkdir -p "$HOME/.ccache" artifacts/N60-Pro/standard
           ccache --max-size=5G
           ccache --set-config=compiler_check=content
 
@@ -65,92 +65,148 @@ jobs:
           CONFIG_TARGET_mediatek=y
           CONFIG_TARGET_mediatek_filogic=y
           CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y
+          CONFIG_PACKAGE_luci=y
+          CONFIG_CCACHE=y
+          EOF
+
+          make defconfig
+          grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y' .config || {
+            echo "::error::Standard N60 Pro profile missing after defconfig."
+            exit 1
+          }
+          if grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' .config; then
+            echo "::error::Unexpected MTK U-Boot profile selected during standard build."
+            exit 1
+          fi
+          grep -qx 'CONFIG_PACKAGE_luci=y' .config || {
+            echo "::error::LuCI was not enabled."
+            exit 1
+          }
+          cp .config artifacts/N60-Pro/standard/config.buildinfo
+          echo "PASS: standard profile is selected alone."
+
+      - name: Download sources
+        run: make download -j2
+
+      - name: Build standard profile first
+        run: make -j2 V=s
+
+      - name: Collect and verify standard firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="bin/targets/mediatek/filogic"
+          DEST="artifacts/N60-Pro/standard"
+          mapfile -t ITBS < <(find "$OUT" -maxdepth 1 -type f -iname '*n60*pro*.itb' -print)
+          if [ "${#ITBS[@]}" -eq 0 ]; then
+            echo "::error::Standard profile did not produce an N60 Pro ITB."
+            find "$OUT" -maxdepth 1 -type f -printf '%f\n'
+            exit 1
+          fi
+          cp "${ITBS[@]}" "$DEST/"
+          {
+            echo "Priority: PRIMARY candidate; OpenWrt-compatible standard profile"
+            echo "Profile: netcore_n60-pro"
+            echo "Expected DTS: mt7986a-netcore-n60-pro"
+            echo "Expected format: sysupgrade.itb"
+            echo "Source revision:"
+            git log -1 --format='%H %s'
+            echo "Files:"
+            find "$DEST" -maxdepth 1 -type f -printf '%f\n' | sort
+          } > "$DEST/BUILD-INFO.txt"
+          (
+            cd "$DEST"
+            sha256sum *.itb config.buildinfo BUILD-INFO.txt > SHA256SUMS.txt
+          )
+          echo "===== PRIMARY standard firmware ====="
+          ls -lh "$DEST"
+          cat "$DEST/SHA256SUMS.txt"
+
+      - name: Configure MTK U-Boot profile as secondary candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/N60-Pro/mtkuboot
+          cat > .config <<'EOF'
+          CONFIG_TARGET_mediatek=y
+          CONFIG_TARGET_mediatek_filogic=y
           CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y
           CONFIG_PACKAGE_luci=y
           CONFIG_CCACHE=y
           EOF
 
           make defconfig
-
-          echo "===== Final target configuration ====="
-          grep -E '^CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro(-mtkuboot)?=y$|^CONFIG_PACKAGE_luci=y$|^CONFIG_CCACHE=y$' .config || true
-
-          grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y' .config || {
-            echo "::error::Standard N60 Pro profile was removed by defconfig."
-            exit 1
-          }
           grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' .config || {
-            echo "::error::MTK U-Boot profile was removed by defconfig."
+            echo "::error::MTK U-Boot profile missing after defconfig."
             exit 1
           }
+          if grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y' .config; then
+            echo "::error::Unexpected standard profile selected during MTK U-Boot build."
+            exit 1
+          fi
           grep -qx 'CONFIG_PACKAGE_luci=y' .config || {
             echo "::error::LuCI was not enabled."
             exit 1
           }
+          cp .config artifacts/N60-Pro/mtkuboot/config.buildinfo
+          echo "PASS: MTK U-Boot profile is selected alone."
 
-          cp .config config.buildinfo
-          echo "PASS: Both profiles remain selected after make defconfig."
-
-      - name: Download sources
-        run: make download -j2
-
-      - name: Compile both firmware profiles
+      - name: Build MTK U-Boot secondary profile incrementally
         run: make -j2 V=s
 
-      - name: Collect firmware, build metadata and checksums
+      - name: Collect secondary firmware and checksums
         shell: bash
         run: |
           set -euo pipefail
           OUT="bin/targets/mediatek/filogic"
-          DEST="artifacts/N60-Pro"
-          test -d "$OUT"
-          mkdir -p "$DEST"
-
-          echo "===== Candidate firmware files ====="
-          find "$OUT" -maxdepth 1 -type f             \( -iname '*netcore*n60*' -o -iname '*n60*pro*' \) -print
-
-          mapfile -t IMAGES < <(
-            find "$OUT" -maxdepth 1 -type f               \( -iname '*netcore*n60*' -o -iname '*n60*pro*' \)               \( -name '*.bin' -o -name '*.itb' -o -name '*.tar' -o -name '*.gz' \)               -print
-          )
-
+          DEST="artifacts/N60-Pro/mtkuboot"
+          mapfile -t IMAGES < <(find "$OUT" -maxdepth 1 -type f \( -iname '*n60*pro*.bin' -o -iname '*n60*pro*.itb' -o -iname '*n60*pro*.tar' \) -print)
           if [ "${#IMAGES[@]}" -eq 0 ]; then
-            echo "::error::No N60 Pro firmware images were found."
+            echo "::error::MTK U-Boot profile produced no N60 Pro candidate image."
             find "$OUT" -maxdepth 1 -type f -printf '%f\n'
             exit 1
           fi
-
           cp "${IMAGES[@]}" "$DEST/"
-          cp config.buildinfo "$DEST/"
+          {
+            echo "Priority: SECONDARY candidate; do not assume compatible with standard layout"
+            echo "Profile: netcore_n60-pro-mtkuboot"
+            echo "Expected DTS: mt7986a-netcore-n60-pro-mtkuboot"
+            echo "Source revision:"
+            git log -1 --format='%H %s'
+            echo "Files:"
+            find "$DEST" -maxdepth 1 -type f -printf '%f\n' | sort
+          } > "$DEST/BUILD-INFO.txt"
+          (
+            cd "$DEST"
+            sha256sum *.bin *.itb *.tar config.buildinfo BUILD-INFO.txt 2>/dev/null > SHA256SUMS.txt || true
+          )
+          echo "===== SECONDARY MTK U-Boot firmware ====="
+          ls -lh "$DEST"
+          cat "$DEST/SHA256SUMS.txt"
 
+      - name: Create combined build summary
+        shell: bash
+        run: |
+          set -euo pipefail
           {
             echo "Repository: laodadelaoda/immortalwrt-mt798x-rebase"
             echo "Branch: 25.12"
             echo "Source revision:"
             git log -1 --format='%H %s'
-            echo "Selected profiles:"
-            echo "  netcore_n60-pro"
-            echo "  netcore_n60-pro-mtkuboot"
-            echo "Build target: mediatek/filogic"
-            echo "Firmware images:"
-            find "$DEST" -maxdepth 1 -type f -printf '%f\n' | sort
-          } > "$DEST/BUILD-INFO.txt"
-
-          (
-            cd "$DEST"
-            sha256sum *.bin *.itb *.tar *.gz config.buildinfo BUILD-INFO.txt 2>/dev/null > SHA256SUMS.txt || true
-          )
-
-          echo "===== Artifact files ====="
-          ls -lh "$DEST"
-          echo "===== SHA256SUMS.txt ====="
-          cat "$DEST/SHA256SUMS.txt"
+            echo "Build order: standard profile first; MTK U-Boot profile second"
+            echo "Primary candidate directory: standard/"
+            echo "Secondary candidate directory: mtkuboot/"
+            echo "Both candidates require format, DTS, partition and SHA256 review before flashing."
+          } > artifacts/N60-Pro/BUILD-INFO.txt
+          echo "===== Final artifact tree ====="
+          find artifacts/N60-Pro -maxdepth 2 -type f -printf '%p (%s bytes)\n' | sort
           echo "===== ccache statistics ====="
           ccache -s
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: N60-Pro-ImmortalWrt-25.12-Both-Profiles
+          name: N60-Pro-ImmortalWrt-25.12-Standard-First
           path: artifacts/N60-Pro/
           if-no-files-found: error
           retention-days: 14

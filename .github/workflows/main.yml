@@ -67,29 +67,34 @@ jobs:
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
-      - name: Configure N60 Pro
+    
+      - name: Diagnose N60 Pro profile
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
 
-          cat > .config <<'EOF'
-          CONFIG_TARGET_mediatek=y
-          CONFIG_TARGET_mediatek_filogic=y
-          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y
-          CONFIG_PACKAGE_luci=y
-          EOF
+          echo "===== 1. Source revision ====="
+          git log -1 --format='%H %s'
 
+          echo "===== 2. N60-related image definitions ====="
+          grep -RniE \
+            'netcore.?n60|n60.?pro|mtkuboot' \
+            target/linux/mediatek/image \
+            target/linux/mediatek/filogic 2>/dev/null || true
+
+          echo "===== 3. Device tree files ====="
+          find target/linux/mediatek \
+            -type f \( -iname '*n60*' -o -iname '*netcore*' \) \
+            -print
+
+          echo "===== 4. Selected target configuration ====="
           make defconfig
+          grep -Ei \
+            'CONFIG_TARGET_(mediatek|DEVICE.*(n60|netcore))' \
+            .config || true
 
-          if ! grep -qx \
-            'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' \
-            .config; then
-            echo "::error::N60 Pro mtkuboot profile was not selected."
-            exit 1
-          fi
-
-          cp .config config.buildinfo
+          echo "===== Diagnostic only: build intentionally stopped ====="
+          exit 1
 
       - name: Download sources
         run: make download -j2

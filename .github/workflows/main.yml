@@ -69,38 +69,39 @@ jobs:
           ./scripts/feeds install -a
     
     
-      - name: Validate N60 Pro profile
+            - name: Diagnose target profile configuration
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
 
-          cat > .config <<'EOF'
-          CONFIG_TARGET_mediatek=y
-          CONFIG_TARGET_mediatek_filogic=y
-          CONFIG_TARGET_PROFILE="DEVICE_netcore_n60-pro-mtkuboot"
-          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y
-          CONFIG_PACKAGE_luci=y
-          EOF
+          echo "===== Source revision ====="
+          git log -1 --format='%H %s'
 
-          echo "===== Before defconfig ====="
-          cat .config
+          echo "===== Device definition ====="
+          sed -n '80,115p' target/linux/mediatek/image/filogic-ext.mk
 
-          make defconfig
+          echo "===== Target Config.in files ====="
+          find target/linux/mediatek -name 'Config.in' -o -name 'Makefile'
 
-          echo "===== After defconfig ====="
+          echo "===== Profile symbols and defaults ====="
+          grep -RniE \
+            'DEVICE_netcore_n60-pro-mtkuboot|DEVICE_openwrt_one|TARGET_PROFILE' \
+            target/linux/mediatek/Makefile \
+            target/linux/mediatek/Config.in \
+            target/linux/mediatek/image \
+            target/linux/mediatek 2>/dev/null | head -n 160
+
+          echo "===== Kconfig generated files ====="
+          find tmp -maxdepth 4 \
+            \( -name '.*config*' -o -name 'Config.in' \) \
+            -type f 2>/dev/null | head -n 80
+
+          echo "===== Current config ====="
           grep -E \
             'CONFIG_TARGET_PROFILE=|CONFIG_TARGET_mediatek_filogic_DEVICE_(netcore_n60-pro-mtkuboot|netcore_n60-pro|openwrt_one)=' \
-            .config || true
+            .config 2>/dev/null || true
 
-          if ! grep -qx \
-            'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' \
-            .config; then
-            echo "::error::N60 Pro profile was not selected after defconfig."
-            exit 1
-          fi
-
-          echo "N60 Pro profile selection verified."
-
+          exit 1
 
       - name: Download sources
         run: make download -j2

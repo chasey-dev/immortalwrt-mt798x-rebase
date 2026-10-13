@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 360
 
     steps:
       - name: Checkout source
@@ -38,16 +38,11 @@ jobs:
             target/linux/mediatek || true
 
           echo "===== Check MTK U-Boot profile ====="
-          if ! grep -Rqi \
+          grep -Rni \
             --include='*.mk' \
             --include='*.dts' \
             'netcore_n60-pro-mtkuboot' \
-            target/linux/mediatek; then
-            echo "::error::N60 Pro MTK U-Boot definition not found."
-            exit 1
-          fi
-
-          echo "Device definition exists."
+            target/linux/mediatek
 
       - name: Install build dependencies
         shell: bash
@@ -71,45 +66,102 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Diagnose and validate N60 Pro profile
+      - name: Configure and validate N60 Pro
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
 
-          echo "===== Write requested configuration ====="
           cat > .config <<'EOF'
           CONFIG_TARGET_mediatek=y
           CONFIG_TARGET_mediatek_filogic=y
           CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y
+          CONFIG_PACKAGE_luci=y
           EOF
 
-          echo "===== Run make defconfig ====="
-          if ! make defconfig; then
-            echo "::error::make defconfig failed."
-            exit 1
-          fi
+          make defconfig
 
           echo "===== Final target configuration ====="
           grep -E \
-            '^CONFIG_TARGET_(mediatek|mediatek_filogic)=|^CONFIG_TARGET_mediatek_filogic_DEVICE_' \
+            '^CONFIG_TARGET_(mediatek|mediatek_filogic)=|^CONFIG_TARGET_mediatek_filogic_DEVICE_|^CONFIG_PACKAGE_luci=' \
             .config || true
 
-          echo "===== Search generated Kconfig files ====="
-          grep -RniE \
-            'netcore_n60-pro-mtkuboot|DEVICE_netcore_n60-pro' \
-            tmp/.config-target.in \
-            tmp/.config-package.in \
-            target/linux/mediatek 2>/dev/null | head -n 160 || true
-
-          echo "===== Validate selected device ====="
-          if grep -qx \
+          if ! grep -qx \
             'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' \
             .config; then
-            echo "PASS: N60 Pro MTK U-Boot profile is selected."
-          else
-            echo "::error::N60 Pro profile was not selected."
-            echo "Do not compile until the profile selection issue is resolved."
+            echo "::error::N60 Pro MTK U-Boot profile was not selected."
             exit 1
           fi
 
-          echo "===== Diagnostic complete; firmware build intentionally skipped ====="
+          if ! grep -qx 'CONFIG_PACKAGE_luci=y' .config; then
+            echo "::error::LuCI was not enabled."
+            exit 1
+          fi
+
+          cp .config config.buildinfo
+          echo "PASS: N60 Pro MTK U-Boot profile and LuCI are selected."
+
+      - name: Download sources
+        run: make download -j2
+
+      - name: Compile firmware
+        run: make -j2 V=s
+
+      - name: Collect N60 Pro firmware and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OUT="bin/targets/mediatek/filogic"
+          DEST="artifacts/N60-Pro"
+          test -d "$OUT"
+          mkdir -p "$DEST"
+
+          echo "===== Matching N60 Pro output files ====="
+          find "$OUT" -maxdepth 1 -type f \
+            \( -iname '*netcore*n60*' -o -iname '*n60*pro*' \) -print
+
+          mapfile -t IMAGES < <(
+            find "$OUT" -maxdepth 1 -type f \
+              \( -iname '*netcore*n60*' -o -iname '*n60*pro*' \) \
+              \( -name '*.bin' -o -name '*.itb' -o -name '*.tar' -o -name '*.gz' \) \
+              -print
+          )
+
+          if [ "${#IMAGES[@]}" -eq 0 ]; then
+            echo "::error::No N60 Pro firmware images were found."
+            echo "Target output directory contents:"
+            find "$OUT" -maxdepth 1 -type f -printf '%f\n'
+            exit 1
+          fi
+
+          cp "${IMAGES[@]}" "$DEST/"
+          cp config.buildinfo "$DEST/"
+
+          {
+            echo "Repository: laodadelaoda/immortalwrt-mt798x-rebase"
+            echo "Branch: 25.12"
+            echo "Source revision:"
+            git log -1 --format='%H %s'
+            echo "Selected profile: netcore_n60-pro-mtkuboot"
+            echo "Build target: mediatek/filogic"
+            echo "Firmware images:"
+            find "$DEST" -maxdepth 1 -type f -printf '%f\n' | sort
+          } > "$DEST/BUILD-INFO.txt"
+
+          (
+            cd "$DEST"
+            sha256sum *.bin *.itb *.tar *.gz config.buildinfo BUILD-INFO.txt 2>/dev/null > SHA256SUMS.txt || true
+          )
+
+          echo "===== Artifact files ====="
+          ls -lh "$DEST"
+          echo "===== SHA256SUMS.txt ====="
+          cat "$DEST/SHA256SUMS.txt"
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: N60-Pro-ImmortalWrt-25.12
+          path: artifacts/N60-Pro/
+          if-no-files-found: error
+          retention-days: 14

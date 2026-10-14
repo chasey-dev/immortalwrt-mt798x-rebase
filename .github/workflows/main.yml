@@ -222,25 +222,6 @@ jobs:
           echo "===== ccache statistics ====="
           ccache -s
 
-      - name: Create combined build summary
-        shell: bash
-        run: |
-          set -euo pipefail
-          {
-            echo "Repository: laodadelaoda/immortalwrt-mt798x-rebase"
-            echo "Branch: 25.12"
-            echo "Source revision:"
-            git log -1 --format='%H %s'
-            echo "Build order: standard profile first; MTK U-Boot profile second"
-            echo "Primary candidate directory: standard/"
-            echo "Secondary candidate directory: mtkuboot/"
-            echo "Both candidates require format, DTS, partition and SHA256 review before flashing."
-          } > artifacts/N60-Pro/BUILD-INFO.txt
-          echo "===== Final artifact tree ====="
-          find artifacts/N60-Pro -maxdepth 2 -type f -printf '%p (%s bytes)\n' | sort
-          echo "===== ccache statistics ====="
-          ccache -s
-
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:

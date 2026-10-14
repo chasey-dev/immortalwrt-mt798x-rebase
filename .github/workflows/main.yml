@@ -88,6 +88,7 @@ jobs:
           CONFIG_PACKAGE_kmod-warp=y
           CONFIG_PACKAGE_datconf=y
           CONFIG_PACKAGE_wifi-dats=y
+          CONFIG_PACKAGE_mtwifi-cfg=y
           CONFIG_PACKAGE_mtwifi-cfg-ucode=y
           CONFIG_PACKAGE_luci-app-mtwifi-cfg=y
           CONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y
@@ -128,6 +129,7 @@ jobs:
             'CONFIG_PACKAGE_kmod-warp=y' \
             'CONFIG_PACKAGE_datconf=y' \
             'CONFIG_PACKAGE_wifi-dats=y' \
+            'CONFIG_PACKAGE_mtwifi-cfg=y' \
             'CONFIG_PACKAGE_mtwifi-cfg-ucode=y' \
             'CONFIG_PACKAGE_luci-app-mtwifi-cfg=y' \
             'CONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y' \

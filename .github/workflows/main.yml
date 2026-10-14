@@ -104,7 +104,9 @@ jobs:
           CONFIG_MTK_MT_WIFI_MT7986_20260601=y
           CONFIG_MTK_MT_WIFI_PATH="mt_wifi"
           CONFIG_WARP_VERSION=2
-          CONFIG_MTK_WHNAT_SUPPORT=m
+          CONFIG_MTK_WLAN_HOOK=y
+          CONFIG_MTK_WHNAT_SUPPORT=y
+          CONFIG_MTK_WARP_V2=y
           CONFIG_CCACHE=y
           EOF
 
@@ -156,7 +158,9 @@ jobs:
             'CONFIG_MTK_MT_WIFI_MT7986_20260601=y' \
             'CONFIG_MTK_MT_WIFI_PATH="mt_wifi"' \
             'CONFIG_WARP_VERSION=2' \
-            'CONFIG_MTK_WHNAT_SUPPORT=m'; do
+            'CONFIG_MTK_WLAN_HOOK=y' \
+            'CONFIG_MTK_WHNAT_SUPPORT=y' \
+            'CONFIG_MTK_WARP_V2=y'; do
             grep -Fqx "$required" .config || {
               echo "::error::Required MTK proprietary stack option missing after defconfig: $required"
               exit 1

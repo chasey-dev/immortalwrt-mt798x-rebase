@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ${{ runner.os }}-openwrt-n60pro-ccache-${{ github.ref_name }}-${{ github.run_id }}
+          key: ${{ runner.os }}-openwrt-n60pro-ccache-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-openwrt-n60pro-ccache-${{ github.ref_name }}-
             ${{ runner.os }}-openwrt-n60pro-ccache-
@@ -296,7 +296,7 @@ jobs:
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: N60-Pro-ImmortalWrt-25.12-Single-Standard
+          name: N60-Pro-ImmortalWrt-25.12-Single-Standard-${{ github.run_number }}
           path: artifacts/N60-Pro/
           if-no-files-found: error
           retention-days: 14

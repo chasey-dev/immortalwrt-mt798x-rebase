@@ -62,6 +62,26 @@ jobs:
           ccache --max-size=5G
           ccache --set-config=compiler_check=content
 
+          # Record the exact MT7986 AX6000 radio profile shipped by this branch.
+          DAT_AUDIT="artifacts/N60-Pro/standard/WIFI-DAT-SOURCE-AUDIT.txt"
+          {
+            echo "Wi-Fi profile source audit (source tree, before packaging)"
+            echo "Driver package version/source:"
+            grep -E '^(PKG_SOURCE|PKG_HASH|PKG_VERSION):=' package/mtk/drivers/mt_wifi/Makefile
+            echo
+            for dat in \
+              package/mtk/drivers/wifi-profile/files/mt7986/mt7986-ax6000.dbdc.b0.dat \
+              package/mtk/drivers/wifi-profile/files/mt7986/mt7986-ax6000.dbdc.b1.dat; do
+              echo "===== $dat ====="
+              sha256sum "$dat"
+              grep -nE '^(PPEnable|WHNAT)=' "$dat" || true
+            done
+            echo
+            echo "===== ucode schema references ====="
+            grep -nEi 'PPEnable|WHNAT|whnat' package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/schema/mtwifi/dat-defs.json || true
+            echo "Note: PPEnable value is recorded as source data only; no acceleration semantics are inferred from the value alone."
+          } | tee "$DAT_AUDIT"
+
           cat > .config <<'EOF'
           CONFIG_TARGET_mediatek=y
           CONFIG_TARGET_mediatek_filogic=y
@@ -204,6 +224,30 @@ jobs:
 
       - name: Download sources
         run: make download -j2
+
+      - name: Inspect downloaded closed Wi-Fi driver parser for PPEnable and WHNAT
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="$(find dl -type f -name 'mt79xx_20250408-705eb4.tar.xz' -print -quit)"
+          if [ -z "$ARCHIVE" ]; then
+            echo "::error::Downloaded MTK Wi-Fi source archive was not found; cannot audit PPEnable/WHNAT parser semantics."
+            find dl -maxdepth 2 -type f -printf '%p\n' | head -100
+            exit 1
+          fi
+          SRC="$RUNNER_TEMP/mt_wifi_source_audit"
+          mkdir -p "$SRC"
+          tar -xf "$ARCHIVE" -C "$SRC"
+          OUT="artifacts/N60-Pro/standard/WIFI-DAT-PARSER-AUDIT.txt"
+          {
+            echo "Archive: $ARCHIVE"
+            sha256sum "$ARCHIVE"
+            echo "Expected package source hash from Makefile:"
+            grep -E '^PKG_HASH:=' package/mtk/drivers/mt_wifi/Makefile
+            echo
+            echo "===== Exact source references to PPEnable / WHNAT ====="
+            grep -RniE 'PPEnable|WHNAT' "$SRC" --include='*.c' --include='*.h' --include='*.cpp' --include='*.hpp' --include='*.mk' --include='Makefile' || true
+          } | tee "$OUT"
 
       - name: Build standard profile first
         run: make -j2 V=s

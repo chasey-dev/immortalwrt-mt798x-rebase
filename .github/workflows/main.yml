@@ -192,6 +192,43 @@ jobs:
             exit 1
           fi
           cp "${ITBS[@]}" "$DEST/"
+
+          # A Kconfig value of m only builds a module; the corresponding kmod
+          # package must also be selected so its .ko is installed into the image.
+          # Verify the final image manifest rather than trusting .config alone.
+          mapfile -t MANIFESTS < <(find "$OUT" -maxdepth 1 -type f -name '*.manifest' -print)
+          if [ "${#MANIFESTS[@]}" -eq 0 ]; then
+            echo "::error::No image package manifest found; cannot verify closed-driver modules in the firmware."
+            find "$OUT" -maxdepth 1 -type f -printf '%f\n' | sort
+            exit 1
+          fi
+          MANIFEST=""
+          for candidate in "${MANIFESTS[@]}"; do
+            if grep -qE '(^|[[:space:]])kmod-mt_wifi([[:space:]]|$)' "$candidate"; then
+              MANIFEST="$candidate"
+              break
+            fi
+          done
+          if [ -z "$MANIFEST" ]; then
+            echo "::error::Could not find an N60 Pro image manifest containing kmod-mt_wifi."
+            printf '%s\n' "${MANIFESTS[@]}"
+            exit 1
+          fi
+          echo "===== Closed-driver kernel modules listed in final image manifest ====="
+          for package in kmod-conninfra kmod-mediatek_hnat kmod-mt_wifi kmod-warp; do
+            if grep -qE "^${package//-/\\-}([[:space:]]|$)" "$MANIFEST"; then
+              grep -E "^${package//-/\\-}([[:space:]]|$)" "$MANIFEST"
+            else
+              echo "::error::Required closed-driver package missing from image manifest: $package"
+              exit 1
+            fi
+          done
+          cp "$MANIFEST" "$DEST/image-packages.manifest"
+          {
+            echo "Closed-driver module package verification: PASS"
+            echo "Manifest source: $MANIFEST"
+            echo "Verified packages: kmod-conninfra, kmod-mediatek_hnat, kmod-mt_wifi, kmod-warp"
+          } > "$DEST/CLOSED-DRIVER-MODULES.txt"
           {
             echo "Priority: PRIMARY candidate; OpenWrt-compatible standard profile"
             echo "Profile: netcore_n60-pro"

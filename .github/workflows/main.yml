@@ -310,7 +310,7 @@ jobs:
             exit 1
           fi
           echo "===== Closed-driver kernel modules listed in final image manifest ====="
-          for package in kmod-conninfra kmod-mediatek_hnat kmod-mt_wifi kmod-warp; do
+          for package in kmod-conninfra kmod-mediatek_hnat kmod-mt_wifi kmod-warp wifi-dats mtwifi-cfg-ucode; do
             if grep -qE "^${package//-/\\-}([[:space:]]|$)" "$MANIFEST"; then
               grep -E "^${package//-/\\-}([[:space:]]|$)" "$MANIFEST"
             else
@@ -318,11 +318,17 @@ jobs:
               exit 1
             fi
           done
+          if grep -qE '^(mtwifi-cfg|luci-app-mtwifi-cfg)([[:space:]]|$)' "$MANIFEST"; then
+            echo "::error::Legacy mtwifi-cfg/LuCI package unexpectedly appears in the final image manifest."
+            grep -E '^(mtwifi-cfg|luci-app-mtwifi-cfg)([[:space:]]|$)' "$MANIFEST"
+            exit 1
+          fi
           cp "$MANIFEST" "$DEST/image-packages.manifest"
           {
-            echo "Closed-driver module package verification: PASS"
+            echo "Closed-driver and Wi-Fi configuration package verification: PASS"
             echo "Manifest source: $MANIFEST"
-            echo "Verified packages: kmod-conninfra, kmod-mediatek_hnat, kmod-mt_wifi, kmod-warp"
+            echo "Verified packages: kmod-conninfra, kmod-mediatek_hnat, kmod-mt_wifi, kmod-warp, wifi-dats, mtwifi-cfg-ucode"
+            echo "Legacy conflicting packages absent: mtwifi-cfg, luci-app-mtwifi-cfg"
           } > "$DEST/CLOSED-DRIVER-MODULES.txt"
           {
             echo "Priority: PRIMARY candidate; OpenWrt-compatible standard profile"

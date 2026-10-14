@@ -79,7 +79,6 @@ jobs:
           # SMB3 file sharing via ksmbd; LuCI pulls required runtime dependencies
           CONFIG_PACKAGE_kmod-fs-ksmbd=y
           CONFIG_PACKAGE_ksmbd-server=y
-          CONFIG_PACKAGE_ksmbd-tools=y
           CONFIG_PACKAGE_luci-app-ksmbd=y
           # MTK proprietary Wi-Fi stack and matching LuCI frontend (MT7986)
           CONFIG_PACKAGE_kmod-conninfra=y
@@ -143,7 +142,6 @@ jobs:
             'CONFIG_PACKAGE_switch=y' \
             'CONFIG_PACKAGE_kmod-fs-ksmbd=y' \
             'CONFIG_PACKAGE_ksmbd-server=y' \
-            'CONFIG_PACKAGE_ksmbd-tools=y' \
             'CONFIG_PACKAGE_luci-app-ksmbd=y' \
             'CONFIG_MTK_CHIP_MT7986=y' \
             'CONFIG_MTK_CONNINFRA_APSOC=y' \

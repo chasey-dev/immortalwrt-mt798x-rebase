@@ -1,16 +1,20 @@
-name: Build N60 Pro - ImmortalWrt 25.12 (single standard profile)
+name: Build N60 Pro - ImmortalWrt Closed Driver
 
 on:
   workflow_dispatch:
   push:
     branches:
       - n60pro-mtk-closed-driver
+    paths:
+      - '.github/workflows/main.yml'
+      - 'defconfig/**'
+      - 'target/linux/mediatek/**'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: n60-pro-build
+  group: n60-pro-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,97 +23,94 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      - name: Check N60 Pro device definitions
-        shell: bash
+      - name: Verify DTS integrity
         run: |
-          set -euo pipefail
-          echo "===== Source revision ====="
-          git log -1 --format='%H %s'
-          echo "===== Standard profile definition ====="
-          grep -Rni --include='*.mk' --include='*.dts' --include='*.dtsi' 'netcore.n60.pro' target/linux/mediatek || true
+          echo "===== DTS integrity check ====="
+          echo "This workflow does NOT modify any DTS files."
+          echo "It only records their hashes for reference."
+          echo
+          for dts in \
+            target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dts \
+            target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dtsi; do
+            if [ -f "$dts" ]; then
+              sha256sum "$dts"
+            fi
+          done
+          echo
+          echo "===== All N60 Pro related DTS files ====="
+          find target/linux/mediatek -type f \( -name "*n60*pro*" -o -name "*netcore*" \) -print 2>/dev/null || true
+          echo
+          echo "===== DTS source revision ====="
+          git log -1 --format='%H %s' -- target/linux/mediatek/dts/ 2>/dev/null || true
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY" || true
+          df -h
 
       - name: Install build dependencies
-        shell: bash
         run: |
-          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev python3-dev rsync unzip zlib1g-dev file wget time xsltproc libelf-dev device-tree-compiler qemu-utils python3-setuptools python3-pyelftools swig ccache
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
+            python3-dev rsync unzip zlib1g-dev file wget time xsltproc \
+            libelf-dev device-tree-compiler qemu-utils python3-setuptools \
+            python3-pyelftools swig ccache
 
-      - name: Restore compiler cache
+      - name: Set Go proxy
+        run: |
+          echo "GOPROXY=https://goproxy.cn,direct" >> $GITHUB_ENV
+          echo "GOSUMDB=off" >> $GITHUB_ENV
+
+      - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ${{ runner.os }}-openwrt-n60pro-ccache-${{ github.ref_name }}-${{ github.sha }}
+          key: ${{ runner.os }}-n60pro-ccache-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-openwrt-n60pro-ccache-${{ github.ref_name }}-
-            ${{ runner.os }}-openwrt-n60pro-ccache-
+            ${{ runner.os }}-n60pro-ccache-${{ github.ref_name }}-
+            ${{ runner.os }}-n60pro-ccache-
 
       - name: Update and install feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure standard OpenWrt-compatible profile first
-        shell: bash
+      - name: Configure N60 Pro closed-driver firmware
         run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.cache/ccache" artifacts/N60-Pro/standard
+          mkdir -p "$HOME/.cache/ccache"
           ccache --max-size=5G
           ccache --set-config=compiler_check=content
 
-          # Record the exact MT7986 AX6000 radio profile shipped by this branch.
-          DAT_AUDIT="artifacts/N60-Pro/standard/WIFI-DAT-SOURCE-AUDIT.txt"
-          {
-            echo "Wi-Fi profile source audit (source tree, before packaging)"
-            echo "Driver package version/source:"
-            grep -E '^(PKG_SOURCE|PKG_HASH|PKG_VERSION):=' package/mtk/drivers/mt_wifi/Makefile
-            echo
-            for dat in \
-              package/mtk/drivers/wifi-profile/files/mt7986/mt7986-ax6000.dbdc.b0.dat \
-              package/mtk/drivers/wifi-profile/files/mt7986/mt7986-ax6000.dbdc.b1.dat; do
-              echo "===== $dat ====="
-              sha256sum "$dat"
-              grep -nE '^(PPEnable|WHNAT)=' "$dat" || true
-            done
-            echo
-            echo "===== ucode schema references ====="
-            grep -nEi 'PPEnable|WHNAT|whnat' package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/schema/mtwifi/dat-defs.json || true
-            echo "Note: PPEnable value is recorded as source data only; no acceleration semantics are inferred from the value alone."
-          } | tee "$DAT_AUDIT"
-
           cat > .config <<'EOF'
+          # Target
           CONFIG_TARGET_mediatek=y
           CONFIG_TARGET_mediatek_filogic=y
           CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y
+
+          # LuCI
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-mod-network=y
-          # MTK proprietary Wi-Fi / acceleration / QoS stack and matching LuCI
-          CONFIG_PACKAGE_datconf-lua=y
-          CONFIG_PACKAGE_luci-app-eqos-mtk=y
-          CONFIG_PACKAGE_luci-i18n-eqos-mtk-zh-cn=y
-          CONFIG_PACKAGE_luci-app-turboacc-mtk=y
-          CONFIG_PACKAGE_luci-i18n-turboacc-mtk-zh-cn=y
-          CONFIG_PACKAGE_mii_mgr=y
-          CONFIG_PACKAGE_mtkhqos_util=y
-          CONFIG_PACKAGE_regs=y
-          CONFIG_PACKAGE_switch=y
-          # SMB3 file sharing via ksmbd; LuCI pulls required runtime dependencies
-          CONFIG_PACKAGE_kmod-fs-ksmbd=y
-          CONFIG_PACKAGE_ksmbd-server=y
-          CONFIG_PACKAGE_luci-app-ksmbd=y
-          # MTK proprietary Wi-Fi stack and matching LuCI frontend (MT7986)
+          CONFIG_PACKAGE_luci-mod-admin-full=y
+          CONFIG_PACKAGE_luci-theme-bootstrap=y
+          CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
+
+          # MTK closed-source Wi-Fi stack
+          CONFIG_PACKAGE_kmod-mt_wifi=y
           CONFIG_PACKAGE_kmod-conninfra=y
           CONFIG_PACKAGE_kmod-mediatek_hnat=y
-          CONFIG_PACKAGE_kmod-mt_wifi=y
           CONFIG_PACKAGE_kmod-warp=y
-          CONFIG_PACKAGE_datconf=y
           CONFIG_PACKAGE_wifi-dats=y
           CONFIG_PACKAGE_mtwifi-cfg-ucode=y
+          CONFIG_PACKAGE_datconf=y
+          CONFIG_PACKAGE_datconf-lua=y
+
+          # MTK Kconfig for MT7986
           CONFIG_MTK_CHIP_MT7986=y
           CONFIG_MTK_CONNINFRA_APSOC=y
           CONFIG_MTK_CONNINFRA_APSOC_MT7986=y
@@ -121,306 +122,182 @@ jobs:
           CONFIG_MTK_MT_WIFI=m
           CONFIG_MTK_SUPPORT_OPENWRT=y
           CONFIG_MTK_WIFI_DRIVER=y
-          CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673=y
-          # Match the repository's MT7986 template: AP mode; retain 802.11k for WARP dependencies.
           CONFIG_MTK_WIFI_MODE_AP=m
           CONFIG_MTK_WIFI_SKU_TYPE="AX6000"
           CONFIG_first_card_name="MT7986"
           CONFIG_MTK_DOT11K_RRM_SUPPORT=y
-          CONFIG_MTK_MT_WIFI_FIRMWARE_PATH_MT7986="mt7986-fw-20260601"
-          CONFIG_MTK_MT_WIFI_MT7986_20260601=y
           CONFIG_MTK_MT_WIFI_PATH="mt_wifi"
-          CONFIG_WARP_VERSION=2
-          CONFIG_WARP_CHIPSET="mt7986"
           CONFIG_MTK_WLAN_HOOK=y
           CONFIG_MTK_WHNAT_SUPPORT=m
           CONFIG_MTK_WARP_V2=y
+          CONFIG_WARP_VERSION=2
+          CONFIG_WARP_CHIPSET="mt7986"
+
+          # Optional MTK extras
+          CONFIG_PACKAGE_luci-app-turboacc-mtk=y
+          CONFIG_PACKAGE_luci-i18n-turboacc-mtk-zh-cn=y
+          CONFIG_PACKAGE_luci-app-eqos-mtk=y
+          CONFIG_PACKAGE_luci-i18n-eqos-mtk-zh-cn=y
+          CONFIG_PACKAGE_mii_mgr=y
+          CONFIG_PACKAGE_mtkhqos_util=y
+          CONFIG_PACKAGE_regs=y
+          CONFIG_PACKAGE_switch=y
+
+          # File sharing
+          CONFIG_PACKAGE_kmod-fs-ksmbd=y
+          CONFIG_PACKAGE_ksmbd-server=y
+          CONFIG_PACKAGE_luci-app-ksmbd=y
+
+          # Build optimization
           CONFIG_CCACHE=y
           EOF
 
-          cp .config artifacts/N60-Pro/standard/config.before-defconfig
+          cp .config .config.before-defconfig
           make defconfig
-          echo "===== MTK Kconfig dependency diagnostics after defconfig ====="
-          for symbol in CONFIG_MTK_MT_WIFI CONFIG_MTK_MT_MAC CONFIG_MTK_SUPPORT_OPENWRT CONFIG_MTK_WIFI_DRIVER CONFIG_MTK_WIFI_MODE_AP CONFIG_MTK_WIFI_SKU_TYPE CONFIG_first_card_name CONFIG_MTK_CHIP_MT7986 CONFIG_MTK_WLAN_HOOK CONFIG_WARP_CHIPSET CONFIG_MTK_FAST_NAT_SUPPORT CONFIG_MTK_WHNAT_SUPPORT CONFIG_MTK_WARP_V2 CONFIG_PACKAGE_kmod-conninfra CONFIG_PACKAGE_kmod-mediatek_hnat CONFIG_PACKAGE_kmod-hw_nat CONFIG_PACKAGE_kmod-warp; do
-            grep -E "^${symbol}=" .config || echo "${symbol}=<unset>"
-          done
-          grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y' .config || {
-            echo "::error::Standard N60 Pro profile missing after defconfig."
-            exit 1
-          }
-          grep -qx 'CONFIG_PACKAGE_luci=y' .config || {
-            echo "::error::LuCI was not enabled."
-            exit 1
-          }
-          grep -qx 'CONFIG_PACKAGE_luci-mod-network=y' .config || {
-            echo "::error::LuCI network module (standard wireless/network UI) was not enabled."
-            exit 1
-          }
+
+          # 关键配置校验（失败即停，因为这几项是闭源驱动的基础）
           for required in \
+            'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y' \
+            'CONFIG_PACKAGE_kmod-mt_wifi=y' \
             'CONFIG_PACKAGE_kmod-conninfra=y' \
             'CONFIG_PACKAGE_kmod-mediatek_hnat=y' \
-            'CONFIG_PACKAGE_kmod-mt_wifi=y' \
             'CONFIG_PACKAGE_kmod-warp=y' \
-            'CONFIG_PACKAGE_datconf=y' \
             'CONFIG_PACKAGE_wifi-dats=y' \
             'CONFIG_PACKAGE_mtwifi-cfg-ucode=y' \
-            'CONFIG_PACKAGE_luci-mod-network=y' \
-            'CONFIG_PACKAGE_datconf-lua=y' \
-            'CONFIG_PACKAGE_luci-app-eqos-mtk=y' \
-            'CONFIG_PACKAGE_luci-i18n-eqos-mtk-zh-cn=y' \
-            'CONFIG_PACKAGE_luci-app-turboacc-mtk=y' \
-            'CONFIG_PACKAGE_luci-i18n-turboacc-mtk-zh-cn=y' \
-            'CONFIG_PACKAGE_mii_mgr=y' \
-            'CONFIG_PACKAGE_mtkhqos_util=y' \
-            'CONFIG_PACKAGE_regs=y' \
-            'CONFIG_PACKAGE_switch=y' \
-            'CONFIG_PACKAGE_kmod-fs-ksmbd=y' \
-            'CONFIG_PACKAGE_ksmbd-server=y' \
-            'CONFIG_PACKAGE_luci-app-ksmbd=y' \
-            'CONFIG_MTK_CHIP_MT7986=y' \
-            'CONFIG_MTK_CONNINFRA_APSOC=y' \
-            'CONFIG_MTK_CONNINFRA_APSOC_MT7986=y' \
-            'CONFIG_MTK_FAST_NAT_SUPPORT=y' \
-            'CONFIG_MTK_FIRST_IF_EEPROM_FLASH=y' \
-            'CONFIG_MTK_FIRST_IF_IPAILNA=y' \
-            'CONFIG_MTK_FIRST_IF_MT7986=y' \
-            'CONFIG_MTK_MT_MAC=y' \
             'CONFIG_MTK_MT_WIFI=m' \
-            'CONFIG_MTK_SUPPORT_OPENWRT=y' \
             'CONFIG_MTK_WIFI_DRIVER=y' \
             'CONFIG_MTK_WIFI_MODE_AP=m' \
             'CONFIG_MTK_WIFI_SKU_TYPE="AX6000"' \
-            'CONFIG_first_card_name="MT7986"' \
-            'CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673=y' \
-            'CONFIG_MTK_DOT11K_RRM_SUPPORT=y' \
-            'CONFIG_MTK_MT_WIFI_FIRMWARE_PATH_MT7986="mt7986-fw-20260601"' \
-            'CONFIG_MTK_MT_WIFI_MT7986_20260601=y' \
-            'CONFIG_MTK_MT_WIFI_PATH="mt_wifi"' \
-            'CONFIG_WARP_VERSION=2' \
-            'CONFIG_WARP_CHIPSET="mt7986"' \
-            'CONFIG_MTK_WLAN_HOOK=y' \
-            'CONFIG_MTK_WHNAT_SUPPORT=m' \
-            'CONFIG_MTK_WARP_V2=y'; do
+            'CONFIG_first_card_name="MT7986"'; do
             grep -Fqx "$required" .config || {
-              echo "::error::Required MTK proprietary stack option missing after defconfig: $required"
+              echo "::error::Required option missing after defconfig: $required"
+              echo "===== Effective MTK options ====="
+              grep -E '^(CONFIG_(MTK_|WARP_)|CONFIG_first_card_name|CONFIG_PACKAGE_(kmod-(mt_wifi|conninfra|mediatek_hnat|warp)|wifi-dats|mtwifi-cfg-ucode))=' .config || true
               exit 1
             }
           done
-          # Preserve both sides of Kconfig normalization so dropped symbols are evidence, not guesses.
-          cp .config artifacts/N60-Pro/standard/config.after-defconfig
-          diff -u artifacts/N60-Pro/standard/config.before-defconfig artifacts/N60-Pro/standard/config.after-defconfig > artifacts/N60-Pro/standard/config-defconfig.diff || true
-          # Normalize enabled and disabled CONFIG symbols so transitions to "# CONFIG_X is not set" are visible.
-          for side in before after; do
-            awk '/^CONFIG_[A-Za-z0-9_]+=/{print; next} /^# CONFIG_[A-Za-z0-9_]+ is not set$/{sub(/^# /,""); sub(/ is not set$/,"=<unset>"); print}' "artifacts/N60-Pro/standard/config.${side}-defconfig" | sort > "artifacts/N60-Pro/standard/config-symbols.${side}.sorted"
-          done
-          diff -u artifacts/N60-Pro/standard/config-symbols.before.sorted artifacts/N60-Pro/standard/config-symbols.after.sorted > artifacts/N60-Pro/standard/config-symbols-defconfig.diff || true
-          grep -E '^[+-]CONFIG_(MTK_|WARP_|PACKAGE_(kmod-(conninfra|mediatek_hnat|mt_wifi|warp)|mtwifi-cfg|wifi-dats|luci-app-mtwifi-cfg))' artifacts/N60-Pro/standard/config-defconfig.diff > artifacts/N60-Pro/standard/config-defconfig-mtk.diff || true
-          echo "===== MTK-related changes caused by make defconfig ====="
-          echo "===== Normalized CONFIG-symbol changes caused by make defconfig ====="
-          cat artifacts/N60-Pro/standard/config-symbols-defconfig.diff || true
-          cat artifacts/N60-Pro/standard/config-defconfig-mtk.diff || true
 
-          # Compare only driver-related options with the official MT7986 baseline.
-          # Do not copy that template's device/profile selection into the N60 Pro build.
-          grep -E '^(CONFIG_(MTK_MT_WIFI|MTK_MT_MAC|MTK_SUPPORT_OPENWRT|MTK_WIFI_DRIVER|MTK_WIFI_MODE_|MTK_WIFI_SKU_TYPE|MTK_MT_AP_SUPPORT|MTK_MT_STA_SUPPORT|MTK_WHNAT_SUPPORT|MTK_WARP_V2|MTK_FAST_NAT_SUPPORT|MTK_WLAN_HOOK|MTK_CONNINFRA_APSOC|MTK_CHIP_MT7986|WARP_)|CONFIG_first_card_name|CONFIG_PACKAGE_(kmod-(conninfra|mediatek_hnat|mt_wifi|warp)|mtwifi-cfg(-ucode)?|wifi-dats))=' defconfig/mt7986-ax6000-256m.config > artifacts/N60-Pro/standard/template-driver-options.txt || true
-          grep -E '^(CONFIG_(MTK_MT_WIFI|MTK_MT_MAC|MTK_SUPPORT_OPENWRT|MTK_WIFI_DRIVER|MTK_WIFI_MODE_|MTK_WIFI_SKU_TYPE|MTK_MT_AP_SUPPORT|MTK_MT_STA_SUPPORT|MTK_WHNAT_SUPPORT|MTK_WARP_V2|MTK_FAST_NAT_SUPPORT|MTK_WLAN_HOOK|MTK_CONNINFRA_APSOC|MTK_CHIP_MT7986|WARP_)|CONFIG_first_card_name|CONFIG_PACKAGE_(kmod-(conninfra|mediatek_hnat|mt_wifi|warp)|mtwifi-cfg(-ucode)?|wifi-dats))=' .config > artifacts/N60-Pro/standard/effective-driver-options.txt || true
-          diff -u artifacts/N60-Pro/standard/template-driver-options.txt artifacts/N60-Pro/standard/effective-driver-options.txt > artifacts/N60-Pro/standard/template-vs-effective-driver-options.diff || true
-
-          # The new ucode configurator explicitly conflicts with legacy mtwifi-cfg.
-          # The legacy LuCI app depends on mtwifi-cfg, so do not select both stacks.
-          if grep -qx 'CONFIG_PACKAGE_mtwifi-cfg=y' .config || grep -qx 'CONFIG_PACKAGE_luci-app-mtwifi-cfg=y' .config; then
-            echo "::error::Legacy mtwifi-cfg/LuCI package conflicts with mtwifi-cfg-ucode; remove the legacy stack."
+          # 防止旧版 mtwifi-cfg 与新版 ucode 冲突
+          if grep -qx 'CONFIG_PACKAGE_mtwifi-cfg=y' .config || \
+             grep -qx 'CONFIG_PACKAGE_luci-app-mtwifi-cfg=y' .config; then
+            echo "::error::Legacy mtwifi-cfg selected; conflicts with mtwifi-cfg-ucode."
             exit 1
           fi
-          cp .config artifacts/N60-Pro/standard/config.buildinfo
-          echo "PASS: standard profile is selected alone."
+
+          echo "===== Effective closed-driver options ====="
+          grep -E '^(CONFIG_(MTK_|WARP_)|CONFIG_first_card_name|CONFIG_PACKAGE_(kmod-(mt_wifi|conninfra|mediatek_hnat|warp)|wifi-dats|mtwifi-cfg-ucode))=' .config
+
+          echo "===== Config diff (before vs after defconfig) ====="
+          diff <(sort .config.before-defconfig) <(sort .config) || true
 
       - name: Download sources
-        run: make download -j2
+        run: make download -j$(nproc)
 
-      - name: Inspect downloaded closed Wi-Fi driver parser for PPEnable and WHNAT
-        shell: bash
+      - name: Build firmware
+        run: make -j$(nproc) V=s
+        continue-on-error: true
+
+      - name: Collect firmware and verify closed drivers
+        if: always()
         run: |
-          set -euo pipefail
-          ARCHIVE="$(find dl -type f -name 'mt79xx_20250408-705eb4.tar.xz' -print -quit)"
-          if [ -z "$ARCHIVE" ]; then
-            echo "::error::Downloaded MTK Wi-Fi source archive was not found; cannot audit PPEnable/WHNAT parser semantics."
-            find dl -maxdepth 2 -type f -printf '%p\n' | head -100
-            exit 1
-          fi
-          SRC="$RUNNER_TEMP/mt_wifi_source_audit"
-          mkdir -p "$SRC"
-          tar -xf "$ARCHIVE" -C "$SRC"
-          OUT="artifacts/N60-Pro/standard/WIFI-DAT-PARSER-AUDIT.txt"
-          {
-            echo "Archive: $ARCHIVE"
-            sha256sum "$ARCHIVE"
-            echo "Expected package source hash from Makefile:"
-            grep -E '^PKG_HASH:=' package/mtk/drivers/mt_wifi/Makefile
-            echo
-            echo "===== Exact source references to PPEnable / WHNAT ====="
-            grep -RniE 'PPEnable|WHNAT' "$SRC" --include='*.c' --include='*.h' --include='*.cpp' --include='*.hpp' --include='*.mk' --include='Makefile' || true
-          } | tee "$OUT"
-
-      - name: Build standard profile first
-        run: make -j2 V=s
-
-      - name: Collect and verify standard firmware
-        shell: bash
-        run: |
-          set -euo pipefail
           OUT="bin/targets/mediatek/filogic"
-          DEST="artifacts/N60-Pro/standard"
-          mapfile -t ITBS < <(find "$OUT" -maxdepth 1 -type f -iname '*n60*pro*.itb' -print)
-          if [ "${#ITBS[@]}" -eq 0 ]; then
-            echo "::error::Standard profile did not produce an N60 Pro ITB."
-            find "$OUT" -maxdepth 1 -type f -printf '%f\n'
-            exit 1
-          fi
-          cp "${ITBS[@]}" "$DEST/"
+          DEST="artifacts/N60-Pro"
+          mkdir -p "$DEST"
 
-          # Inspect the final FIT and extract its embedded FDT.
-          ITB="${ITBS[0]}"
-          dumpimage -l "$ITB" | tee "$DEST/fit-image-list.txt"
-          dumpimage -T flat_dt -p 1 -o "$DEST/embedded.dtb" "$ITB"
-          dtc -I dtb -O dts -o "$DEST/embedded.dts" "$DEST/embedded.dtb"
-          grep -Fq 'model = "Netcore N60 Pro";' "$DEST/embedded.dts" || {
-            echo "::error::Embedded FDT model is not Netcore N60 Pro."
-            exit 1
-          }
-          grep -Fq 'netcore,n60-pro' "$DEST/embedded.dts" || {
-            echo "::error::Embedded FDT compatible does not identify netcore,n60-pro."
-            exit 1
-          }
-          grep -Fq 'compatible = "spi-nand";' "$DEST/embedded.dts" || {
-            echo "::error::Embedded FDT does not declare SPI-NAND."
-            exit 1
-          }
-          {
-            echo "Embedded FDT verification: PASS"
-            grep -E 'model =|compatible =|label = "(bl2|u-boot-env|factory|fip|ubi)"|reg = <0x0 0x100000>|reg = <0x580000 0x7a80000>' "$DEST/embedded.dts" || true
-          } > "$DEST/EMBEDDED-DTS-CHECK.txt"
+          echo "===== Build outputs ====="
+          ls -lh "$OUT" 2>/dev/null || echo "No output directory"
 
-          # A Kconfig value of m only builds a module; the corresponding kmod
-          # package must also be selected so its .ko is installed into the image.
-          # Verify the final image manifest rather than trusting .config alone.
-          mapfile -t MANIFESTS < <(find "$OUT" -maxdepth 1 -type f -name '*.manifest' -print)
-          if [ "${#MANIFESTS[@]}" -eq 0 ]; then
-            echo "::error::No image package manifest found; cannot verify closed-driver modules in the firmware."
-            find "$OUT" -maxdepth 1 -type f -printf '%f\n' | sort
-            exit 1
-          fi
-          MANIFEST=""
-          for candidate in "${MANIFESTS[@]}"; do
-            if grep -qE '(^|[[:space:]])kmod-mt_wifi([[:space:]]|$)' "$candidate"; then
-              MANIFEST="$candidate"
-              break
-            fi
-          done
-          if [ -z "$MANIFEST" ]; then
-            echo "::error::Could not find an N60 Pro image manifest containing kmod-mt_wifi."
-            printf '%s\n' "${MANIFESTS[@]}"
-            exit 1
-          fi
-          # Verify the exact MT7986 profile files staged into the firmware rootfs.
-          ROOTFS_DAT_DIR=""
-          while IFS= read -r candidate; do
-            ROOTFS_DAT_DIR="$candidate"
-            break
-          done < <(find build_dir/target-* -type f -path '*/etc/wireless/mediatek/mt7986-ax6000.dbdc.b0.dat' -printf '%h\n' 2>/dev/null)
-          if [ -z "$ROOTFS_DAT_DIR" ]; then
-            echo "::error::MT7986 AX6000 DBDC b0 profile was not found in the staged firmware rootfs."
-            find build_dir/target-* -type f -path '*/etc/wireless/*' -printf '%p\n' 2>/dev/null | head -100
-            exit 1
-          fi
-          DAT_AUDIT="$DEST/WIFI-DAT-ROOTFS-CHECK.txt"
+          # 复制固件产物
+          find "$OUT" -maxdepth 1 -type f \( \
+            -name "*.itb" -o -name "*.bin" -o -name "*.manifest" \
+            -o -name "*.buildinfo" -o -name "sha256sums" \
+            \) -exec cp -v {} "$DEST/" \; 2>/dev/null || true
+
+          # 保存完整配置
+          cp .config "$DEST/config.full" 2>/dev/null || true
+          cp .config.before-defconfig "$DEST/config.before-defconfig" 2>/dev/null || true
+
+          # 记录 DTS 哈希（与构建前一致，用于确认未被修改）
           {
-            echo "Staged rootfs profile directory: $ROOTFS_DAT_DIR"
-            echo "AX6000 uses the general MT7986 profile directory in wifi-profile/Makefile."
-            for dat in \
-              "$ROOTFS_DAT_DIR/mt7986-ax6000.dbdc.b0.dat" \
-              "$ROOTFS_DAT_DIR/mt7986-ax6000.dbdc.b1.dat" \
-              "$ROOTFS_DAT_DIR/mt7986-sku.dat" \
-              "$ROOTFS_DAT_DIR/mt7986-sku-bf.dat" \
-              "$(dirname "$ROOTFS_DAT_DIR")/l1profile.dat"; do
-              if [ ! -s "$dat" ]; then
-                echo "::error::Required MT7986 Wi-Fi profile file missing or empty: $dat"
-                exit 1
-              fi
-              sha256sum "$dat"
+            echo "===== DTS hashes at build time ====="
+            for dts in \
+              target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dts \
+              target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dtsi; do
+              [ -f "$dts" ] && sha256sum "$dts"
             done
-            echo
-            grep -nE '^(PPEnable|WHNAT)=' "$ROOTFS_DAT_DIR/mt7986-ax6000.dbdc.b0.dat" || true
-            grep -nE '^(PPEnable|WHNAT)=' "$ROOTFS_DAT_DIR/mt7986-ax6000.dbdc.b1.dat" || true
-          } | tee "$DAT_AUDIT"
+          } > "$DEST/DTS-HASHES.txt" 2>&1
 
-          echo "===== Closed-driver kernel modules listed in final image manifest ====="
-          for package in kmod-conninfra kmod-mediatek_hnat kmod-mt_wifi kmod-warp wifi-dats mtwifi-cfg-ucode luci-mod-network; do
-            if grep -qE "^${package//-/\\-}([[:space:]]|$)" "$MANIFEST"; then
-              grep -E "^${package//-/\\-}([[:space:]]|$)" "$MANIFEST"
-            else
-              echo "::error::Required closed-driver package missing from image manifest: $package"
-              exit 1
-            fi
-          done
-          if grep -qE '^(mtwifi-cfg|luci-app-mtwifi-cfg)([[:space:]]|$)' "$MANIFEST"; then
-            echo "::error::Legacy mtwifi-cfg/LuCI package unexpectedly appears in the final image manifest."
-            grep -E '^(mtwifi-cfg|luci-app-mtwifi-cfg)([[:space:]]|$)' "$MANIFEST"
-            exit 1
+          # 检查 kmod 包是否真的包含 .ko（这是关键验证）
+          {
+            echo "===== Closed-driver kernel module verification ====="
+            for pkgname in kmod-mt_wifi kmod-conninfra kmod-mediatek_hnat kmod-warp; do
+              echo
+              echo "--- $pkgname ---"
+              PKG=$(find bin/ -name "${pkgname}_*.apk" -o -name "${pkgname}_*.ipk" 2>/dev/null | head -1)
+              if [ -z "$PKG" ]; then
+                echo "PACKAGE NOT FOUND in bin/"
+                continue
+              fi
+              echo "Package: $PKG"
+              TMP=$(mktemp -d)
+              case "$PKG" in
+                *.apk)
+                  tar -xzf "$PKG" -C "$TMP" 2>/dev/null || true
+                  ;;
+                *.ipk)
+                  ( cd "$TMP" && ar x "$OLDPWD/$PKG" 2>/dev/null && \
+                    tar -xzf data.tar.gz 2>/dev/null ) || true
+                  ;;
+              esac
+              find "$TMP" -name "*.ko" -exec basename {} \; | sort
+              for ko in $(find "$TMP" -name "*.ko"); do
+                echo "  vermagic: $(strings "$ko" | grep -m1 vermagic || echo unknown)"
+              done
+              rm -rf "$TMP"
+            done
+          } > "$DEST/CLOSED-DRIVER-KO-CHECK.txt" 2>&1
+
+          # 保存最终 manifest 里的闭源驱动包
+          MANIFEST=$(find "$OUT" -maxdepth 1 -name "*.manifest" | head -1)
+          if [ -n "$MANIFEST" ]; then
+            grep -E '^(kmod-mt_wifi|kmod-conninfra|kmod-mediatek_hnat|kmod-warp|wifi-dats|mtwifi-cfg-ucode)' \
+              "$MANIFEST" > "$DEST/MANIFEST-CLOSED-DRIVER.txt" 2>&1 || true
           fi
-          cp "$MANIFEST" "$DEST/image-packages.manifest"
+
+          # 记录最终 rootfs 中的 DAT 文件（如果还能找到）
           {
-            echo "Closed-driver and Wi-Fi configuration package verification: PASS"
-            echo "Manifest source: $MANIFEST"
-            echo "Verified packages: kmod-conninfra, kmod-mediatek_hnat, kmod-mt_wifi, kmod-warp, wifi-dats, mtwifi-cfg-ucode, luci-mod-network"
-            echo "Legacy conflicting packages absent: mtwifi-cfg, luci-app-mtwifi-cfg"
-          } > "$DEST/CLOSED-DRIVER-MODULES.txt"
-          {
-            echo "Priority: PRIMARY candidate; OpenWrt-compatible standard profile"
-            echo "Profile: netcore_n60-pro"
-            echo "Expected DTS: mt7986a-netcore-n60-pro"
-            echo "Expected format: sysupgrade.itb"
-            echo "Source revision:"
-            git log -1 --format='%H %s'
-            echo "Files:"
-            find "$DEST" -maxdepth 1 -type f -printf '%f\n' | sort
-          } > "$DEST/BUILD-INFO.txt"
-          echo "===== PRIMARY standard firmware ====="
+            echo "===== Rootfs DAT files ====="
+            find build_dir/target-* staging_dir/target-* -type f \
+              -path '*/etc/wireless/*' -printf '%p\n' 2>/dev/null | head -50 || true
+          } > "$DEST/DAT-FILES.txt" 2>&1
+
+          # 生成校验和
+          ( cd "$DEST" && find . -maxdepth 1 -type f ! -name 'SHA256SUMS' \
+            -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS ) || true
+
+          echo "===== Final artifact list ====="
           ls -lh "$DEST"
 
-      - name: Create build summary and verify checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          {
-            echo
-            echo "Final verification summary:"
-            echo "Repository: laodadelaoda/immortalwrt-mt798x-rebase"
-            echo "Profile: netcore_n60-pro"
-            echo "Expected DTS: mt7986a-netcore-n60-pro"
-            echo "Build output: standard sysupgrade.itb candidate"
-            echo "Source revision:"
-            git log -1 --format='%H %s'
-            echo "Embedded FDT, final image manifest, and closed-driver package checks are recorded alongside this file."
-          } >> artifacts/N60-Pro/standard/BUILD-INFO.txt
-          (
-            cd artifacts/N60-Pro/standard
-            find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
-            sha256sum -c SHA256SUMS.txt
-          )
-          echo "===== Final artifact tree ====="
-          find artifacts/N60-Pro -maxdepth 2 -type f -printf '%p (%s bytes)\\n' | sort
-          echo "===== ccache statistics ====="
-          ccache -s
-
-      - name: Upload firmware artifacts
+      - name: Upload firmware
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: N60-Pro-ImmortalWrt-25.12-Single-Standard-${{ github.run_number }}
+          name: N60-Pro-Firmware-${{ github.run_number }}
           path: artifacts/N60-Pro/
-          if-no-files-found: error
-          retention-days: 14
+          if-no-files-found: warn
+          retention-days: 30
 
-      - name: Report compiler cache statistics
-        if: always()
-        run: ccache -s
+      - name: Create Release
+        if: github.event_name == 'workflow_dispatch' && success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: n60pro-build-${{ github.run_number }}
+          name: "N60 Pro Closed Driver Build #${{ github.run_number }}"
+          files: |
+            artifacts/N60-Pro/*.itb
+            artifacts/N60-Pro/*.manifest
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

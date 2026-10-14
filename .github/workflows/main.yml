@@ -89,7 +89,7 @@ jobs:
           CONFIG_PACKAGE_datconf=y
           CONFIG_PACKAGE_wifi-dats=y
           CONFIG_PACKAGE_mtwifi-cfg=y
-          CONFIG_PACKAGE_mtwifi-cfg-ucode=y
+          # mtwifi-cfg-ucode is not a selectable package in the current feeds; keep the parent config package.
           CONFIG_PACKAGE_luci-app-mtwifi-cfg=y
           CONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y
           CONFIG_MTK_CHIP_MT7986=y
@@ -130,7 +130,6 @@ jobs:
             'CONFIG_PACKAGE_datconf=y' \
             'CONFIG_PACKAGE_wifi-dats=y' \
             'CONFIG_PACKAGE_mtwifi-cfg=y' \
-            'CONFIG_PACKAGE_mtwifi-cfg-ucode=y' \
             'CONFIG_PACKAGE_luci-app-mtwifi-cfg=y' \
             'CONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y' \
             'CONFIG_PACKAGE_datconf-lua=y' \

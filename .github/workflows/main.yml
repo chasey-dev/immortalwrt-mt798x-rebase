@@ -101,6 +101,9 @@ jobs:
           CONFIG_MTK_FIRST_IF_MT7986=y
           CONFIG_MTK_MT_WIFI=m
           CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673=y
+          # WARP proxy references STA and 802.11k RRM structures; enable matching driver features.
+          CONFIG_MTK_WIFI_MODE_BOTH=y
+          CONFIG_MTK_DOT11K_RRM_SUPPORT=y
           CONFIG_MTK_MT_WIFI_FIRMWARE_PATH_MT7986="mt7986-fw-20260601"
           CONFIG_MTK_MT_WIFI_MT7986_20260601=y
           CONFIG_MTK_MT_WIFI_PATH="mt_wifi"
@@ -156,6 +159,8 @@ jobs:
             'CONFIG_MTK_FIRST_IF_MT7986=y' \
             'CONFIG_MTK_MT_WIFI=m' \
             'CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673=y' \
+            'CONFIG_MTK_WIFI_MODE_BOTH=y' \
+            'CONFIG_MTK_DOT11K_RRM_SUPPORT=y' \
             'CONFIG_MTK_MT_WIFI_FIRMWARE_PATH_MT7986="mt7986-fw-20260601"' \
             'CONFIG_MTK_MT_WIFI_MT7986_20260601=y' \
             'CONFIG_MTK_MT_WIFI_PATH="mt_wifi"' \

@@ -87,6 +87,7 @@ jobs:
           CONFIG_TARGET_mediatek_filogic=y
           CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y
           CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-mod-network=y
           # MTK proprietary Wi-Fi / acceleration / QoS stack and matching LuCI
           CONFIG_PACKAGE_datconf-lua=y
           CONFIG_PACKAGE_luci-app-eqos-mtk=y
@@ -151,6 +152,10 @@ jobs:
             echo "::error::LuCI was not enabled."
             exit 1
           }
+          grep -qx 'CONFIG_PACKAGE_luci-mod-network=y' .config || {
+            echo "::error::LuCI network module (standard wireless/network UI) was not enabled."
+            exit 1
+          }
           for required in \
             'CONFIG_PACKAGE_kmod-conninfra=y' \
             'CONFIG_PACKAGE_kmod-mediatek_hnat=y' \
@@ -159,6 +164,7 @@ jobs:
             'CONFIG_PACKAGE_datconf=y' \
             'CONFIG_PACKAGE_wifi-dats=y' \
             'CONFIG_PACKAGE_mtwifi-cfg-ucode=y' \
+            'CONFIG_PACKAGE_luci-mod-network=y' \
             'CONFIG_PACKAGE_datconf-lua=y' \
             'CONFIG_PACKAGE_luci-app-eqos-mtk=y' \
             'CONFIG_PACKAGE_luci-i18n-eqos-mtk-zh-cn=y' \
@@ -203,8 +209,15 @@ jobs:
           # Preserve both sides of Kconfig normalization so dropped symbols are evidence, not guesses.
           cp .config artifacts/N60-Pro/standard/config.after-defconfig
           diff -u artifacts/N60-Pro/standard/config.before-defconfig artifacts/N60-Pro/standard/config.after-defconfig > artifacts/N60-Pro/standard/config-defconfig.diff || true
+          # Normalize enabled and disabled CONFIG symbols so transitions to "# CONFIG_X is not set" are visible.
+          for side in before after; do
+            awk '/^CONFIG_[A-Za-z0-9_]+=/{print; next} /^# CONFIG_[A-Za-z0-9_]+ is not set$/{sub(/^# /,""); sub(/ is not set$/,"=<unset>"); print}' "artifacts/N60-Pro/standard/config.${side}-defconfig" | sort > "artifacts/N60-Pro/standard/config-symbols.${side}.sorted"
+          done
+          diff -u artifacts/N60-Pro/standard/config-symbols.before.sorted artifacts/N60-Pro/standard/config-symbols.after.sorted > artifacts/N60-Pro/standard/config-symbols-defconfig.diff || true
           grep -E '^[+-]CONFIG_(MTK_|WARP_|PACKAGE_(kmod-(conninfra|mediatek_hnat|mt_wifi|warp)|mtwifi-cfg|wifi-dats|luci-app-mtwifi-cfg))' artifacts/N60-Pro/standard/config-defconfig.diff > artifacts/N60-Pro/standard/config-defconfig-mtk.diff || true
           echo "===== MTK-related changes caused by make defconfig ====="
+          echo "===== Normalized CONFIG-symbol changes caused by make defconfig ====="
+          cat artifacts/N60-Pro/standard/config-symbols-defconfig.diff || true
           cat artifacts/N60-Pro/standard/config-defconfig-mtk.diff || true
 
           # Compare only driver-related options with the official MT7986 baseline.
@@ -309,8 +322,40 @@ jobs:
             printf '%s\n' "${MANIFESTS[@]}"
             exit 1
           fi
+          # Verify the exact MT7986 profile files staged into the firmware rootfs.
+          ROOTFS_DAT_DIR=""
+          while IFS= read -r candidate; do
+            ROOTFS_DAT_DIR="$candidate"
+            break
+          done < <(find build_dir/target-* -type f -path '*/etc/wireless/mediatek/mt7986-ax6000.dbdc.b0.dat' -printf '%h\n' 2>/dev/null)
+          if [ -z "$ROOTFS_DAT_DIR" ]; then
+            echo "::error::MT7986 AX6000 DBDC b0 profile was not found in the staged firmware rootfs."
+            find build_dir/target-* -type f -path '*/etc/wireless/*' -printf '%p\n' 2>/dev/null | head -100
+            exit 1
+          fi
+          DAT_AUDIT="$DEST/WIFI-DAT-ROOTFS-CHECK.txt"
+          {
+            echo "Staged rootfs profile directory: $ROOTFS_DAT_DIR"
+            echo "AX6000 uses the general MT7986 profile directory in wifi-profile/Makefile."
+            for dat in \
+              "$ROOTFS_DAT_DIR/mt7986-ax6000.dbdc.b0.dat" \
+              "$ROOTFS_DAT_DIR/mt7986-ax6000.dbdc.b1.dat" \
+              "$ROOTFS_DAT_DIR/mt7986-sku.dat" \
+              "$ROOTFS_DAT_DIR/mt7986-sku-bf.dat" \
+              "$(dirname "$ROOTFS_DAT_DIR")/l1profile.dat"; do
+              if [ ! -s "$dat" ]; then
+                echo "::error::Required MT7986 Wi-Fi profile file missing or empty: $dat"
+                exit 1
+              fi
+              sha256sum "$dat"
+            done
+            echo
+            grep -nE '^(PPEnable|WHNAT)=' "$ROOTFS_DAT_DIR/mt7986-ax6000.dbdc.b0.dat" || true
+            grep -nE '^(PPEnable|WHNAT)=' "$ROOTFS_DAT_DIR/mt7986-ax6000.dbdc.b1.dat" || true
+          } | tee "$DAT_AUDIT"
+
           echo "===== Closed-driver kernel modules listed in final image manifest ====="
-          for package in kmod-conninfra kmod-mediatek_hnat kmod-mt_wifi kmod-warp wifi-dats mtwifi-cfg-ucode; do
+          for package in kmod-conninfra kmod-mediatek_hnat kmod-mt_wifi kmod-warp wifi-dats mtwifi-cfg-ucode luci-mod-network; do
             if grep -qE "^${package//-/\\-}([[:space:]]|$)" "$MANIFEST"; then
               grep -E "^${package//-/\\-}([[:space:]]|$)" "$MANIFEST"
             else
@@ -327,7 +372,7 @@ jobs:
           {
             echo "Closed-driver and Wi-Fi configuration package verification: PASS"
             echo "Manifest source: $MANIFEST"
-            echo "Verified packages: kmod-conninfra, kmod-mediatek_hnat, kmod-mt_wifi, kmod-warp, wifi-dats, mtwifi-cfg-ucode"
+            echo "Verified packages: kmod-conninfra, kmod-mediatek_hnat, kmod-mt_wifi, kmod-warp, wifi-dats, mtwifi-cfg-ucode, luci-mod-network"
             echo "Legacy conflicting packages absent: mtwifi-cfg, luci-app-mtwifi-cfg"
           } > "$DEST/CLOSED-DRIVER-MODULES.txt"
           {

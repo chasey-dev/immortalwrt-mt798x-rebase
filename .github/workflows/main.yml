@@ -29,8 +29,6 @@ jobs:
           git log -1 --format='%H %s'
           echo "===== Standard profile definition ====="
           grep -Rni --include='*.mk' --include='*.dts' --include='*.dtsi' 'netcore.n60.pro' target/linux/mediatek || true
-          echo "===== MTK U-Boot profile definition ====="
-          grep -Rni --include='*.mk' --include='*.dts' 'netcore_n60-pro-mtkuboot' target/linux/mediatek
 
       - name: Install build dependencies
         shell: bash
@@ -119,10 +117,6 @@ jobs:
             echo "::error::Standard N60 Pro profile missing after defconfig."
             exit 1
           }
-          if grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' .config; then
-            echo "::error::Unexpected MTK U-Boot profile selected during standard build."
-            exit 1
-          fi
           grep -qx 'CONFIG_PACKAGE_luci=y' .config || {
             echo "::error::LuCI was not enabled."
             exit 1
@@ -193,6 +187,28 @@ jobs:
           fi
           cp "${ITBS[@]}" "$DEST/"
 
+          # Inspect the final FIT and extract its embedded FDT.
+          ITB="${ITBS[0]}"
+          dumpimage -l "$ITB" | tee "$DEST/fit-image-list.txt"
+          dumpimage -T flat_dt -p 1 -o "$DEST/embedded.dtb" "$ITB"
+          dtc -I dtb -O dts -o "$DEST/embedded.dts" "$DEST/embedded.dtb"
+          grep -Fq 'model = "Netcore N60 Pro";' "$DEST/embedded.dts" || {
+            echo "::error::Embedded FDT model is not Netcore N60 Pro."
+            exit 1
+          }
+          grep -Fq 'netcore,n60-pro' "$DEST/embedded.dts" || {
+            echo "::error::Embedded FDT compatible does not identify netcore,n60-pro."
+            exit 1
+          }
+          grep -Fq 'compatible = "spi-nand";' "$DEST/embedded.dts" || {
+            echo "::error::Embedded FDT does not declare SPI-NAND."
+            exit 1
+          }
+          {
+            echo "Embedded FDT verification: PASS"
+            grep -E 'model =|compatible =|label = "(bl2|u-boot-env|factory|fip|ubi)"|reg = <0x0 0x100000>|reg = <0x580000 0x7a80000>' "$DEST/embedded.dts" || true
+          } > "$DEST/EMBEDDED-DTS-CHECK.txt"
+
           # A Kconfig value of m only builds a module; the corresponding kmod
           # package must also be selected so its .ko is installed into the image.
           # Verify the final image manifest rather than trusting .config alone.
@@ -239,28 +255,29 @@ jobs:
             echo "Files:"
             find "$DEST" -maxdepth 1 -type f -printf '%f\n' | sort
           } > "$DEST/BUILD-INFO.txt"
-          (
-            cd "$DEST"
-            sha256sum *.itb config.buildinfo BUILD-INFO.txt > SHA256SUMS.txt
-          )
           echo "===== PRIMARY standard firmware ====="
           ls -lh "$DEST"
-          cat "$DEST/SHA256SUMS.txt"
 
-      - name: Create build summary
+      - name: Create build summary and verify checksums
         shell: bash
         run: |
           set -euo pipefail
           {
+            echo
+            echo "Final verification summary:"
             echo "Repository: laodadelaoda/immortalwrt-mt798x-rebase"
             echo "Profile: netcore_n60-pro"
             echo "Expected DTS: mt7986a-netcore-n60-pro"
-            echo "Build output: one standard sysupgrade.itb candidate only"
+            echo "Build output: standard sysupgrade.itb candidate"
             echo "Source revision:"
             git log -1 --format='%H %s'
-            echo "The MTK U-Boot profile is intentionally not built."
-            echo "Review the DTS, partition layout and SHA256 before flashing."
-          } > artifacts/N60-Pro/BUILD-INFO.txt
+            echo "Embedded FDT, final image manifest, and closed-driver package checks are recorded alongside this file."
+          } >> artifacts/N60-Pro/standard/BUILD-INFO.txt
+          (
+            cd artifacts/N60-Pro/standard
+            find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+          )
           echo "===== Final artifact tree ====="
           find artifacts/N60-Pro -maxdepth 2 -type f -printf '%p (%s bytes)\\n' | sort
           echo "===== ccache statistics ====="

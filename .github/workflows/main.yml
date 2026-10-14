@@ -1,4 +1,4 @@
-name: Build N60 Pro - ImmortalWrt 25.12
+name: Build N60 Pro - ImmortalWrt 25.12 (single standard profile)
 
 on:
   workflow_dispatch:
@@ -66,6 +66,21 @@ jobs:
           CONFIG_TARGET_mediatek_filogic=y
           CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y
           CONFIG_PACKAGE_luci=y
+          # MTK proprietary Wi-Fi / acceleration / QoS stack and matching LuCI
+          CONFIG_PACKAGE_datconf-lua=y
+          CONFIG_PACKAGE_luci-app-eqos-mtk=y
+          CONFIG_PACKAGE_luci-i18n-eqos-mtk-zh-cn=y
+          CONFIG_PACKAGE_luci-app-turboacc-mtk=y
+          CONFIG_PACKAGE_luci-i18n-turboacc-mtk-zh-cn=y
+          CONFIG_PACKAGE_mii_mgr=y
+          CONFIG_PACKAGE_mtkhqos_util=y
+          CONFIG_PACKAGE_regs=y
+          CONFIG_PACKAGE_switch=y
+          # SMB3 file sharing via ksmbd; LuCI pulls required runtime dependencies
+          CONFIG_PACKAGE_kmod-fs-ksmbd=y
+          CONFIG_PACKAGE_ksmbd-server=y
+          CONFIG_PACKAGE_ksmbd-tools=y
+          CONFIG_PACKAGE_luci-app-ksmbd=y
           # MTK proprietary Wi-Fi stack and matching LuCI frontend (MT7986)
           CONFIG_PACKAGE_kmod-conninfra=y
           CONFIG_PACKAGE_kmod-mediatek_hnat=y
@@ -116,6 +131,19 @@ jobs:
             'CONFIG_PACKAGE_mtwifi-cfg-ucode=y' \
             'CONFIG_PACKAGE_luci-app-mtwifi-cfg=y' \
             'CONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y' \
+            'CONFIG_PACKAGE_datconf-lua=y' \
+            'CONFIG_PACKAGE_luci-app-eqos-mtk=y' \
+            'CONFIG_PACKAGE_luci-i18n-eqos-mtk-zh-cn=y' \
+            'CONFIG_PACKAGE_luci-app-turboacc-mtk=y' \
+            'CONFIG_PACKAGE_luci-i18n-turboacc-mtk-zh-cn=y' \
+            'CONFIG_PACKAGE_mii_mgr=y' \
+            'CONFIG_PACKAGE_mtkhqos_util=y' \
+            'CONFIG_PACKAGE_regs=y' \
+            'CONFIG_PACKAGE_switch=y' \
+            'CONFIG_PACKAGE_kmod-fs-ksmbd=y' \
+            'CONFIG_PACKAGE_ksmbd-server=y' \
+            'CONFIG_PACKAGE_ksmbd-tools=y' \
+            'CONFIG_PACKAGE_luci-app-ksmbd=y' \
             'CONFIG_MTK_CHIP_MT7986=y' \
             'CONFIG_MTK_CONNINFRA_APSOC=y' \
             'CONFIG_MTK_CONNINFRA_APSOC_MT7986=y' \
@@ -175,120 +203,24 @@ jobs:
           ls -lh "$DEST"
           cat "$DEST/SHA256SUMS.txt"
 
-      - name: Configure MTK U-Boot profile as secondary candidate
+      - name: Create build summary
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts/N60-Pro/mtkuboot
-          cat > .config <<'EOF'
-          CONFIG_TARGET_mediatek=y
-          CONFIG_TARGET_mediatek_filogic=y
-          CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y
-          CONFIG_PACKAGE_luci=y
-          # MTK proprietary Wi-Fi stack and matching LuCI frontend (MT7986)
-          CONFIG_PACKAGE_kmod-conninfra=y
-          CONFIG_PACKAGE_kmod-mediatek_hnat=y
-          CONFIG_PACKAGE_kmod-mt_wifi=y
-          CONFIG_PACKAGE_kmod-warp=y
-          CONFIG_PACKAGE_datconf=y
-          CONFIG_PACKAGE_wifi-dats=y
-          CONFIG_PACKAGE_mtwifi-cfg-ucode=y
-          CONFIG_PACKAGE_luci-app-mtwifi-cfg=y
-          CONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y
-          CONFIG_MTK_CHIP_MT7986=y
-          CONFIG_MTK_CONNINFRA_APSOC=y
-          CONFIG_MTK_CONNINFRA_APSOC_MT7986=y
-          CONFIG_MTK_FAST_NAT_SUPPORT=y
-          CONFIG_MTK_FIRST_IF_EEPROM_FLASH=y
-          CONFIG_MTK_FIRST_IF_IPAILNA=y
-          CONFIG_MTK_FIRST_IF_MT7986=y
-          CONFIG_MTK_MT_WIFI=m
-          CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673=y
-          CONFIG_MTK_MT_WIFI_FIRMWARE_PATH_MT7986="mt7986-fw-20260601"
-          CONFIG_MTK_MT_WIFI_MT7986_20260601=y
-          CONFIG_MTK_MT_WIFI_PATH="mt_wifi"
-          CONFIG_MTK_WARP_V2=y
-          CONFIG_MTK_WHNAT_SUPPORT=m
-          CONFIG_CCACHE=y
-          EOF
-
-          make defconfig
-          grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' .config || {
-            echo "::error::MTK U-Boot profile missing after defconfig."
-            exit 1
-          }
-          if grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y' .config; then
-            echo "::error::Unexpected standard profile selected during MTK U-Boot build."
-            exit 1
-          fi
-          grep -qx 'CONFIG_PACKAGE_luci=y' .config || {
-            echo "::error::LuCI was not enabled."
-            exit 1
-          }
-          for required in \
-            'CONFIG_PACKAGE_kmod-conninfra=y' \
-            'CONFIG_PACKAGE_kmod-mediatek_hnat=y' \
-            'CONFIG_PACKAGE_kmod-mt_wifi=y' \
-            'CONFIG_PACKAGE_kmod-warp=y' \
-            'CONFIG_PACKAGE_datconf=y' \
-            'CONFIG_PACKAGE_wifi-dats=y' \
-            'CONFIG_PACKAGE_mtwifi-cfg-ucode=y' \
-            'CONFIG_PACKAGE_luci-app-mtwifi-cfg=y' \
-            'CONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y' \
-            'CONFIG_MTK_CHIP_MT7986=y' \
-            'CONFIG_MTK_CONNINFRA_APSOC=y' \
-            'CONFIG_MTK_CONNINFRA_APSOC_MT7986=y' \
-            'CONFIG_MTK_FAST_NAT_SUPPORT=y' \
-            'CONFIG_MTK_FIRST_IF_EEPROM_FLASH=y' \
-            'CONFIG_MTK_FIRST_IF_IPAILNA=y' \
-            'CONFIG_MTK_FIRST_IF_MT7986=y' \
-            'CONFIG_MTK_MT_WIFI=m' \
-            'CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673=y' \
-            'CONFIG_MTK_MT_WIFI_FIRMWARE_PATH_MT7986="mt7986-fw-20260601"' \
-            'CONFIG_MTK_MT_WIFI_MT7986_20260601=y' \
-            'CONFIG_MTK_MT_WIFI_PATH="mt_wifi"' \
-            'CONFIG_MTK_WARP_V2=y' \
-            'CONFIG_MTK_WHNAT_SUPPORT=m'; do
-            grep -Fqx "$required" .config || {
-              echo "::error::Required MTK proprietary stack option missing after defconfig: $required"
-              exit 1
-            }
-          done
-          cp .config artifacts/N60-Pro/mtkuboot/config.buildinfo
-          echo "PASS: MTK U-Boot profile is selected alone."
-
-      - name: Build MTK U-Boot secondary profile incrementally
-        run: make -j2 V=s
-
-      - name: Collect secondary firmware and checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          OUT="bin/targets/mediatek/filogic"
-          DEST="artifacts/N60-Pro/mtkuboot"
-          mapfile -t IMAGES < <(find "$OUT" -maxdepth 1 -type f \( -iname '*n60*pro*.bin' -o -iname '*n60*pro*.itb' -o -iname '*n60*pro*.tar' \) -print)
-          if [ "${#IMAGES[@]}" -eq 0 ]; then
-            echo "::error::MTK U-Boot profile produced no N60 Pro candidate image."
-            find "$OUT" -maxdepth 1 -type f -printf '%f\n'
-            exit 1
-          fi
-          cp "${IMAGES[@]}" "$DEST/"
           {
-            echo "Priority: SECONDARY candidate; do not assume compatible with standard layout"
-            echo "Profile: netcore_n60-pro-mtkuboot"
-            echo "Expected DTS: mt7986a-netcore-n60-pro-mtkuboot"
+            echo "Repository: laodadelaoda/immortalwrt-mt798x-rebase"
+            echo "Profile: netcore_n60-pro"
+            echo "Expected DTS: mt7986a-netcore-n60-pro"
+            echo "Build output: one standard sysupgrade.itb candidate only"
             echo "Source revision:"
             git log -1 --format='%H %s'
-            echo "Files:"
-            find "$DEST" -maxdepth 1 -type f -printf '%f\n' | sort
-          } > "$DEST/BUILD-INFO.txt"
-          (
-            cd "$DEST"
-            sha256sum *.bin *.itb *.tar config.buildinfo BUILD-INFO.txt 2>/dev/null > SHA256SUMS.txt || true
-          )
-          echo "===== SECONDARY MTK U-Boot firmware ====="
-          ls -lh "$DEST"
-          cat "$DEST/SHA256SUMS.txt"
+            echo "The MTK U-Boot profile is intentionally not built."
+            echo "Review the DTS, partition layout and SHA256 before flashing."
+          } > artifacts/N60-Pro/BUILD-INFO.txt
+          echo "===== Final artifact tree ====="
+          find artifacts/N60-Pro -maxdepth 2 -type f -printf '%p (%s bytes)\\n' | sort
+          echo "===== ccache statistics ====="
+          ccache -s
 
       - name: Create combined build summary
         shell: bash
@@ -312,7 +244,7 @@ jobs:
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: N60-Pro-ImmortalWrt-25.12-Standard-First
+          name: N60-Pro-ImmortalWrt-25.12-Single-Standard
           path: artifacts/N60-Pro/
           if-no-files-found: error
           retention-days: 14

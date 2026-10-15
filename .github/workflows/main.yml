@@ -245,7 +245,7 @@ jobs:
 
           if [ "${#SRC_DIRS[@]}" -ne 1 ]; then
             echo "::error::Expected exactly one prepared mt_wifi directory; found ${#SRC_DIRS[@]}."
-            printf '%s\\n' "${SRC_DIRS[@]}"
+            printf '%s\n' "${SRC_DIRS[@]}"
             exit 1
           fi
 
@@ -259,7 +259,7 @@ jobs:
 
           if [ "${#SEC_FILES[@]}" -ne 1 ]; then
             echo "::error::Expected exactly one sec_cmm.h; found ${#SEC_FILES[@]}."
-            printf '%s\\n' "${SEC_FILES[@]}"
+            printf '%s\n' "${SEC_FILES[@]}"
             exit 1
           fi
 
@@ -321,16 +321,16 @@ jobs:
 
             echo
             echo "=== Makefile and .mk references ==="
-            find "$SRC" -type f \\
-              \\( -name 'Makefile' -o -name '*.mk' \\) \\
-              -exec grep -nH -E 'HAS_DOT11K_RRM_SUPPORT|DOT11K_RRM_SUPPORT' {} + \\
+            find "$SRC" -type f \
+              \( -name 'Makefile' -o -name '*.mk' \) \
+              -exec grep -nH -E 'HAS_DOT11K_RRM_SUPPORT|DOT11K_RRM_SUPPORT' {} + \
               || true
 
             echo
             echo "=== RRM header and type references ==="
-            grep -RniE \\
-              --include='*.h' --include='*.c' --include='Makefile' --include='*.mk' \\
-              'RRM_BEACON_REQ_INFO|DOT11K_RRM_SUPPORT|HAS_DOT11K_RRM_SUPPORT' \\
+            grep -RniE \
+              --include='*.h' --include='*.c' --include='Makefile' --include='*.mk' \
+              'RRM_BEACON_REQ_INFO|DOT11K_RRM_SUPPORT|HAS_DOT11K_RRM_SUPPORT' \
               "$SRC" | head -250 || true
 
             echo

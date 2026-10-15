@@ -271,26 +271,33 @@ jobs:
 
           echo "===== Step 4: patch SAE include condition ====="
 
-          OLD_COUNT="$(grep -Fxc '#ifdef SUPP_SAE_SUPPORT' "$SEC" || echo 0)"
-          NEW_COUNT="$(grep -Fxc '#if defined(DOT11_SAE_SUPPORT) || defined(SUPP_SAE_SUPPORT)' "$SEC" || echo 0)"
+          python3 - "$SEC" <<'PY'
+          from pathlib import Path
+          import sys
 
-          if [ "$OLD_COUNT" -eq 1 ] && [ "$NEW_COUNT" -eq 0 ]; then
-            cp -p "$SEC" "$SEC.before-sae-fix"
-            sed -i 's|^#ifdef SUPP_SAE_SUPPORT$|#if defined(DOT11_SAE_SUPPORT) || defined(SUPP_SAE_SUPPORT)|' "$SEC"
-          elif [ "$OLD_COUNT" -eq 0 ] && [ "$NEW_COUNT" -eq 1 ]; then
-            echo "SAE condition already has the expected form."
-          else
-            echo "::error::Unexpected SAE condition counts; refusing to modify the header."
-            echo "Old condition count: $OLD_COUNT"
-            echo "Expected condition count: $NEW_COUNT"
-            grep -nE 'DOT11_SAE_SUPPORT|SUPP_SAE_SUPPORT' "$SEC" || true
-            exit 1
-          fi
+          path = Path(sys.argv[1])
+          text = path.read_text()
+          old = '#ifdef SUPP_SAE_SUPPORT\n#include "security/sae_cmm.h"\n#endif'
+          new = '#if defined(DOT11_SAE_SUPPORT) || defined(SUPP_SAE_SUPPORT)\n#include "security/sae_cmm.h"\n#endif'
+          old_count = text.count(old)
+          new_count = text.count(new)
 
-          if ! grep -Fqx '#if defined(DOT11_SAE_SUPPORT) || defined(SUPP_SAE_SUPPORT)' "$SEC"; then
-            echo "::error::SAE patch verification failed."
-            exit 1
-          fi
+          if old_count == 1 and new_count == 0:
+              backup = path.with_name(path.name + ".before-sae-fix")
+              backup.write_text(text)
+              path.write_text(text.replace(old, new, 1))
+              print("SAE include guard patched.")
+          elif old_count == 0 and new_count == 1:
+              print("SAE include guard already has the expected form.")
+          else:
+              print(f"Unexpected SAE include-block counts: old={old_count}, new={new_count}")
+              raise SystemExit(1)
+
+          verified = path.read_text()
+          if verified.count(new) != 1:
+              print("SAE include-block verification failed.")
+              raise SystemExit(1)
+          PY
 
           {
             echo

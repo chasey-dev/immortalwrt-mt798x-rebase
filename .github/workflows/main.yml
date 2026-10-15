@@ -251,7 +251,7 @@ jobs:
 
           SEC="${SEC_FILES[0]}"
           SRC="${SEC%/embedded/include/security/sec_cmm.h}"
-          if [ ! -d "$SRC" ] || [ ! -f "$SRC/rtmp.h" -o ! -d "$SRC/os/linux" ]; then
+          if [ ! -d "$SRC" ] || [ ! -f "$SRC/embedded/include/rtmp.h" ] || [ ! -d "$SRC/os/linux" ]; then
             echo "::error::Resolved driver source root is invalid: $SRC"
             exit 1
           fi

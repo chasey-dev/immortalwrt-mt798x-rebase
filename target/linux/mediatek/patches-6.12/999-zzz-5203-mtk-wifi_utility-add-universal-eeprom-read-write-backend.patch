@@ -264,7 +264,7 @@ Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
  
 --- /dev/null
 +++ b/drivers/net/wireless/wifi_utility/mt_wifi_of.c
-@@ -0,0 +1,331 @@
+@@ -0,0 +1,374 @@
 +#include <linux/err.h>
 +#include <linux/kernel.h>
 +#include <linux/nvmem-consumer.h>
@@ -577,12 +577,19 @@ Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
 +int mt_of_read_eeprom_wifi(loff_t from, size_t len, u_char *buf)
 +{
 +	struct device_node *np;
++	struct device_node *first = NULL;
++	struct device_node *lowest = NULL;
++	struct device_node *best = NULL;
++	loff_t lowest_base = 0;
++	loff_t best_base = 0;
 +	int ret;
 +
 +	if (!buf && len)
 +		return -EINVAL;
 +
 +	for_each_of_allnodes(np) {
++		loff_t base;
++
 +		if (!of_device_is_available(np))
 +			continue;
 +		if (!__mt_of_is_wifi_node(np))
@@ -590,9 +597,45 @@ Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
 +		if (!__mt_of_has_eeprom(np))
 +			continue;
 +
-+		ret = __mt_of_read_node_eeprom(np, from, len, buf);
-+		return ret;
++		if (!first)
++			first = np;
++
++		if (!of_find_property(np, "mediatek,mtd-eeprom", NULL))
++			continue;
++		if (__mt_of_get_mtd_base(np, &base))
++			continue;
++
++		if (!lowest || base < lowest_base) {
++			lowest = np;
++			lowest_base = base;
++		}
++
++		/*
++		 * Multi-card designs place every card's EEPROM at its own
++		 * offset inside the same partition (e.g. 0x0 / 0xa0000),
++		 * while the driver requests the absolute per-card offset.
++		 * Use the node with the greatest base that does not exceed
++		 * the requested offset instead of the first node in DT order.
++		 */
++		if (base <= from && (!best || base > best_base)) {
++			best = np;
++			best_base = base;
++		}
 +	}
 +
-+	return -ENOENT;
++	/*
++	 * Keep "first match wins" for EEPROM sources without a per-card
++	 * base (embedded eeprom-data / NVMEM cell).
++	 */
++	if (first && !of_find_property(first, "mediatek,mtd-eeprom", NULL))
++		np = first;
++	else
++		np = best ? best : (lowest ? lowest : first);
++
++	if (!np)
++		return -ENOENT;
++
++	ret = __mt_of_read_node_eeprom(np, from, len, buf);
++
++	return ret;
 +}

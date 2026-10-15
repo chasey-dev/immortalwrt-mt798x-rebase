@@ -270,7 +270,7 @@ jobs:
             echo
             echo "=== Structure definitions and references ==="
             grep -RniE --include='*.h' --include='*.c' \
-              'struct[[:space:]]+(pwd_id_list|sae_capability|sae_pk_cfg)\\b' "$SRC" || true
+              'struct[[:space:]]+(pwd_id_list|sae_capability|sae_pk_cfg)\b' "$SRC" || true
             echo
             echo "=== typedef aliases / relevant declarations ==="
             grep -RniE --include='*.h' --include='*.c' \

@@ -228,7 +228,13 @@ jobs:
 
           cp .config artifacts/N60-Pro/standard/config.buildinfo
           echo "===== Effective MTK Wi-Fi configuration ====="
-          grep -E '^(CONFIG_WARP_VERSION=|CONFIG_WARP_CHIPSET=|CONFIG_PACKAGE_(kmod-mt_wifi|kmod-conninfra|kmod-warp|kmod-mediatek_hnat|wifi-dats|mtwifi-cfg-ucode|ucode-mod-datconf|ucode-mod-l1parser|iw|iwinfo|iwinfo-ucode)=|CONFIG_MTK_(MT_WIFI|CHIP_MT7986|FIRST_IF_MT7986|WIFI_MODE|WIFI_SKU_      - name: Prepare driver source, diagnose SAE structures and RRM
+          grep -E '^(CONFIG_WARP_VERSION=|CONFIG_WARP_CHIPSET=|CONFIG_PACKAGE_(kmod-mt_wifi|kmod-conninfra|kmod-warp|kmod-mediatek_hnat|wifi-dats|mtwifi-cfg-ucode|ucode-mod-datconf|ucode-mod-l1parser|iw|iwinfo|iwinfo-ucode)=|CONFIG_MTK_(MT_WIFI|CHIP_MT7986|FIRST_IF_MT7986|WIFI_MODE|WIFI_SKU_TYPE|WIFI_ADIE_TYPE|CONNINFRA_APSOC|DBDC_MODE)|CONFIG_first_card)' .config
+          echo "PASS: standard profile and MT7986 vendor Wi-Fi stack selected."
+
+      - name: Download sources
+        run: make download -j$(nproc)
+
+      - name: Prepare driver source, diagnose SAE structures and RRM
         shell: bash
         run: |
           set -euo pipefail
@@ -241,14 +247,14 @@ jobs:
             find build_dir -type f -path '*/embedded/include/security/sec_cmm.h' -print
           )
 
-          if [ "\${#SEC_FILES[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one prepared security/sec_cmm.h; found \${#SEC_FILES[@]}."
-            printf '%s\n' "\${SEC_FILES[@]}"
+          if [ "${#SEC_FILES[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one prepared security/sec_cmm.h; found ${#SEC_FILES[@]}."
+            printf '%s\n' "${SEC_FILES[@]}"
             exit 1
           fi
 
-          SEC="\${SEC_FILES[0]}"
-          SRC="\${SEC%/embedded/include/security/sec_cmm.h}"
+          SEC="${SEC_FILES[0]}"
+          SRC="${SEC%/embedded/include/security/sec_cmm.h}"
           if [ ! -d "$SRC" ] || [ ! -f "$SRC/embedded/include/rtmp.h" ] || [ ! -d "$SRC/os/linux" ]; then
             echo "::error::Resolved driver source root is invalid: $SRC"
             exit 1
@@ -264,7 +270,7 @@ jobs:
             echo
             echo "=== Structure definitions and references ==="
             grep -RniE --include='*.h' --include='*.c' \
-              'struct[[:space:]]+(pwd_id_list|sae_capability|sae_pk_cfg)\b' "$SRC" || true
+              'struct[[:space:]]+(pwd_id_list|sae_capability|sae_pk_cfg)\\b' "$SRC" || true
             echo
             echo "=== typedef aliases / relevant declarations ==="
             grep -RniE --include='*.h' --include='*.c' \
@@ -321,14 +327,6 @@ jobs:
           } | tee "$DIAG"
 
           echo "===== Diagnostics saved to $SAE_DIAG and $DIAG ====="
-
-T11K_RRM_SUPPORT=|^# CONFIG_MTK_DOT11K_RRM_SUPPORT is not set' .config || true
-
-            echo
-            echo "RRM_SOURCE_MODIFIED=no"
-          } | tee -a "$DIAG"
-
-          echo "===== Diagnostics saved to $DIAG ====="
 
       - name: Build standard profile
         id: build_step

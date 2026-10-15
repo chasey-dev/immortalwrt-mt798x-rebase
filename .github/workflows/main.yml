@@ -103,7 +103,6 @@ jobs:
           CONFIG_PACKAGE_kmod-warp=y
           CONFIG_PACKAGE_kmod-mediatek_hnat=y
           CONFIG_PACKAGE_wifi-dats=y
-          CONFIG_PACKAGE_mtwifi-cfg-ucode=y
 
           # Wi-Fi userspace tools
           CONFIG_PACKAGE_iw=y
@@ -112,6 +111,10 @@ jobs:
 
           # MT7986 driver profile and factory calibration
           CONFIG_MTK_MT_WIFI=m
+          CONFIG_MTK_MT_AP_SUPPORT=m
+          CONFIG_MTK_CFG80211_SUPPORT=y
+          CONFIG_MTK_WPA3_SUPPORT=y
+          CONFIG_MTK_HOSTAPD_WPA3_SUPPORT=y
           CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673=y
           CONFIG_MTK_MT_WIFI_PATH="mt_wifi"
           CONFIG_MTK_CHIP_MT7986=y
@@ -166,7 +169,6 @@ jobs:
           require_config 'CONFIG_PACKAGE_kmod-warp=y'
           require_config 'CONFIG_PACKAGE_kmod-mediatek_hnat=y'
           require_config 'CONFIG_PACKAGE_wifi-dats=y'
-          require_config 'CONFIG_PACKAGE_mtwifi-cfg-ucode=y'
           require_config 'CONFIG_MTK_MT_WIFI=m'
 
           # ---- Forbidden profiles / conflicting packages ----
@@ -174,12 +176,11 @@ jobs:
             echo "::error::MTK U-Boot profile must not be selected."
             exit 1
           fi
-          if grep -qx 'CONFIG_PACKAGE_mtwifi-cfg=y' .config; then
-            echo "::error::Legacy mtwifi-cfg conflicts with mtwifi-cfg-ucode."
-            exit 1
-          fi
-          if grep -qx 'CONFIG_PACKAGE_wifi-profile=y' .config; then
-            echo "::error::Legacy wifi-profile must not be mixed with the ucode stack."
+          # This source revision does not expose mtwifi-cfg-ucode as a selectable
+          # package (make defconfig drops it). Do not pretend it is included.
+          # Keep the build focused on the verified kernel driver + wifi-dats.
+          if grep -qx 'CONFIG_PACKAGE_mtwifi-cfg-ucode=y' .config; then
+            echo "::error::Unexpected stale ucode config survived defconfig."
             exit 1
           fi
 
@@ -190,6 +191,30 @@ jobs:
 
       - name: Download sources
         run: make download -j$(nproc)
+
+      - name: Prepare and audit MTK SAE compile conditions
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "===== Prepare the exact MTK driver source (no source edits) ====="
+          make package/mtk/drivers/mt_wifi/prepare V=s
+
+          SRC="$(find build_dir -type d -path '*/linux-*/mt_wifi' -print -quit)"
+          if [ -z "$SRC" ]; then
+            echo "::error::Prepared mt_wifi source directory not found."
+            find build_dir -maxdepth 5 -iname '*mt_wifi*' -print | head -100
+            exit 1
+          fi
+          echo "Prepared source: $SRC"
+          echo "===== SAE symbols with surrounding context ====="
+          grep -RniC 6 --include='*.c' --include='*.h' \
+            -E 'delete_saeinstance_entry|SaeCfg' "$SRC" | head -260 || true
+          echo "===== SAE/WPA3 conditional compilation ====="
+          grep -RniE --include='*.c' --include='*.h' \
+            '#[[:space:]]*(if|ifdef|ifndef|elif).*SAE|#[[:space:]]*(if|ifdef|ifndef|elif).*WPA3|DOT11_SAE_SUPPORT|WPA3_SUPPORT' \
+            "$SRC" | head -260 || true
+          echo "===== Effective driver Kconfig ====="
+          grep -E '^(CONFIG_MTK_(MT_AP_SUPPORT|CFG80211_SUPPORT|WPA3_SUPPORT|HOSTAPD_WPA3_SUPPORT|MT_WIFI_DRIVER_VERSION_7673|MT_WIFI)=|# CONFIG_MTK_(MT_AP_SUPPORT|CFG80211_SUPPORT|WPA3_SUPPORT|HOSTAPD_WPA3_SUPPORT) is not set)' .config || true
 
       - name: Build standard profile
         id: build_step
@@ -281,7 +306,7 @@ jobs:
           MANIFEST="$(find "$OUT" -maxdepth 1 -type f -name '*.manifest' -print -quit)"
           if [ -n "$MANIFEST" ]; then
             cp "$MANIFEST" artifacts/N60-Pro/standard/image-packages.manifest
-            for pkg in kmod-mt_wifi kmod-conninfra kmod-warp kmod-mediatek_hnat wifi-dats mtwifi-cfg-ucode; do
+            for pkg in kmod-mt_wifi kmod-conninfra kmod-warp kmod-mediatek_hnat wifi-dats; do
               grep -Eq "^$pkg([[:space:]]|$)" "$MANIFEST" || {
                 echo "::warning::$pkg not listed in image manifest."
               }
@@ -345,3 +370,21 @@ jobs:
       - name: Report ccache statistics
         if: always()
         run: ccache -s || true
+
+      - name: Enforce build and firmware success
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Build step outcome: ${{ steps.build_step.outcome }}"
+          echo "Firmware produced: ${FIRMWARE_PRODUCED:-no}"
+          if [ "${{ steps.build_step.outcome }}" != "success" ]; then
+            echo "::error::Firmware build step did not succeed. This run must remain failed."
+            exit 1
+          fi
+          if [ "${FIRMWARE_PRODUCED:-no}" != "yes" ]; then
+            echo "::error::Expected standard netcore_n60-pro sysupgrade ITB is missing."
+            exit 1
+          fi
+          test -s "bin/targets/mediatek/filogic/immortalwrt-mediatek-filogic-netcore_n60-pro-squashfs-sysupgrade.itb"
+          echo "PASS: build succeeded and the expected sysupgrade ITB exists."

@@ -104,6 +104,19 @@ jobs:
           CONFIG_PACKAGE_kmod-mediatek_hnat=y
           CONFIG_PACKAGE_wifi-dats=y
 
+          # Dependencies required by mtwifi-cfg-ucode (verified in package Makefile)
+          CONFIG_PACKAGE_mtwifi-cfg-ucode=y
+          CONFIG_PACKAGE_datconf=y
+          CONFIG_PACKAGE_l1util=y
+          CONFIG_PACKAGE_ucode=y
+          CONFIG_PACKAGE_ucode-mod-fs=y
+          CONFIG_PACKAGE_ucode-mod-log=y
+          CONFIG_PACKAGE_ucode-mod-ubus=y
+          CONFIG_PACKAGE_ucode-mod-uci=y
+          CONFIG_PACKAGE_ucode-mod-datconf=y
+          CONFIG_PACKAGE_ucode-mod-l1parser=y
+          CONFIG_PACKAGE_wifi-scripts=y
+
           # Wi-Fi userspace tools
           CONFIG_PACKAGE_iw=y
           CONFIG_PACKAGE_iwinfo=y
@@ -132,10 +145,8 @@ jobs:
           CONFIG_first_card=y
           CONFIG_first_card_name="MT7986"
 
-          # Attempt to disable SAE (WPA3) to avoid SaeCfg compile error.
-          # If the symbol does not exist, make defconfig simply ignores it.
-          # CONFIG_MTK_DOT11_SAE_SUPPORT is not set
-          # CONFIG_MTK_SAE_SUPPORT is not set
+          # Keep SAE/WPA3 enabled consistently with the vendor driver's
+          # SaeCfg field and delete_saeinstance_entry implementation.
           EOF
 
           cp .config artifacts/N60-Pro/standard/config.before-defconfig
@@ -169,6 +180,11 @@ jobs:
           require_config 'CONFIG_PACKAGE_kmod-warp=y'
           require_config 'CONFIG_PACKAGE_kmod-mediatek_hnat=y'
           require_config 'CONFIG_PACKAGE_wifi-dats=y'
+          require_config 'CONFIG_PACKAGE_mtwifi-cfg-ucode=y'
+          require_config 'CONFIG_PACKAGE_ucode-mod-datconf=y'
+          require_config 'CONFIG_PACKAGE_ucode-mod-l1parser=y'
+          require_config 'CONFIG_MTK_WPA3_SUPPORT=y'
+          require_config 'CONFIG_MTK_HOSTAPD_WPA3_SUPPORT=y'
           require_config 'CONFIG_MTK_MT_WIFI=m'
 
           # ---- Forbidden profiles / conflicting packages ----
@@ -176,17 +192,17 @@ jobs:
             echo "::error::MTK U-Boot profile must not be selected."
             exit 1
           fi
-          # This source revision does not expose mtwifi-cfg-ucode as a selectable
-          # package (make defconfig drops it). Do not pretend it is included.
-          # Keep the build focused on the verified kernel driver + wifi-dats.
-          if grep -qx 'CONFIG_PACKAGE_mtwifi-cfg-ucode=y' .config; then
-            echo "::error::Unexpected stale ucode config survived defconfig."
+          # The ucode configurator must remain selected; its dependencies are
+          # explicitly listed above so make defconfig cannot silently drop it.
+          require_config 'CONFIG_PACKAGE_mtwifi-cfg-ucode=y'
+          if grep -qx 'CONFIG_PACKAGE_mtwifi-cfg=y' .config || grep -qx 'CONFIG_PACKAGE_luci-app-mtwifi-cfg=y' .config; then
+            echo "::error::Legacy Lua mtwifi-cfg conflicts with mtwifi-cfg-ucode."
             exit 1
           fi
 
           cp .config artifacts/N60-Pro/standard/config.buildinfo
           echo "===== Effective MTK Wi-Fi configuration ====="
-          grep -E '^(CONFIG_PACKAGE_(kmod-mt_wifi|kmod-conninfra|kmod-warp|kmod-mediatek_hnat|wifi-dats|mtwifi-cfg-ucode|iw|iwinfo|iwinfo-ucode)=|CONFIG_MTK_(MT_WIFI|CHIP_MT7986|FIRST_IF_MT7986|WIFI_MODE|WIFI_SKU_TYPE|WIFI_ADIE_TYPE|CONNINFRA_APSOC|DBDC_MODE)|CONFIG_first_card)' .config
+          grep -E '^(CONFIG_PACKAGE_(kmod-mt_wifi|kmod-conninfra|kmod-warp|kmod-mediatek_hnat|wifi-dats|mtwifi-cfg-ucode|ucode-mod-datconf|ucode-mod-l1parser|iw|iwinfo|iwinfo-ucode)=|CONFIG_MTK_(MT_WIFI|CHIP_MT7986|FIRST_IF_MT7986|WIFI_MODE|WIFI_SKU_TYPE|WIFI_ADIE_TYPE|CONNINFRA_APSOC|DBDC_MODE)|CONFIG_first_card)' .config
           echo "PASS: standard profile and MT7986 vendor Wi-Fi stack selected."
 
       - name: Download sources
@@ -306,7 +322,7 @@ jobs:
           MANIFEST="$(find "$OUT" -maxdepth 1 -type f -name '*.manifest' -print -quit)"
           if [ -n "$MANIFEST" ]; then
             cp "$MANIFEST" artifacts/N60-Pro/standard/image-packages.manifest
-            for pkg in kmod-mt_wifi kmod-conninfra kmod-warp kmod-mediatek_hnat wifi-dats; do
+            for pkg in kmod-mt_wifi kmod-conninfra kmod-warp kmod-mediatek_hnat wifi-dats mtwifi-cfg-ucode; do
               grep -Eq "^$pkg([[:space:]]|$)" "$MANIFEST" || {
                 echo "::warning::$pkg not listed in image manifest."
               }

@@ -1,10 +1,9 @@
 name: Build N60 Pro - ImmortalWrt 25.12 (Standard Only)
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - n60pro-mtk-closed-driver
+    branches: ["n60pro-mtk-closed-driver"]
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -238,32 +238,24 @@ jobs:
           echo "===== Step 1: prepare MTK driver source ====="
           make package/mtk/drivers/mt_wifi/prepare V=s
 
-          echo "===== Step 2: locate prepared source ====="
-          mapfile -t SRC_DIRS < <(
-            find build_dir -type d -path '*/linux-*/mt_wifi' -print
-          )
-
-          if [ "${#SRC_DIRS[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one prepared mt_wifi directory; found ${#SRC_DIRS[@]}."
-            printf '%s\n' "${SRC_DIRS[@]}"
-            exit 1
-          fi
-
-          SRC="${SRC_DIRS[0]}"
-          echo "Prepared source root: $SRC"
-
-          echo "===== Step 3: locate sec_cmm.h ====="
+          echo "===== Step 2: locate the actual driver header ====="
           mapfile -t SEC_FILES < <(
-            find "$SRC" -type f -name 'sec_cmm.h' -print
+            find build_dir -type f -path '*/embedded/include/security/sec_cmm.h' -print
           )
 
           if [ "${#SEC_FILES[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one sec_cmm.h; found ${#SEC_FILES[@]}."
+            echo "::error::Expected exactly one prepared security/sec_cmm.h; found ${#SEC_FILES[@]}."
             printf '%s\n' "${SEC_FILES[@]}"
             exit 1
           fi
 
           SEC="${SEC_FILES[0]}"
+          SRC="${SEC%/embedded/include/security/sec_cmm.h}"
+          if [ ! -d "$SRC" ] || [ ! -f "$SRC/rtmp.h" -o ! -d "$SRC/os/linux" ]; then
+            echo "::error::Resolved driver source root is invalid: $SRC"
+            exit 1
+          fi
+          echo "Prepared source root: $SRC"
           echo "Using header: $SEC"
 
           DIAG="artifacts/N60-Pro/standard/DRIVER-PATCH-AND-RRM-DIAG.txt"

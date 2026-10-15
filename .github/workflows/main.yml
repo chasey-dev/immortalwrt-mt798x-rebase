@@ -230,29 +230,118 @@ jobs:
       - name: Download sources
         run: make download -j$(nproc)
 
-      - name: Prepare and audit MTK SAE compile conditions
+      - name: Prepare driver source, patch SAE, diagnose RRM
         shell: bash
         run: |
           set -euo pipefail
-          echo "===== Prepare the exact MTK driver source (no source edits) ====="
+
+          echo "===== Step 1: prepare MTK driver source ====="
           make package/mtk/drivers/mt_wifi/prepare V=s
 
-          SRC="$(find build_dir -type d -path '*/linux-*/mt_wifi' -print -quit)"
-          if [ -z "$SRC" ]; then
-            echo "::error::Prepared mt_wifi source directory not found."
-            find build_dir -maxdepth 5 -iname '*mt_wifi*' -print | head -100
+          echo "===== Step 2: locate prepared source ====="
+          mapfile -t SRC_DIRS < <(
+            find build_dir -type d -path '*/linux-*/mt_wifi' -print
+          )
+
+          if [ "${#SRC_DIRS[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one prepared mt_wifi directory; found ${#SRC_DIRS[@]}."
+            printf '%s\\n' "${SRC_DIRS[@]}"
             exit 1
           fi
-          echo "Prepared source: $SRC"
-          echo "===== SAE symbols with surrounding context ====="
-          grep -RniC 6 --include='*.c' --include='*.h' \
-            -E 'delete_saeinstance_entry|SaeCfg' "$SRC" | head -260 || true
-          echo "===== SAE/WPA3 conditional compilation ====="
-          grep -RniE --include='*.c' --include='*.h' \
-            '#[[:space:]]*(if|ifdef|ifndef|elif).*SAE|#[[:space:]]*(if|ifdef|ifndef|elif).*WPA3|DOT11_SAE_SUPPORT|WPA3_SUPPORT' \
-            "$SRC" | head -260 || true
-          echo "===== Effective driver Kconfig ====="
-          grep -E '^(CONFIG_MTK_(MT_AP_SUPPORT|CFG80211_SUPPORT|WPA3_SUPPORT|HOSTAPD_WPA3_SUPPORT|MT_WIFI_DRIVER_VERSION_7673|MT_WIFI)=|# CONFIG_MTK_(MT_AP_SUPPORT|CFG80211_SUPPORT|WPA3_SUPPORT|HOSTAPD_WPA3_SUPPORT) is not set)' .config || true
+
+          SRC="${SRC_DIRS[0]}"
+          echo "Prepared source root: $SRC"
+
+          echo "===== Step 3: locate sec_cmm.h ====="
+          mapfile -t SEC_FILES < <(
+            find "$SRC" -type f -name 'sec_cmm.h' -print
+          )
+
+          if [ "${#SEC_FILES[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one sec_cmm.h; found ${#SEC_FILES[@]}."
+            printf '%s\\n' "${SEC_FILES[@]}"
+            exit 1
+          fi
+
+          SEC="${SEC_FILES[0]}"
+          echo "Using header: $SEC"
+
+          DIAG="artifacts/N60-Pro/standard/DRIVER-PATCH-AND-RRM-DIAG.txt"
+          mkdir -p "$(dirname "$DIAG")"
+
+          {
+            echo "=== Prepared source ==="
+            echo "$SRC"
+            echo
+            echo "=== SAE condition before patch ==="
+            grep -nE 'DOT11_SAE_SUPPORT|SUPP_SAE_SUPPORT' "$SEC" || true
+          } | tee "$DIAG"
+
+          echo "===== Step 4: patch SAE include condition ====="
+
+          OLD_COUNT="$(grep -Fxc '#ifdef SUPP_SAE_SUPPORT' "$SEC" || echo 0)"
+          NEW_COUNT="$(grep -Fxc '#if defined(DOT11_SAE_SUPPORT) || defined(SUPP_SAE_SUPPORT)' "$SEC" || echo 0)"
+
+          if [ "$OLD_COUNT" -eq 1 ] && [ "$NEW_COUNT" -eq 0 ]; then
+            cp -p "$SEC" "$SEC.before-sae-fix"
+            sed -i 's|^#ifdef SUPP_SAE_SUPPORT$|#if defined(DOT11_SAE_SUPPORT) || defined(SUPP_SAE_SUPPORT)|' "$SEC"
+          elif [ "$OLD_COUNT" -eq 0 ] && [ "$NEW_COUNT" -eq 1 ]; then
+            echo "SAE condition already has the expected form."
+          else
+            echo "::error::Unexpected SAE condition counts; refusing to modify the header."
+            echo "Old condition count: $OLD_COUNT"
+            echo "Expected condition count: $NEW_COUNT"
+            grep -nE 'DOT11_SAE_SUPPORT|SUPP_SAE_SUPPORT' "$SEC" || true
+            exit 1
+          fi
+
+          if ! grep -Fqx '#if defined(DOT11_SAE_SUPPORT) || defined(SUPP_SAE_SUPPORT)' "$SEC"; then
+            echo "::error::SAE patch verification failed."
+            exit 1
+          fi
+
+          {
+            echo
+            echo "=== SAE condition after patch ==="
+            grep -nE 'DOT11_SAE_SUPPORT|SUPP_SAE_SUPPORT' "$SEC"
+            echo "SAE_PATCH_VERIFIED=yes"
+          } | tee -a "$DIAG"
+
+          echo "PASS: SAE include condition verified."
+
+          echo "===== Step 5: RRM diagnostics (read-only) ====="
+
+          {
+            echo
+            echo "=== RRM config.mk files and matching lines ==="
+            while IFS= read -r cfg; do
+              echo "--- $cfg ---"
+              grep -nE -C 3 'HAS_DOT11K_RRM_SUPPORT|DOT11K_RRM_SUPPORT' "$cfg" || true
+            done < <(find "$SRC" -type f -path '*/os/linux/config.mk' -print)
+
+            echo
+            echo "=== Makefile and .mk references ==="
+            find "$SRC" -type f \\
+              \\( -name 'Makefile' -o -name '*.mk' \\) \\
+              -exec grep -nH -E 'HAS_DOT11K_RRM_SUPPORT|DOT11K_RRM_SUPPORT' {} + \\
+              || true
+
+            echo
+            echo "=== RRM header and type references ==="
+            grep -RniE \\
+              --include='*.h' --include='*.c' --include='Makefile' --include='*.mk' \\
+              'RRM_BEACON_REQ_INFO|DOT11K_RRM_SUPPORT|HAS_DOT11K_RRM_SUPPORT' \\
+              "$SRC" | head -250 || true
+
+            echo
+            echo "=== Effective RRM Kconfig ==="
+            grep -E '^CONFIG_MTK_DOT11K_RRM_SUPPORT=|^# CONFIG_MTK_DOT11K_RRM_SUPPORT is not set' .config || true
+
+            echo
+            echo "RRM_SOURCE_MODIFIED=no"
+          } | tee -a "$DIAG"
+
+          echo "===== Diagnostics saved to $DIAG ====="
 
       - name: Build standard profile
         id: build_step

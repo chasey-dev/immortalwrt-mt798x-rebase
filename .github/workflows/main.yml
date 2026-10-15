@@ -124,7 +124,7 @@ jobs:
 
           # MT7986 driver profile and factory calibration
           CONFIG_MTK_MT_WIFI=m
-          CONFIG_MTK_MT_AP_SUPPORT=m
+          CONFIG_MTK_MT_AP_SUPPORT=y
           CONFIG_MTK_CFG80211_SUPPORT=y
           CONFIG_MTK_WPA3_SUPPORT=y
           CONFIG_MTK_HOSTAPD_WPA3_SUPPORT=y
@@ -187,6 +187,8 @@ jobs:
           require_config 'CONFIG_PACKAGE_ucode-mod-l1parser=y'
           require_config 'CONFIG_MTK_WPA3_SUPPORT=y'
           require_config 'CONFIG_MTK_HOSTAPD_WPA3_SUPPORT=y'
+          require_config 'CONFIG_MTK_MT_AP_SUPPORT=y'
+          require_config 'CONFIG_MTK_CFG80211_SUPPORT=y'
           require_config 'CONFIG_MTK_MT_WIFI=m'
 
           # ---- Forbidden profiles / conflicting packages ----

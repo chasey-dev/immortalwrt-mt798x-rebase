@@ -126,7 +126,7 @@ jobs:
 
           # Wi-Fi userspace tools
           CONFIG_PACKAGE_iw=y
-                    CONFIG_PACKAGE_iwinfo-ucode=y
+          CONFIG_PACKAGE_iwinfo-ucode=y
           CONFIG_PACKAGE_luci-app-mtwifi-cfg=y
 
           # MT7986 driver profile and factory calibration

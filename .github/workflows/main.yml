@@ -2,6 +2,9 @@ name: Build N60 Pro - ImmortalWrt 25.12 (Standard Only)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - n60pro-mtk-closed-driver
 
 permissions:
   contents: read
@@ -104,6 +107,12 @@ jobs:
           CONFIG_PACKAGE_kmod-mediatek_hnat=y
           CONFIG_PACKAGE_wifi-dats=y
 
+          # Explicitly disable the legacy/conflicting configuration stack so Kconfig
+          # cannot discard mtwifi-cfg-ucode during make defconfig.
+          # CONFIG_PACKAGE_mtwifi-cfg is not set
+          # CONFIG_PACKAGE_luci-app-mtk is not set
+          # CONFIG_PACKAGE_wifi-profile is not set
+
           # Dependencies required by mtwifi-cfg-ucode (verified in package Makefile)
           CONFIG_PACKAGE_mtwifi-cfg-ucode=y
           CONFIG_PACKAGE_datconf=y
@@ -187,7 +196,231 @@ jobs:
           require_config 'CONFIG_PACKAGE_ucode-mod-l1parser=y'
           require_config 'CONFIG_MTK_WPA3_SUPPORT=y'
           require_config 'CONFIG_MTK_HOSTAPD_WPA3_SUPPORT=y'
-          require_config 'CONFIG_MTK_MT_AP_SUPPORT=y'
+          if ! grep -Eq '^CONFIG_MTK_MT_AP_SUPPORT=(y|m)          require_config 'CONFIG_MTK_CFG80211_SUPPORT=y'
+          require_config 'CONFIG_MTK_MT_WIFI=m'
+
+          # ---- Forbidden profiles / conflicting packages ----
+          if grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro-mtkuboot=y' .config; then
+            echo "::error::MTK U-Boot profile must not be selected."
+            exit 1
+          fi
+          # The ucode configurator must remain selected; its dependencies are
+          # explicitly listed above so make defconfig cannot silently drop it.
+          require_config 'CONFIG_PACKAGE_mtwifi-cfg-ucode=y'
+          if grep -qx 'CONFIG_PACKAGE_mtwifi-cfg=y' .config || grep -qx 'CONFIG_PACKAGE_luci-app-mtwifi-cfg=y' .config; then
+            echo "::error::Legacy Lua mtwifi-cfg conflicts with mtwifi-cfg-ucode."
+            exit 1
+          fi
+
+          cp .config artifacts/N60-Pro/standard/config.buildinfo
+          echo "===== Effective MTK Wi-Fi configuration ====="
+          grep -E '^(CONFIG_PACKAGE_(kmod-mt_wifi|kmod-conninfra|kmod-warp|kmod-mediatek_hnat|wifi-dats|mtwifi-cfg-ucode|ucode-mod-datconf|ucode-mod-l1parser|iw|iwinfo|iwinfo-ucode)=|CONFIG_MTK_(MT_WIFI|CHIP_MT7986|FIRST_IF_MT7986|WIFI_MODE|WIFI_SKU_TYPE|WIFI_ADIE_TYPE|CONNINFRA_APSOC|DBDC_MODE)|CONFIG_first_card)' .config
+          echo "PASS: standard profile and MT7986 vendor Wi-Fi stack selected."
+
+      - name: Download sources
+        run: make download -j$(nproc)
+
+      - name: Prepare and audit MTK SAE compile conditions
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "===== Prepare the exact MTK driver source (no source edits) ====="
+          make package/mtk/drivers/mt_wifi/prepare V=s
+
+          SRC="$(find build_dir -type d -path '*/linux-*/mt_wifi' -print -quit)"
+          if [ -z "$SRC" ]; then
+            echo "::error::Prepared mt_wifi source directory not found."
+            find build_dir -maxdepth 5 -iname '*mt_wifi*' -print | head -100
+            exit 1
+          fi
+          echo "Prepared source: $SRC"
+          echo "===== SAE symbols with surrounding context ====="
+          grep -RniC 6 --include='*.c' --include='*.h' \
+            -E 'delete_saeinstance_entry|SaeCfg' "$SRC" | head -260 || true
+          echo "===== SAE/WPA3 conditional compilation ====="
+          grep -RniE --include='*.c' --include='*.h' \
+            '#[[:space:]]*(if|ifdef|ifndef|elif).*SAE|#[[:space:]]*(if|ifdef|ifndef|elif).*WPA3|DOT11_SAE_SUPPORT|WPA3_SUPPORT' \
+            "$SRC" | head -260 || true
+          echo "===== Effective driver Kconfig ====="
+          grep -E '^(CONFIG_MTK_(MT_AP_SUPPORT|CFG80211_SUPPORT|WPA3_SUPPORT|HOSTAPD_WPA3_SUPPORT|MT_WIFI_DRIVER_VERSION_7673|MT_WIFI)=|# CONFIG_MTK_(MT_AP_SUPPORT|CFG80211_SUPPORT|WPA3_SUPPORT|HOSTAPD_WPA3_SUPPORT) is not set)' .config || true
+
+      - name: Build standard profile
+        id: build_step
+        run: make -j$(nproc) V=s
+        continue-on-error: true
+
+      - name: Check whether firmware was actually produced
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          OUT="bin/targets/mediatek/filogic"
+          SYSUP="$OUT/immortalwrt-mediatek-filogic-netcore_n60-pro-squashfs-sysupgrade.itb"
+          if [ -s "$SYSUP" ]; then
+            echo "FIRMWARE_PRODUCED=yes" >> $GITHUB_ENV
+            echo "Firmware produced: $SYSUP"
+            ls -lh "$SYSUP"
+          else
+            echo "FIRMWARE_PRODUCED=no" >> $GITHUB_ENV
+            echo "::warning::No sysupgrade ITB produced. Build failed or target output differs."
+            echo "===== Contents of $OUT ====="
+            ls -lh "$OUT" 2>/dev/null || echo "(output dir missing)"
+          fi
+
+          if [ "${{ steps.build_step.outcome }}" = "failure" ] && [ "$FIRMWARE_PRODUCED" = "no" ]; then
+            echo "::error::Build step failed and no firmware was produced. See build log above."
+            exit 1
+          fi
+
+      - name: Verify MTK Wi-Fi driver and runtime packages
+        if: always() && env.FIRMWARE_PRODUCED == 'yes'
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="bin/targets/mediatek/filogic"
+          EXTRACT="/tmp/n60pro-driver-package"
+          mkdir -p "$EXTRACT"
+
+          find_package() {
+            local pattern_apk="$1"
+            local pattern_ipk="$2"
+            find bin/packages "$OUT" -type f \( -name "$pattern_apk" -o -name "$pattern_ipk" \) -print -quit 2>/dev/null || true
+          }
+          list_package_files() {
+            local package="$1"
+            local destination="$2"
+            if [[ "$package" == *.apk ]]; then
+              local apk_bin="$PWD/staging_dir/host/bin/apk"
+              test -x "$apk_bin" || { echo "::error::Host apk tool missing."; exit 1; }
+              mkdir -p "$destination"
+              "$apk_bin" extract --allow-untrusted --destination "$destination" "$package"
+              find "$destination" -type f -printf '%p\n' | sed "s#^$destination/##"
+            else
+              ar p "$package" data.tar.gz | tar -tzf -
+            fi
+          }
+
+          check_package() {
+            local pkgname="$1"; local expect_ko="$2"
+            local pkg
+            pkg="$(find_package "${pkgname}-*.apk" "${pkgname}_*.ipk")"
+            if [ -z "$pkg" ]; then
+              echo "::error::${pkgname} package was not produced."
+              exit 1
+            fi
+            echo "Package: $pkg"
+            local files
+            files="$(list_package_files "$pkg" "/tmp/n60pro-$pkgname")"
+            echo "$files" > "/tmp/${pkgname}-files.txt"
+            echo "$files" | grep -Eq "(^|/)${expect_ko}$" || {
+              echo "::error::${pkgname} does not contain ${expect_ko}."
+              cat "/tmp/${pkgname}-files.txt"
+              exit 1
+            }
+            echo "  OK: contains ${expect_ko}"
+          }
+
+          check_package kmod-mt_wifi mt_wifi.ko
+          check_package kmod-warp mtk_warp.ko
+          check_package kmod-mediatek_hnat mtkhnat.ko
+          check_package kmod-conninfra conninfra.ko
+
+          # MT7986 firmware blobs in kmod-mt_wifi
+          grep -Eq '(^|/)lib/firmware/MT7986_' /tmp/kmod-mt_wifi-files.txt || {
+            echo "::warning::MT7986 firmware blobs not found in kmod-mt_wifi."
+          }
+
+          # Manifest check
+          MANIFEST="$(find "$OUT" -maxdepth 1 -type f -name '*.manifest' -print -quit)"
+          if [ -n "$MANIFEST" ]; then
+            cp "$MANIFEST" artifacts/N60-Pro/standard/image-packages.manifest
+            for pkg in kmod-mt_wifi kmod-conninfra kmod-warp kmod-mediatek_hnat wifi-dats mtwifi-cfg-ucode; do
+              grep -Eq "^$pkg([[:space:]]|$)" "$MANIFEST" || {
+                echo "::warning::$pkg not listed in image manifest."
+              }
+            done
+            echo "PASS: manifest checked."
+          else
+            echo "::warning::No image manifest found."
+          fi
+
+      - name: Collect firmware artifacts
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          OUT="bin/targets/mediatek/filogic"
+          DEST="artifacts/N60-Pro/standard"
+          mkdir -p "$DEST"
+
+          find "$OUT" -maxdepth 1 -type f \
+            \( -name '*netcore_n60-pro*.itb' -o -name '*netcore_n60-pro*.manifest' \
+               -o -name 'sha256sums' -o -name '*.buildinfo' \) \
+            -exec cp -v {} "$DEST/" \; 2>/dev/null
+
+          if find "$DEST" -maxdepth 1 -iname '*mtkuboot*' | grep -q .; then
+            echo "::error::MTK U-Boot artifact detected; refusing to package."
+            exit 1
+          fi
+
+          {
+            echo "Build policy: STANDARD PROFILE ONLY; MTK U-Boot excluded"
+            echo "Profile: netcore_n60-pro"
+            echo "Source revision:"
+            git log -1 --format='%H %s'
+            echo "Build step outcome: ${{ steps.build_step.outcome }}"
+            echo "Firmware produced: ${FIRMWARE_PRODUCED:-unknown}"
+            echo "Files:"
+            find "$DEST" -maxdepth 1 -type f -printf '%f\n' | sort
+          } > "$DEST/BUILD-INFO.txt"
+
+          (
+            cd "$DEST"
+            shopt -s nullglob
+            if ls *.itb >/dev/null 2>&1; then
+              sha256sum *.itb > SHA256SUMS.txt
+              cat SHA256SUMS.txt
+            fi
+          ) || true
+
+          echo "===== Artifact tree ====="
+          find artifacts/N60-Pro -maxdepth 2 -type f -printf '%p (%s bytes)\n' | sort
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: N60-Pro-Standard-${{ github.run_number }}
+          path: artifacts/N60-Pro/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Report ccache statistics
+        if: always()
+        run: ccache -s || true
+
+      - name: Enforce build and firmware success
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Build step outcome: ${{ steps.build_step.outcome }}"
+          echo "Firmware produced: ${FIRMWARE_PRODUCED:-no}"
+          if [ "${{ steps.build_step.outcome }}" != "success" ]; then
+            echo "::error::Firmware build step did not succeed. This run must remain failed."
+            exit 1
+          fi
+          if [ "${FIRMWARE_PRODUCED:-no}" != "yes" ]; then
+            echo "::error::Expected standard netcore_n60-pro sysupgrade ITB is missing."
+            exit 1
+          fi
+          test -s "bin/targets/mediatek/filogic/immortalwrt-mediatek-filogic-netcore_n60-pro-squashfs-sysupgrade.itb"
+          echo "PASS: build succeeded and the expected sysupgrade ITB exists."
+ .config; then
+            echo "::error::MTK AP support is neither built-in nor modular after make defconfig."
+            grep -E '^CONFIG_MTK_MT_AP_SUPPORT=' .config || true
+            exit 1
+          fi
           require_config 'CONFIG_MTK_CFG80211_SUPPORT=y'
           require_config 'CONFIG_MTK_MT_WIFI=m'
 

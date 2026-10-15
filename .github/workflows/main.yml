@@ -126,8 +126,8 @@ jobs:
 
           # Wi-Fi userspace tools
           CONFIG_PACKAGE_iw=y
-          CONFIG_PACKAGE_iwinfo=y
-          CONFIG_PACKAGE_iwinfo-ucode=y
+                    CONFIG_PACKAGE_iwinfo-ucode=y
+          CONFIG_PACKAGE_luci-app-mtwifi-cfg=y
 
           # MT7986 driver profile and factory calibration
           CONFIG_MTK_MT_WIFI=m
@@ -187,6 +187,8 @@ jobs:
           require_config 'CONFIG_PACKAGE_kmod-warp=y'
           require_config 'CONFIG_PACKAGE_kmod-mediatek_hnat=y'
           require_config 'CONFIG_PACKAGE_wifi-dats=y'
+          require_config 'CONFIG_PACKAGE_iwinfo-ucode=y'
+          require_config 'CONFIG_PACKAGE_luci-app-mtwifi-cfg=y'
           require_config 'CONFIG_PACKAGE_mtwifi-cfg-ucode=y'
           require_config 'CONFIG_PACKAGE_datconf=y'
           require_config 'CONFIG_PACKAGE_l1util=y'
@@ -210,8 +212,8 @@ jobs:
           # The ucode configurator must remain selected; its dependencies are
           # explicitly listed above so make defconfig cannot silently drop it.
           require_config 'CONFIG_PACKAGE_mtwifi-cfg-ucode=y'
-          if grep -qx 'CONFIG_PACKAGE_mtwifi-cfg=y' .config || grep -qx 'CONFIG_PACKAGE_luci-app-mtwifi-cfg=y' .config; then
-            echo "::error::Legacy Lua mtwifi-cfg conflicts with mtwifi-cfg-ucode."
+          if grep -qx 'CONFIG_PACKAGE_mtwifi-cfg=y' .config || grep -qx 'CONFIG_PACKAGE_luci-app-mtk=y' .config || grep -qx 'CONFIG_PACKAGE_iwinfo=y' .config; then
+            echo "::error::Legacy mtwifi-cfg / luci-app-mtk / iwinfo conflicts with the ucode wireless stack."
             exit 1
           fi
 

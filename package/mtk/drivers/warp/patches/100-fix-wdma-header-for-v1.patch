@@ -1,0 +1,9 @@
+--- a/warp_hw.h
++++ b/warp_hw.h
+@@ -1,2 +1,6 @@
+ #include "regs/coda/wed_hw.h"
++#if defined(CONFIG_WARP_V1)
++#include "regs/reg_v1/wdma_hw.h"
++#else
+ #include "regs/coda/wdma_hw.h"
++#endif

@@ -181,6 +181,8 @@ jobs:
           require_config 'CONFIG_PACKAGE_kmod-mediatek_hnat=y'
           require_config 'CONFIG_PACKAGE_wifi-dats=y'
           require_config 'CONFIG_PACKAGE_mtwifi-cfg-ucode=y'
+          require_config 'CONFIG_PACKAGE_datconf=y'
+          require_config 'CONFIG_PACKAGE_l1util=y'
           require_config 'CONFIG_PACKAGE_ucode-mod-datconf=y'
           require_config 'CONFIG_PACKAGE_ucode-mod-l1parser=y'
           require_config 'CONFIG_MTK_WPA3_SUPPORT=y'

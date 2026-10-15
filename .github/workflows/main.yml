@@ -272,9 +272,13 @@ jobs:
             grep -RniE --include='*.h' --include='*.c' \
               'struct[[:space:]]+(pwd_id_list|sae_capability|sae_pk_cfg)\b' "$SRC" || true
             echo
-            echo "=== typedef aliases / relevant declarations ==="
+            echo "=== typedef aliases mentioning the three SAE structure tags ==="
             grep -RniE --include='*.h' --include='*.c' \
-              'typedef|pwd_id_list|sae_capability|sae_pk_cfg' "$SRC" | head -400 || true
+              'typedef.*(pwd_id_list|sae_capability|sae_pk_cfg)|(pwd_id_list|sae_capability|sae_pk_cfg).*typedef' "$SRC" || true
+            echo
+            echo "=== All declarations and references for the three SAE type names ==="
+            grep -RniE --include='*.h' --include='*.c' \
+              'pwd_id_list|sae_capability|sae_pk_cfg' "$SRC" | head -400 || true
             echo
             echo "=== All sae_cmm.h paths ==="
             find "$SRC" -type f -name 'sae_cmm.h' -print

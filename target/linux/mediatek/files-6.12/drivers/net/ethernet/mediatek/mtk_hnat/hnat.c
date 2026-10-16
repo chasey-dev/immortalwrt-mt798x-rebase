@@ -403,7 +403,7 @@ int entry_delete_by_mac(u8 *mac)
 	for (i = 0; i < CFG_PPE_NUM; i++) {
 		entry = hnat_priv->foe_table_cpu[i];
 		cnt = 0;
-		for (index = 0; index < DEF_ETRY_NUM; entry++, index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num; entry++, index++) {
 			if (entry->bfib1.state == BIND &&
 			    entry_mac_cmp(entry, mac, ENTRY_CMP_ANY)) {
 				spin_lock_bh(&hnat_priv->entry_lock);
@@ -442,7 +442,7 @@ int entry_delete_by_ip(bool is_ipv4, void *addr)
 	for (i = 0; i < CFG_PPE_NUM; i++) {
 		entry = hnat_priv->foe_table_cpu[i];
 		cnt = 0;
-		for (index = 0; index < DEF_ETRY_NUM; entry++, index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num; entry++, index++) {
 			if (entry->bfib1.state == BIND &&
 			    entry_ip_cmp(entry, is_ipv4, addr, ENTRY_CMP_ANY)) {
 				spin_lock_bh(&hnat_priv->entry_lock);
@@ -482,7 +482,7 @@ static int entry_delete_by_bssid_wcid(u32 wdma_idx, u16 bssid, u16 wcid)
 	for (i = 0; i < CFG_PPE_NUM; i++) {
 		entry = hnat_priv->foe_table_cpu[i];
 		cnt = 0;
-		for (index = 0; index < DEF_ETRY_NUM; entry++, index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num; entry++, index++) {
 			if (entry->bfib1.state != BIND)
 				continue;
 
@@ -583,8 +583,6 @@ static int hnat_roaming_enable(void)
 	if (ret < 0)
 		goto out;
 
-	_hnat_roam_sock = sock;
-
 	addr.nl_family = AF_NETLINK;
 	addr.nl_pad = 0;
 	addr.nl_pid = 65534;
@@ -592,6 +590,10 @@ static int hnat_roaming_enable(void)
 	ret = kernel_bind(sock, (struct sockaddr *)&addr, sizeof(addr));
 	if (ret < 0)
 		goto out;
+
+	/* publish only after a successful bind, so a failure cannot leave
+	 * a dangling global behind */
+	_hnat_roam_sock = sock;
 
 	schedule_work(&_hnat_roam_work);
 	pr_info("hnat roaming work enable\n");
@@ -606,6 +608,9 @@ out:
 
 static void hnat_roaming_disable(void)
 {
+	/* the work is parked in kernel_recvmsg() on this socket; wait for
+	 * it to leave before releasing the socket underneath it */
+	cancel_work_sync(&_hnat_roam_work);
 	if (_hnat_roam_sock)
 		sock_release(_hnat_roam_sock);
 	_hnat_roam_sock = NULL;
@@ -620,7 +625,7 @@ static void hnat_flow_entry_teardown_all(u32 ppe_id)
 	int index;
 
 	spin_lock_bh(&hnat_priv->flow_entry_lock);
-	for (index = 0; index < DEF_ETRY_NUM / 4; index++) {
+	for (index = 0; index < hnat_priv->foe_etry_num / 4; index++) {
 		head = &hnat_priv->foe_flow[ppe_id][index];
 		hlist_for_each_entry_safe(flow_entry, n, head, list) {
 			hnat_flow_entry_delete(flow_entry);
@@ -639,7 +644,7 @@ static void hnat_flow_entry_teardown_handler(struct work_struct *work)
 
 	spin_lock_bh(&hnat_priv->flow_entry_lock);
 	for (i = 0; i < CFG_PPE_NUM; i++) {
-		for (index = 0; index < DEF_ETRY_NUM / 4; index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num / 4; index++) {
 			head = &hnat_priv->foe_flow[i][index];
 			hlist_for_each_entry_safe(flow_entry, n, head, list) {
 				/* If the entry has not been used for 30 seconds, teardown it. */
@@ -666,7 +671,8 @@ static void hnat_flow_entry_teardown_enable(void)
 
 static void hnat_flow_entry_teardown_disable(void)
 {
-	cancel_delayed_work(&_hnat_flow_entry_teardown_work);
+	/* the handler re-arms itself; wait for it to finish */
+	cancel_delayed_work_sync(&_hnat_flow_entry_teardown_work);
 }
 
 static int is_cah_ctrl_request_done(u32 ppe_id)
@@ -1823,6 +1829,7 @@ static int hnat_probe(struct platform_device *pdev)
 	hnat_flow_entry_teardown_enable();
 
 	INIT_LIST_HEAD(&hnat_priv->xlat.map_list);
+	spin_lock_init(&hnat_priv->xlat.lock);
 	INIT_LIST_HEAD(&hnat_priv->mcast_blist_list);
 
 	return 0;
@@ -1838,8 +1845,11 @@ err_out1:
 		kfree(ext_entry);
 	}
 err_out2:
-	for (i = 0; i < MAX_PPE_NUM; i++)
-		mtk_set_ppe_pse_port_state(i, false);
+	/* fe_base is mapped late in probe; earlier error paths must not touch it */
+	if (hnat_priv && hnat_priv->fe_base) {
+		for (i = 0; i < MAX_PPE_NUM; i++)
+			mtk_set_ppe_pse_port_state(i, false);
+	}
 	return err;
 }
 

@@ -2852,15 +2852,20 @@ int mtk_ppe_get_xlat_v6_by_v4(u32 *ipv4, struct in6_addr *ipv6,
 	struct mtk_hnat *h = hnat_priv;
 	struct map46 *m = NULL;
 
+	int ret = -1;
+
+	spin_lock_bh(&h->xlat.lock);
 	list_for_each_entry(m, &h->xlat.map_list, list) {
 		if (m->ipv4 == *ipv4) {
 			memcpy(ipv6, &m->ipv6, sizeof(*ipv6));
 			memcpy(prefix, &h->xlat.prefix, sizeof(*ipv6));
-			return 0;
+			ret = 0;
+			break;
 		}
 	}
+	spin_unlock_bh(&h->xlat.lock);
 
-	return -1;
+	return ret;
 }
 
 int mtk_ppe_get_xlat_v4_by_v6(struct in6_addr *ipv6, u32 *ipv4)
@@ -2868,14 +2873,19 @@ int mtk_ppe_get_xlat_v4_by_v6(struct in6_addr *ipv6, u32 *ipv4)
 	struct mtk_hnat *h = hnat_priv;
 	struct map46 *m = NULL;
 
+	int ret = -1;
+
+	spin_lock_bh(&h->xlat.lock);
 	list_for_each_entry(m, &h->xlat.map_list, list) {
 		if (ipv6_addr_equal(ipv6, &m->ipv6)) {
 			*ipv4 = m->ipv4;
-			return 0;
+			ret = 0;
+			break;
 		}
 	}
+	spin_unlock_bh(&h->xlat.lock);
 
-	return -1;
+	return ret;
 }
 
 static int hnat_xlat_cfg_read(struct seq_file *m, void *private)
@@ -2912,7 +2922,7 @@ static ssize_t hnat_xlat_cfg_write(struct file *file, const char __user *buffer,
 	struct in6_addr ipv6;
 	u32 ipv4;
 
-	if ((len > 256) || copy_from_user(buf, buffer, len))
+	if ((len >= sizeof(buf)) || copy_from_user(buf, buffer, len))
 		return -EFAULT;
 
 	if (!strncmp(buf, "prefix", 6)) {
@@ -2942,16 +2952,18 @@ static ssize_t hnat_xlat_cfg_write(struct file *file, const char __user *buffer,
 
 		in4_pton(v4_str, -1, (u8 *)&map->ipv4, -1, NULL);
 		in6_pton(v6_str, -1, (u8 *)&map->ipv6, -1, NULL);
+		spin_lock_bh(&h->xlat.lock);
 		list_for_each_entry(m, &h->xlat.map_list, list) {
 			if (ipv6_addr_equal(&map->ipv6, &m->ipv6) &&
 			    map->ipv4 == m->ipv4) {
+				spin_unlock_bh(&h->xlat.lock);
 				pr_info("this map already added.\n");
 				kfree(map);
 				return -1;
 			}
 		}
-
 		list_add(&map->list, &h->xlat.map_list);
+		spin_unlock_bh(&h->xlat.lock);
 		pr_info("add map: %pI4<=>%pI6\n", &map->ipv4, &map->ipv6);
 	} else if (!strncmp(buf, "map del", 7)) {
 		if (sscanf(buf, "map del %64s %64s\n", v4_str, v6_str) != 2) {
@@ -2962,24 +2974,28 @@ static ssize_t hnat_xlat_cfg_write(struct file *file, const char __user *buffer,
 		in4_pton(v4_str, -1, (u8 *)&ipv4, -1, NULL);
 		in6_pton(v6_str, -1, (u8 *)&ipv6, -1, NULL);
 
+		spin_lock_bh(&h->xlat.lock);
 		list_for_each_entry_safe(m, next, &h->xlat.map_list, list) {
 			if (ipv6_addr_equal(&ipv6, &m->ipv6) &&
 			    ipv4 == m->ipv4) {
 				list_del(&m->list);
+				spin_unlock_bh(&h->xlat.lock);
 				kfree(m);
 				pr_info("del map: %s<=>%s\n", v4_str, v6_str);
 				return len;
 			}
 		}
+		spin_unlock_bh(&h->xlat.lock);
 
 		pr_info("not found map: %s<=>%s\n", v4_str, v6_str);
 	} else if (!strncmp(buf, "show", 4)) {
 		pr_info("prefix=%pI6\n", &h->xlat.prefix);
 		pr_info("prefix_len=%d\n", h->xlat.prefix_len);
 
-		list_for_each_entry(m, &h->xlat.map_list, list) {
+		spin_lock_bh(&h->xlat.lock);
+		list_for_each_entry(m, &h->xlat.map_list, list)
 			pr_info("map: %pI4<=>%pI6\n", &m->ipv4, &m->ipv6);
-		}
+		spin_unlock_bh(&h->xlat.lock);
 	} else {
 		pr_info("input error\n");
 		return -1;
@@ -3759,7 +3775,9 @@ static ssize_t hnat_static_entry_write(struct file *file,
 
 	foe = &hnat_priv->foe_table_cpu[ppe_id][hash];
 	while ((foe->bfib1.state == BIND) && (coll < 4)) {
-		hash++;
+		/* keep the collision probe inside the FOE table */
+		if (++hash >= hnat_priv->foe_etry_num)
+			return -EINVAL;
 		coll++;
 		foe = &hnat_priv->foe_table_cpu[ppe_id][hash];
 	};

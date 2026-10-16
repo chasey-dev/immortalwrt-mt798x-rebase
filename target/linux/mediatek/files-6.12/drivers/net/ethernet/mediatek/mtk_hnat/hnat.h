@@ -1011,6 +1011,7 @@ struct map46 {
 
 struct xlat_conf {
 	struct list_head map_list;
+	spinlock_t lock;		/* protects map_list */
 	struct in6_addr prefix;
 	int prefix_len;
 };

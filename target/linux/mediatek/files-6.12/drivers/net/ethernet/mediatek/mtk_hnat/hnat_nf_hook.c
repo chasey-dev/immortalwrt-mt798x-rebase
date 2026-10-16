@@ -577,13 +577,8 @@ void hnat_neigh_update_init(void)
 void hnat_neigh_update_cleanup(void)
 {
 	struct hnat_neigh_update_event *entry, *tmp;
-	int is_pending;
-
-	 /* Take lock first to prevent new entries */
+	/* Take lock first to prevent new entries */
 	spin_lock_bh(&hnat_priv->neigh_update.lock);
-
-	/* Check if work is pending while holding lock */
-	is_pending = delayed_work_pending(&hnat_priv->neigh_update.work);
 
 	/* Clear the list */
 	list_for_each_entry_safe(entry, tmp, &hnat_priv->neigh_update.head, list) {
@@ -593,9 +588,9 @@ void hnat_neigh_update_cleanup(void)
 	hnat_priv->neigh_update.pending_cnt = 0;
 	spin_unlock_bh(&hnat_priv->neigh_update.lock);
 
-	/* Cancel work after clearing list */
-	if (is_pending)
-		cancel_delayed_work_sync(&hnat_priv->neigh_update.work);
+	/* Always cancel: the pending check is racy, the handler may already
+	 * be running with the pending bit cleared */
+	cancel_delayed_work_sync(&hnat_priv->neigh_update.work);
 }
 
 void hnat_neigh_update_work_handler(struct work_struct *work)
@@ -789,8 +784,10 @@ static unsigned int do_hnat_ext_to_ge2(struct sk_buff *skb, const char *func)
 
 		if (ntohs(eth->h_proto) == ETH_P_8021Q) {
 			skb = skb_vlan_untag(skb);
+			/* skb_vlan_untag() freed the skb; return 0 so the caller reports
+			 * NF_STOLEN instead of dropping it again */
 			if (unlikely(!skb))
-				return -1;
+				return 0;
 		}
 
 		if (IS_BOND(dev) &&
@@ -863,8 +860,10 @@ static unsigned int do_hnat_ge_to_ext(struct sk_buff *skb, const char *func)
 
 	if (IS_HQOS_MODE && eth_hdr(skb)->h_proto == HQOS_MAGIC_TAG) {
 		skb = skb_unshare(skb, GFP_ATOMIC);
+		/* skb_unshare() freed the original skb; report it consumed so the
+		 * caller does not free it a second time */
 		if (!skb)
-			return NF_ACCEPT;
+			return NF_STOLEN;
 
 		if (unlikely(!pskb_may_pull(skb, VLAN_HLEN)))
 			return NF_ACCEPT;

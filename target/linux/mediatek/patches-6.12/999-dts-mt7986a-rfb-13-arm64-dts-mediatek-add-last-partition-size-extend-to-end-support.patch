@@ -1,0 +1,85 @@
+---
+[v1] arm64: dts: mediatek: mt7986a: Add mtd partition extend to end support
+Add "mtd-extend-to-end" in mt7986a spim nand/nor related dts.
+Partition with "mtd-extend-to-end" will extend to the end of
+parent partiton and note that the size of partition in reg must be
+set to 0 like reg = <0x0200000 0x0>.
+---
+v1: Add mtd partition extend to end support.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7986-spim-nand-nmbm.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7986-spim-nand-nmbm.dtso
+@@ -55,8 +55,9 @@
+ 
+ 			partition@780000 {
+ 				label = "ubi";
+-				reg = <0x580000 0x4000000>;
++				reg = <0x580000 0x0>;
+ 				compatible = "linux,ubi";
++				mtd-extend-to-end;
+ 
+ 				volumes {
+ 					ubi_rootfs: ubi-volume-fit {
+--- a/arch/arm64/boot/dts/mediatek/mt7986-spim-nand.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7986-spim-nand.dtso
+@@ -35,8 +35,9 @@
+ 
+ 			partition@200000 {
+ 				label = "ubi";
+-				reg = <0x0200000 0x7e00000>;
++				reg = <0x0200000 0x0>;
+ 				compatible = "linux,ubi";
++				mtd-extend-to-end;
+ 
+ 				volumes {
+ 					ubi-volume-ubootenv {
+--- a/arch/arm64/boot/dts/mediatek/mt7986-spim-nor.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7986-spim-nor.dtso
+@@ -39,7 +39,8 @@
+ 		};
+ 		nor_rootfs: partition@180000 {
+ 			label = "firmware";
+-			reg = <0x180000 0x1e80000>;
++			reg = <0x180000 0x0>;
++			mtd-extend-to-end;
+ 		};
+ 	};
+ };
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-acelink-ew-7886cax.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-acelink-ew-7886cax.dts
+@@ -147,8 +147,9 @@
+ 			};
+ 
+ 			partition@580000 {
+-				reg = <0x580000 0x4000000>;
++				reg = <0x580000 0x0>;
+ 				label = "ubi";
++				mtd-extend-to-end;
+ 			};
+ 		};
+ 	};
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb-spim-nand.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb-spim-nand.dts
+@@ -71,7 +71,8 @@
+ 			};
+ 			partition@580000 {
+ 				label = "ubi";
+-				reg = <0x580000 0x4000000>;
++				reg = <0x580000 0x0>;
++				mtd-extend-to-end;
+ 			};
+ 		};
+ 	};
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb-spim-nor.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb-spim-nor.dts
+@@ -40,7 +40,8 @@
+ 			};
+ 			partition@180000 {
+ 				label = "firmware";
+-				reg = <0x180000 0xE00000>;
++				reg = <0x180000 0x0>;
++				mtd-extend-to-end;
+ 			};
+ 		};
+ 	};

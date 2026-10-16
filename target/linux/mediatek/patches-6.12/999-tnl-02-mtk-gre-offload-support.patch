@@ -1,0 +1,45 @@
+--- a/net/ipv4/ip_gre.c
++++ b/net/ipv4/ip_gre.c
+@@ -39,6 +39,7 @@
+ #include <net/inet_ecn.h>
+ #include <net/xfrm.h>
+ #include <net/net_namespace.h>
++#include <net/netfilter/nf_flow_table.h>
+ #include <net/netns/generic.h>
+ #include <net/rtnetlink.h>
+ #include <net/gre.h>
+@@ -901,6 +902,24 @@ static int ipgre_close(struct net_device
+ }
+ #endif
+ 
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++static int gre_dev_flow_offload_check(struct flow_offload_hw_path *path)
++{
++	struct net_device *dev = path->dev;
++	struct ip_tunnel *tunnel = netdev_priv(dev);
++
++	if (path->flags & BIT(DEV_PATH_TNL))
++		return -EEXIST;
++
++	path->flags |= BIT(DEV_PATH_TNL);
++	path->tnl_type = FLOW_OFFLOAD_TNL_GRETAP;
++	path->virt_dev = dev;
++	path->dev = tunnel->dev;
++
++	return 0;
++}
++#endif /* CONFIG_NF_FLOW_TABLE */
++
+ static const struct net_device_ops ipgre_netdev_ops = {
+ 	.ndo_init		= ipgre_tunnel_init,
+ 	.ndo_uninit		= ip_tunnel_uninit,
+@@ -1264,6 +1283,9 @@ static const struct net_device_ops gre_t
+ 	.ndo_get_stats64	= ip_tunnel_get_stats64,
+ 	.ndo_get_iflink		= ip_tunnel_get_iflink,
+ 	.ndo_fill_metadata_dst	= gre_fill_metadata_dst,
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++	.ndo_flow_offload_check = gre_dev_flow_offload_check,
++#endif
+ };
+ 
+ static int erspan_tunnel_init(struct net_device *dev)

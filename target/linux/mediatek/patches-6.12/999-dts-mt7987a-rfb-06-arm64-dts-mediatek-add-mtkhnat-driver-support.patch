@@ -1,0 +1,209 @@
+From 8b069c3561f9aaad795b11e20d7424c3a131d0a9 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Thu, 4 Jun 2026 16:02:20 +0800
+Subject: [PATCH] arm64: dts: mt7987-netsys: add mtkhnat driver support
+
+---
+ .../mediatek/mt7987-netsys-eth0-an8801sb.dtso  |  7 +++++++
+ .../mediatek/mt7987-netsys-eth0-an8811hb.dtso  |  7 +++++++
+ .../mt7987-netsys-eth0-an8855-gsw.dtso         |  7 +++++++
+ .../dts/mediatek/mt7987-netsys-eth0-e2p5g.dtso |  7 +++++++
+ .../mt7987-netsys-eth0-mt7531-gsw.dtso         |  7 +++++++
+ .../mediatek/mt7987-netsys-eth2-an8801sb.dtso  |  8 ++++++++
+ .../mediatek/mt7987-netsys-eth2-an8811hb.dtso  |  8 ++++++++
+ .../dts/mediatek/mt7987-netsys-eth2-e2p5g.dtso |  8 ++++++++
+ .../dts/mediatek/mt7987-netsys-eth2-sfp.dtso   |  8 ++++++++
+ .../arm64/boot/dts/mediatek/mt7987-netsys.dtsi | 18 ++++++++++++++++++
+ 10 files changed, 85 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8801sb.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8801sb.dtso
+index d5635d4..0a0c63e 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8801sb.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8801sb.dtso
+@@ -32,5 +32,12 @@ phy31: phy@31 {
+ 			};
+ 		};
+ 	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan = "eth0";
++		};
++	};
+ };
+ 
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8811hb.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8811hb.dtso
+index 4a0b51a..709a6a4 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8811hb.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8811hb.dtso
+@@ -34,5 +34,12 @@ phy12: phy@12 {
+ 			};
+ 		};
+ 	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan = "eth0";
++		};
++	};
+ };
+ 
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8855-gsw.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8855-gsw.dtso
+index d747bfd..b014e4c 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8855-gsw.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-an8855-gsw.dtso
+@@ -54,4 +54,11 @@ fixed-link {
+ 			};
+ 		};
+ 	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan = "eth0";
++		};
++	};
+ };
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-e2p5g.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-e2p5g.dtso
+index be5858e..5d5018a 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-e2p5g.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-e2p5g.dtso
+@@ -32,5 +32,12 @@ phy12: phy@12 {
+ 			};
+ 		};
+ 	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan = "eth0";
++		};
++	};
+ };
+ 
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-mt7531-gsw.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-mt7531-gsw.dtso
+index 1e26d96..33b40d3 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-mt7531-gsw.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth0-mt7531-gsw.dtso
+@@ -80,4 +80,11 @@ fixed-link {
+ 			};
+ 		};
+ 	};
++
++	fragment@3 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan = "eth0";
++		};
++	};
+ };
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8801sb.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8801sb.dtso
+index a9f5d9b..0c68288 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8801sb.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8801sb.dtso
+@@ -32,5 +32,13 @@ phy31: phy@31 {
+ 			};
+ 		};
+ 	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan2 = "eth2";
++			mtketh-max-gmac = <3>;
++		};
++	};
+ };
+ 
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso
+index a9f5d9b..0c68288 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-an8811hb.dtso
+@@ -34,5 +34,13 @@ phy11: phy@11 {
+ 			};
+ 		};
+ 	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan2 = "eth2";
++			mtketh-max-gmac = <3>;
++		};
++	};
+ };
+ 
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-e2p5g.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-e2p5g.dtso
+index fc3b34a..183bb52 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-e2p5g.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-e2p5g.dtso
+@@ -30,5 +30,13 @@ phy11: phy@11 {
+ 			};
+ 		};
+ 	};
++
++	fragment@2 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan2 = "eth2";
++			mtketh-max-gmac = <3>;
++		};
++	};
+ };
+ 
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-sfp.dtso b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-sfp.dtso
+index 75d3cf1..73321cd 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-sfp.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys-eth2-sfp.dtso
+@@ -41,5 +41,13 @@ __overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
++
++	fragment@3 {
++		target-path = "/soc_netsys/hnat@15000000";
++		__overlay__ {
++			mtketh-lan2 = "eth2";
++			mtketh-max-gmac = <3>;
++		};
++	};
+ };
+ 
+diff --git a/arch/arm64/boot/dts/mediatek/mt7987-netsys.dtsi b/arch/arm64/boot/dts/mediatek/mt7987-netsys.dtsi
+index abb3cdb..1eaeb04 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7987-netsys.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys.dtsi
+@@ -90,6 +90,16 @@ mdio: mdio-bus {
+ 		};
+ 	};
+ 
++	hnat: hnat@15000000 {
++		compatible = "mediatek,mtk-hnat_v5";
++		reg = <0 0x15100000 0 0x80000>;
++		interrupts = <GIC_SPI 198 IRQ_TYPE_LEVEL_HIGH>;
++		resets = <&ethsys 0>;
++		reset-names = "mtketh";
++		mtketh-soc = <&eth>;
++		status = "disabled";
++	};
++
+ 	crypto: crypto@15600000 {
+ 		compatible = "inside-secure,safexcel-eip197b",
+ 			     "security-ip-197-srv";
+@@ -111,3 +121,11 @@ &crypto {
+ &eth {
+ 	status = "okay";
+ };
++
++&hnat {
++	mtketh-wan = "eth1";
++	mtketh-lan = "lan";
++	mtketh-max-gmac = <3>;
++	mtketh-ppe-num = <2>;
++	status = "okay";
++};
+-- 
+2.45.2
+

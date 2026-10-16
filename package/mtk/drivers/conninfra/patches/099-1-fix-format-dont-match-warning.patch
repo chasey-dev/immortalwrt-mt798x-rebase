@@ -1,0 +1,22 @@
+--- a/platform/mt7981/mt7981_consys_reg.c
++++ b/platform/mt7981/mt7981_consys_reg.c
+@@ -141,7 +141,7 @@ static int consys_reg_init(struct platfo
+ 			if (base_addr->vir_addr == 0)
+ 				base_addr->vir_addr = (unsigned long)ioremap(base_addr->phy_addr, base_addr->size);
+ 
+-			pr_info("Get Index(%d-%s) phy_addr(0x%zx) vir_addr=(0x%zx) size=(0x%zx)\n",
++			pr_info("Get Index(%d-%s) phy_addr(0x%lx) vir_addr=(0x%lx) size=(0x%llx)\n",
+ 					i, consys_base_addr_index_to_str[i], base_addr->phy_addr,
+ 					base_addr->vir_addr, base_addr->size);
+ 		}
+--- a/platform/mt7986/mt7986_consys_reg.c
++++ b/platform/mt7986/mt7986_consys_reg.c
+@@ -141,7 +141,7 @@ static int consys_reg_init(struct platfo
+ 			if (base_addr->vir_addr == 0)
+ 				base_addr->vir_addr = (unsigned long)ioremap(base_addr->phy_addr, base_addr->size);
+ 
+-			pr_info("Get Index(%d-%s) phy_addr(0x%zx) vir_addr=(0x%zx) size=(0x%zx)\n",
++			pr_info("Get Index(%d-%s) phy_addr(0x%lx) vir_addr=(0x%lx) size=(0x%llx)\n",
+ 					i, consys_base_addr_index_to_str[i], base_addr->phy_addr,
+ 					base_addr->vir_addr, base_addr->size);
+ 		}

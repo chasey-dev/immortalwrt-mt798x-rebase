@@ -1,0 +1,85 @@
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7986-spim-nand.dtso
+@@ -0,0 +1,82 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR MIT) */
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Sky Huang <SkyLake.Huang@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++&{/chosen} {
++	rootdisk-spim-nand = <&ubi_root>;
++	bootargs-append = " ubi.block=0,firmware root=/dev/fit0 rootwait";
++};
++
++&{/soc/spi@1100a000} {
++	status = "okay";
++
++	flash@0 {
++		compatible = "spi-nand";
++		reg = <0>;
++		spi-max-frequency = <52000000>;
++		spi-tx-bus-width = <4>;
++		spi-rx-bus-width = <4>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "BL2";
++				reg = <0x00000 0x0200000>;
++				read-only;
++			};
++
++			partition@200000 {
++				label = "ubi";
++				reg = <0x0200000 0x7e00000>;
++				compatible = "linux,ubi";
++
++				volumes {
++					ubi-volume-ubootenv {
++						volname = "ubootenv";
++						nvmem-layout {
++							compatible = "u-boot,env-redundant-bool";
++						};
++					};
++
++					ubi-volume-ubootenv2 {
++						volname = "ubootenv2";
++						nvmem-layout {
++							compatible = "u-boot,env-redundant-bool";
++						};
++					};
++
++					ubi_factory: ubi-volume-factory {
++						volname = "factory";
++						nvmem-layout {
++							compatible = "fixed-layout";
++							#address-cells = <1>;
++							#size-cells = <1>;
++
++							eeprom_wmac: eeprom@0 {
++								reg = <0x0 0x1000>;
++							};
++						};
++					};
++
++					ubi_root: ubi-volume-fit {
++						volname = "fit";
++					};
++				};
++			};
++		};
++	};
++};
++
++&{/soc/wifi@18000000} {
++	nvmem-cell-names = "eeprom";
++	nvmem-cells = <&eeprom_wmac>;
++	status = "okay";
++};

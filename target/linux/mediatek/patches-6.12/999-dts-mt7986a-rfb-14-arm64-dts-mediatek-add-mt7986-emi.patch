@@ -1,0 +1,29 @@
+---
+[v1] arm64: dts: mediatek: Add MT7986 emi to handle memory access violation
+
+Add emi node for MT7986 to handle the situation when a memory access
+violates the access permission control (APC) configured by system.
+---
+v1: Add MT7986 emi to handle memory access violation
+---
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
+index 267244b0c225..7b8c939a1d47 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7986a.dtsi
+@@ -647,6 +647,12 @@ devapc: devapc@1a110000 {
+ 			reg = <0 0x1a110000 0 0x1000>;
+ 			interrupts = <GIC_SPI 174 IRQ_TYPE_LEVEL_HIGH>;
+ 		};
++
++		emi: emi@10219000  {
++			compatible = "mediatek,mt7986-emi";
++			reg = <0 0x10219000 0 0x1000>;
++			interrupts = <GIC_SPI 111 IRQ_TYPE_LEVEL_HIGH>;
++		};
+ 	};
+ 
+ 	thermal-zones {
+-- 
+2.45.2
+

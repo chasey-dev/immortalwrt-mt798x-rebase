@@ -1,0 +1,37 @@
+---
+[v2] net: ethernet: mtk_eth_soc: add skb mark support for HQoS
+
+Add skb mark support for HQoS queue selection. This enables userspace
+applications to control transmit queue selection via skb marking,
+providing flexible traffic prioritization and quality-of-service control.
+
+Only the low bits of skb->mark hold the queue id, so mask the mark with
+MTK_QDMA_QUEUE_MASK before using it. The remaining bits are left to other
+users of skb->mark, which can then share the mark with HQoS.
+---
+v2: Take the HQoS queue id from the low bits of skb->mark only.
+v1: Add skb mark support for HQoS.
+---
+
+From 5db3f26b17830e5468b06a6757f23c3b03e25918 Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Fri, 3 Oct 2025 11:22:02 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add skb mark support for qos
+
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -5973,6 +5973,10 @@ static u16 mtk_select_queue(struct net_d
++	u32 mark = skb->mark & MTK_QDMA_QUEUE_MASK;
+ 	struct mtk_mac *mac = netdev_priv(dev);
+ 	unsigned int queue = 0;
+ 
++	if (mark > 0 && mark < dev->num_tx_queues)
++		return mark;
++
+ 	if (netdev_uses_dsa(dev))
+ 		queue = skb_get_queue_mapping(skb) + 3;
+ 	else

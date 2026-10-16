@@ -1,0 +1,62 @@
+From 8f053f4c93a2849d9df4e5960845548aa9405152 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Thu, 2 Apr 2026 14:05:39 +0800
+Subject: [PATCH] net: netdevice: add ndo_flow_offload_stats64_add for
+ offload stats correction
+
+Introduce a new net_device_ops callback, ndo_flow_offload_stats64_add(),
+to allow virtual upper devices (e.g., VLAN) to correct their software
+statistics when traffic is hardware-offloaded.
+
+When a flow is offloaded to hardware, packets bypass the CPU entirely,
+causing the software counters of virtual devices sitting above the
+offloading device to become inaccurate. This new NDO provides a
+mechanism to compensate by adding hardware-reported byte and packet
+counts (via struct rtnl_link_stats64) into the device's per-CPU
+software statistics.
+
+With this in place, ndo_get_stats64() can return an accurate total
+that reflects both software-path traffic and hardware-offloaded traffic,
+ensuring consistent and correct statistics reporting for upper-layer
+virtual devices.
+
+The callback returns 0 on success, or a negative errno on failure.
+---
+ include/linux/netdevice.h | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/include/linux/netdevice.h b/include/linux/netdevice.h
+index 66a1585..abce1bf 100644
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -1280,6 +1280,18 @@ struct flow_offload_hw_path;
+  *	underlying network device that can be used for offloading connections.
+  *	Return an error if offloading is not supported.
+  *
++ * int (*ndo_flow_offload_stats64_add)(struct net_device *dev,
++ *				       const struct rtnl_link_stats64 *stats64);
++ *	Updates the software statistics for a virtual upper device (e.g., VLAN)
++ *	to account for hardware-offloaded traffic.
++ *	When a flow is offloaded to hardware, packets bypass the CPU, and thus
++ *	the software counters of such virtual devices become inaccurate. This
++ *	function corrects this by adding the hardware-reported byte and packet
++ *	counts (@stats64) to the device's per-CPU software statistics.
++ *	As a result, ndo_get_stats64() can return an accurate total that
++ *	includes both software-path and offloaded traffic.
++ *	Returns 0 on success, or a negative errno on failure.
++ *
+  * int (*ndo_change_carrier)(struct net_device *dev, bool new_carrier);
+  *	Called to change device carrier. Soft-devices (like dummy, team, etc)
+  *	which do not represent real hardware may define this to allow their
+@@ -1572,6 +1584,8 @@ struct net_device_ops {
+ 						      struct nlmsghdr *nlh,
+ 						      u16 flags);
+ 	int			(*ndo_flow_offload_check)(struct flow_offload_hw_path *path);
++	int			(*ndo_flow_offload_stats64_add)(struct net_device *dev,
++						       const struct rtnl_link_stats64 *stats64);
+ 	int			(*ndo_change_carrier)(struct net_device *dev,
+ 						      bool new_carrier);
+ 	int			(*ndo_get_phys_port_id)(struct net_device *dev,
+-- 
+2.45.2
+

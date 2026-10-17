@@ -1,0 +1,232 @@
+--- a/mt_wifi/os/linux/rt_profile.c
++++ b/mt_wifi/os/linux/rt_profile.c
+@@ -755,7 +755,7 @@
+ 							 "profile %s and slot %s not match, next cfg\n", key, pci_slot);
+ 			}
+ 		} else
+-			MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR, "not find chip name %s\n", key);
++			MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG, "not find chip name %s\n", key);
+ 
+ 		if_idx++;
+ 	}
+--- a/mt_wifi/embedded/common/cmm_profile.c
++++ b/mt_wifi/embedded/common/cmm_profile.c
+@@ -604,7 +604,7 @@
+ 		else
+ 			wlan_config_set_he6g_op_present(wdev, 0);
+ #endif /* #ifdef DOT11_HE_AX */
+-		MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR, "Init: BSS%d PhyMode=%d\n", i, wdev->PhyMode);
++		MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG, "Init: BSS%d PhyMode=%d\n", i, wdev->PhyMode);
+ 
+ #endif /* CONFIG_AP_SUPPORT */
+ #ifdef CONFIG_STA_SUPPORT
+@@ -1631,7 +1631,7 @@
+ 
+ 			if (wdev) {
+ 				wlan_config_set_mu_dl_mimo(wdev, mu_dl_mimo);
+-				MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++				MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 						"APCLI[%d] ApCliMuMimoDlEnable = %d\n", i, mu_dl_mimo);
+ 			}
+ 		}
+@@ -1650,7 +1650,7 @@
+ 
+ 			if (wdev) {
+ 				wlan_config_set_mu_ul_mimo(wdev, mu_ul_mimo);
+-				MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++				MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 						"APCLI[%d] ApCliMuMimoUlEnable = %d\n", i, mu_ul_mimo);
+ 			}
+ 		}
+@@ -5046,7 +5046,7 @@
+ 			in_band_discovery_update(wdev, iob_type, iob_interval, iob_mode, iob_type_by_cfg);
+ 			out_band_discovery_update(wdev, oob_rnr_2g, oob_rnr_5g, oob_rnr_6g);
+ 
+-			MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 				"Bss(%d): phymode=%d, iob_type=%d%s, iob_interval=%d, iob_mode=%d, oob_rnr=%d/%d/%d\n",
+ 				apidx, wdev->PhyMode, iob_type,
+ 				iob_type_by_cfg ? "(byCfg)" : "",
+@@ -5641,7 +5641,7 @@
+ 		for (bandidx = 0, split_ptr = rstrtok(tmpbuf, ";"); split_ptr ; split_ptr = rstrtok(NULL, ";"), bandidx++) {
+ 			if (bandidx < DBDC_BAND_NUM) {
+ 				pAd->CommonCfg.is_mlr_support[bandidx] = (INT8)os_str_tol(split_ptr, 0, 10);
+-				MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++				MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 						"is_mlr_support[%d]:%d\n", bandidx, pAd->CommonCfg.is_mlr_support[bandidx]);
+ 			}
+ 		}
+@@ -8751,7 +8751,7 @@
+ 			for (i = 0; i < pAd->ApCfg.BssidNum; i++) {
+ 				pAd->ApCfg.MBSSID[PF_TO_BSS_IDX(pAd, i)].wdev.bQoSMCapability
+ 					= os_str_tol(tmpbuf, 0, 10);
+-				MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++				MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 					"%s, QoSMgmtCapa=%d\n",
+ 				pAd->ApCfg.MBSSID[PF_TO_BSS_IDX(pAd, i)].wdev.if_dev->name,
+ 				pAd->ApCfg.MBSSID[PF_TO_BSS_IDX(pAd, i)].wdev.bQoSMCapability);
+--- a/mt_wifi/embedded/security/pmf.c
++++ b/mt_wifi/embedded/security/pmf.c
+@@ -1724,7 +1724,7 @@
+ 		else
+ 			pAd->ApCfg.MBSSID[apidx].wdev.SecConfig.PmfCfg.Desired_MFPC = FALSE;
+ 
+-		MTWF_DBG(pAd, DBG_CAT_SEC, CATSEC_PMF, DBG_LVL_ERROR, "[PMF] :: apidx=%d, Desired MFPC=%d\n"
++		MTWF_DBG(pAd, DBG_CAT_SEC, CATSEC_PMF, DBG_LVL_DEBUG, "[PMF] :: apidx=%d, Desired MFPC=%d\n"
+ 				 , apidx, pAd->ApCfg.MBSSID[apidx].wdev.SecConfig.PmfCfg.Desired_MFPC);
+ 	}
+ #endif /* CONFIG_AP_SUPPORT */
+--- a/mt_wifi/embedded/common/scs.c
++++ b/mt_wifi/embedded/common/scs.c
+@@ -876,14 +876,14 @@
+ 			Set_SCSDefaultEnable(pAd, DBDC_BAND0, SCS_ENABLE);
+ 		else
+ 			Set_SCSDefaultEnable(pAd, DBDC_BAND0, SCS_DISABLE);
+-		MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"INIT SCSEnable [0]= %d\n", pAd->SCSCtrl.SCSEnable[DBDC_BAND0]);
+ #ifdef DBDC_MODE
+ 		if (pAd->SCSCtrl.SCSEnable[DBDC_BAND1] == 1)
+ 			Set_SCSDefaultEnable(pAd, DBDC_BAND1, SCS_ENABLE);
+ 		else
+ 			Set_SCSDefaultEnable(pAd, DBDC_BAND1, SCS_DISABLE);
+-		MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"INIT SCSEnable [1]= %d\n", pAd->SCSCtrl.SCSEnable[DBDC_BAND1]);
+ #endif
+ 
+--- a/mt_wifi/embedded/ap/ap_bss_mgmt.c
++++ b/mt_wifi/embedded/ap/ap_bss_mgmt.c
+@@ -217,14 +217,14 @@
+ 
+ 			/* bitmap changed */
+ 			if ((p_nhbr->repting_bmap != nhbr_bmap_backup) || bforce) {
+-				MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++				MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 						 "\t%s:%d N[%02d] %s RNR_S[%02d], bitmap = 0x%llx -> 0x%llx\n",
+ 						 __func__, __LINE__, nifindex,
+ 						 (p_nhbr->repting_bmap & ((UINT64)1 << ifindex)) ? "+" : "-",
+ 						 ifindex, nhbr_bmap_backup, p_nhbr->repting_bmap);
+ 				bss_mgmt_con_build_repted_bss_list(p_nhbr);
+ 			}
+-			MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 				"\t%s:%d N[%02d] %s RNR_S[%02d], bitmap = 0x%llx -> 0x%llx\n",
+ 				__func__, __LINE__, nifindex,
+ 				(p_nhbr->repting_bmap & ((UINT64)1 << ifindex)) ? "+" : "-",
+@@ -239,13 +239,13 @@
+ 
+ 			/* bitmap changed */
+ 			if (pentry->repting_bmap != self_bmap_tmp) {
+-				MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++				MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 						 "\t%s:%d S[%02d] %s RNR_N[%02d], bitmap = 0x%llx -> 0x%llx\n",
+ 						 __func__, __LINE__, RtmpOsGetNetIfIndex(pentry->pNetDev),
+ 						 (pentry->repting_bmap & ((UINT64)1 << nifindex)) ? "+" : "-",
+ 						 nifindex, self_bmap_tmp, pentry->repting_bmap);
+ 			}
+-			MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 						 "\t%s:%d S[%02d] %s RNR_N[%02d], bitmap = 0x%llx -> 0x%llx\n",
+ 						 __func__, __LINE__, RtmpOsGetNetIfIndex(pentry->pNetDev),
+ 						 (pentry->repting_bmap & ((UINT64)1 << nifindex)) ? "+" : "-",
+--- a/mt_wifi/embedded/common/txpower.c
++++ b/mt_wifi/embedded/common/txpower.c
+@@ -447,7 +447,7 @@
+ */
+ VOID RTMPReadTxPwrPerRate(RTMP_ADAPTER *pAd)
+ {
+-	MTWF_DBG(pAd, DBG_CAT_POWER, DBG_SUBCAT_ALL, DBG_LVL_ERROR, "(%d): Don't Support this now!\n", __LINE__);
++	MTWF_DBG(pAd, DBG_CAT_POWER, DBG_SUBCAT_ALL, DBG_LVL_DEBUG, "(%d): Don't Support this now!\n", __LINE__);
+ 	return;
+ }
+ 
+@@ -638,7 +638,7 @@
+ {
+ 	MTWF_DBG(pAd, DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_INFO, "%s()-->\n", __func__);
+ 
+-	MTWF_DBG(pAd, DBG_CAT_POWER, DBG_SUBCAT_ALL, DBG_LVL_ERROR, "NotSupportYet!\n");
++	MTWF_DBG(pAd, DBG_CAT_POWER, DBG_SUBCAT_ALL, DBG_LVL_DEBUG, "NotSupportYet!\n");
+ 	return FALSE;
+ 
+ }
+--- a/mt_wifi/embedded/common/cmm_mat_iparp.c
++++ b/mt_wifi/embedded/common/cmm_mat_iparp.c
+@@ -345,7 +345,7 @@
+ 		pIPMacTable->hash[IPMAC_TB_HASH_INDEX_OF_BCAST] = pEntry;
+ 		pIPMacTable->valid = TRUE;
+ 	} else
+-		MTWF_DBG(NULL, DBG_CAT_PROTO, CATPROTO_MAT, DBG_LVL_ERROR, "IPMacTable already inited!\n");
++		MTWF_DBG(NULL, DBG_CAT_PROTO, CATPROTO_MAT, DBG_LVL_DEBUG, "IPMacTable already inited!\n");
+ 
+ 	return TRUE;
+ }
+--- a/mt_wifi/embedded/common/wifi_sys_info.c
++++ b/mt_wifi/embedded/common/wifi_sys_info.c
+@@ -899,7 +899,7 @@
+ 					pAd->bss_group.group_idx[wdev->func_idx] = wdev->func_idx % VOW_MAX_GROUP_NUM;
+ 			}
+ 
+-			MTWF_DBG(NULL, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(NULL, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 					"%s():band%u group_idx[%d]=%d, bw_grp=%u omac=%u\n",
+ 					__func__, band_idx, wdev->func_idx,
+ 					pAd->bss_group.group_idx[wdev->func_idx],
+--- a/mt_wifi/embedded/ap/ap_bss_mnger.c
++++ b/mt_wifi/embedded/ap/ap_bss_mnger.c
+@@ -794,7 +794,7 @@
+ 	old_iob_type = wlan_config_get_unsolicit_tx_type(wdev);
+ 	if (new_iobinfo->iob_dsc_type != old_iob_type) {
+ 		wlan_config_set_unsolicit_tx_type(wdev, new_iobinfo->iob_dsc_type);
+-		MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"Change: set iob_type: (n)%d ==> (o)%d to driver\n",
+ 			new_iobinfo->iob_dsc_type, old_iob_type);
+ 	}
+@@ -878,7 +878,7 @@
+ 		} else if (curr_iobinfo->iob_dsc_type != UNSOLICIT_TX_DISABLE) {
+ 			curr_iobinfo->iob_dsc_type = UNSOLICIT_TX_DISABLE;
+ 			iob_type_change = TRUE;
+-			MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 				"<- iob dsc disable: curr iob_type (%d) change (%d)\n",
+ 				curr_iobinfo->iob_dsc_type, iob_type_change);
+ 		} else
+@@ -946,7 +946,7 @@
+ 
+ 	if (!reported_bmap) {
+ 		reported_bss_cnt_tmp = 0;
+-		MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"repting_bmap false (repting_bmap:%d)\n", reported_bmap);
+ 	} else {
+ 		if (cfg_dsc_oob->repted_bss_list) {
+@@ -1056,7 +1056,7 @@
+ 
+ 	if (!reported_bmap) {
+ 		reported_bss_cnt_tmp = 0;
+-		MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(NULL, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"repting_bmap false (repting_bmap:%d)\n", reported_bmap);
+ 	} else {
+ 		if (cfg_dsc_oob->repted_bss_list) {
+--- a/mt_wifi/embedded/common/cmm_info.c
++++ b/mt_wifi/embedded/common/cmm_info.c
+@@ -4477,7 +4477,7 @@
+ 			MTWF_DBG(NULL, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_INFO, "debuglevel=%s len=%lu\n", tmpbuf, strlen(tmpbuf));
+ 			strncpy(dbg_level, tmpbuf, strlen(tmpbuf));
+ 		} else
+-			MTWF_DBG(NULL, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(NULL, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 				"debug level setting=%s not found!!\n", key);
+ 
+ 		os_zero_mem(key, DEBUGLEVEL_PROFILE_MAX_PARAM_SIZE);
+@@ -4500,7 +4500,7 @@
+ 			MTWF_DBG(NULL, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_INFO, "debugoption=%s len=%lu\n", tmpbuf, strlen(tmpbuf));
+ 			strncpy(dbg_option, tmpbuf, strlen(tmpbuf));
+ 		} else
+-			MTWF_DBG(NULL, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(NULL, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 				"debug option setting=%s not found!!\n", key);
+ 	} else {
+ 		retval = NDIS_STATUS_FAILURE;

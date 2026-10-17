@@ -1,0 +1,225 @@
+--- a/mt_wifi/chips/mt7916.c
++++ b/mt_wifi/chips/mt7916.c
+@@ -938,7 +938,7 @@
+ 	for (loop = 0; loop < kfree_cnt; loop++) {
+ 		if ((check_valid(pAd, kfree_def->offsets[loop]) == FALSE)
+ 			&& (is_ical_ignorable(kfree_def->offsets[loop]) == FALSE)) {
+-			MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 				 "\x1b[41m 0x%x invalid, iCal merge dismissed!\x1b[m\n",
+ 				 kfree_def->offsets[loop]);
+ 			goto err_out;
+@@ -948,15 +948,15 @@
+ 	NotValid = rtmp_ee_efuse_read16(pAd, 0x9a0, &Value);
+ 
+ 	if (NotValid || ((Value & 0xff) == 0x00)) {
+-		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			 "\x1b[43m iCal for A-Die is invalid, merge dismissed!\x1b[m\n");
+ 		goto err_out;
+ 	} else
+-		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			 "\x1b[32m[a-die version:%d]\x1b[m\n", (Value & 0xff));
+ 
+ 	if ((Value & 0xff) > ARRAY_SIZE(adie_def)) {
+-		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			 "\x1b[41mUnknown iCal A-die version=%d, merge dismessed!\x1b[m\n", (Value & 0xff));
+ 		goto err_out;
+ 	}
+@@ -966,7 +966,7 @@
+ 
+ 	for (loop = 0; loop < kfree_cnt; loop++)
+ 		if (check_valid(pAd, kfree_def->offsets[loop]) == FALSE) {
+-			MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 				 "\x1b[41m 0x%x invalid, iCal merge dismissed!\x1b[m\n",
+ 				 kfree_def->offsets[loop]);
+ 			goto err_out;
+--- a/mt_wifi/chips/mt7986.c
++++ b/mt_wifi/chips/mt7986.c
+@@ -940,7 +940,7 @@
+ 		NotValid = rtmp_ee_efuse_read16(pAd, 0x9a0 + adie_offset, &Value);
+ 
+ 		if (NotValid || ((Value & 0xff) == 0x00)) {
+-			MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 				 "\x1b[43m%s iCal for A-Die is invalid, merge dismissed!\x1b[m\n",
+ 				  __func__);
+ 			goto err_out;
+@@ -949,7 +949,7 @@
+ 				 "\x1b[32m[a-die version:%d]\x1b[m\n", (Value & 0xff));
+ 
+ 		if ((Value & 0xff) > ARRAY_SIZE(adie_def_7975)) {
+-			MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 				 "\x1b[41mUnknown iCal A-die version=%d, merge dismessed!\x1b[m\n", (Value & 0xff));
+ 			goto err_out;
+ 		}
+@@ -962,7 +962,7 @@
+ 
+ 	for (loop = 0; loop < kfree_cnt; loop++)
+ 		if (check_valid(pAd, adie_kfree_def->offsets[loop] + adie_offset) == FALSE) {
+-			MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++			MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 				 "\x1b[41m%s 0x%x invalid, iCal merge dismissed!\x1b[m\n",
+ 				  __func__, adie_kfree_def->offsets[loop]);
+ 			goto err_out;
+@@ -1003,7 +1003,7 @@
+ 		/* E3 re-binding */
+ 		rtmp_ee_efuse_read16(pAd, 0x271 + adie_offset, &Value);
+ 		pAd->EEPROMImage[0x271] = (Value & 0xFF);
+-		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 		 "\x1b[41m%s(%d) offset:%x, %x,%x \x1b[m\n",
+ 		  __func__, __LINE__, adie_offset, pAd->EEPROMImage[0x270], pAd->EEPROMImage[0x271]);
+ 	}
+@@ -1020,10 +1020,10 @@
+ 
+ err_out:
+ 	if (!ret)
+-		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"\x1b[41m invalid, iCal merge dismissed!\x1b[m\n");
+ 	else
+-		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_HW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"\x1b[41m iCal free\x1b[m\n");
+ 
+ 	return ret;
+--- a/mt_wifi/embedded/common/bcn.c
++++ b/mt_wifi/embedded/common/bcn.c
+@@ -2068,7 +2068,7 @@
+ 	}
+ 
+ 	if (WDEV_BSS_STATE(wdev) < BSS_READY) {
+-		MTWF_DBG(pAd, DBG_CAT_AP, CATAP_BCN, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_AP, CATAP_BCN, DBG_LVL_DEBUG,
+ 				 "wdev(%d) bss not ready (state:%d, caller:%pS)!!\n",
+ 				 wdev->wdev_idx, WDEV_BSS_STATE(wdev), OS_TRACE);
+ 		goto end;
+--- a/mt_wifi/embedded/common/cmm_info.c
++++ b/mt_wifi/embedded/common/cmm_info.c
+@@ -21588,7 +21588,7 @@
+ 	} else
+ #endif /* WIFI_UNIFIED_COMMAND */
+ 	{
+-		MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"EDCCA compensation: uni_compensation=%d, bw_compensation=%d, final compensation=%d\n",
+ 			uni_compensation, bw_compensation, compensation);
+ 
+--- a/mt_wifi/embedded/common/cmm_mac_pci.c
++++ b/mt_wifi/embedded/common/cmm_mac_pci.c
+@@ -136,7 +136,7 @@
+ 
+ 	/* TODO: shiang-7603 */
+ 	if (IS_HIF_TYPE(pAd, HIF_MT)) {
+-		MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_ERROR, "Not support for HIF_MT yet!\n");
++		MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_DEBUG, "Not support for HIF_MT yet!\n");
+ 		return FALSE;
+ 	}
+ 
+--- a/mt_wifi/embedded/common/ra_ac_q_mgmt.c
++++ b/mt_wifi/embedded/common/ra_ac_q_mgmt.c
+@@ -910,7 +910,7 @@
+ 
+ 	Ret = chip_cmd_tx(pAd, msg);
+ 
+-	MTWF_DBG(pAd, DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++	MTWF_DBG(pAd, DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 		"%s: (ret = %d)\n", __func__, Ret);
+ 	return Ret;
+ }
+@@ -1045,7 +1045,7 @@
+ 	os_free_mem(param);
+ 	ret = TRUE;
+ error:
+-	MTWF_DBG(pAd, DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++	MTWF_DBG(pAd, DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			 "%s:(ret = %d)\n", __func__, ret);
+ 
+ 	return ret;
+--- a/mt_wifi/embedded/common/rtmp_init_inf.c
++++ b/mt_wifi/embedded/common/rtmp_init_inf.c
+@@ -1172,7 +1172,7 @@
+ 			brc = RT28xxPciAsicRadioOff(pAd, RTMP_HALT, 0);
+ 
+ 			if (brc == FALSE)
+-				MTWF_DBG(pAd, DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_ERROR, "call RT28xxPciAsicRadioOff fail !!\n");
++				MTWF_DBG(pAd, DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_DEBUG, "call RT28xxPciAsicRadioOff fail !!\n");
+ 		}
+ 
+ #endif /* RTMP_PCI_SUPPORT */
+--- a/mt_wifi/embedded/mgmt/be_phy.c
++++ b/mt_wifi/embedded/mgmt/be_phy.c
+@@ -372,7 +372,7 @@
+ 			  wdev->PhyMode);
+ 	os_zero_mem(&oper_dev, sizeof(oper_dev));
+ 	if (!phy_freq_adjust(wdev, cfg, &oper_dev)) {
+-		MTWF_DBG(ad, DBG_CAT_CHN, CATCHN_CHN, DBG_LVL_ERROR,
++		MTWF_DBG(ad, DBG_CAT_CHN, CATCHN_CHN, DBG_LVL_DEBUG,
+ 				 "phy_freq_adjust failed!");
+ 		return;
+ 	}
+--- a/mt_wifi/embedded/mgmt/mgmt_vht.c
++++ b/mt_wifi/embedded/mgmt/mgmt_vht.c
+@@ -1873,7 +1873,7 @@
+ 		break;
+ 
+ 	default:
+-		MTWF_DBG(pAd, DBG_CAT_PROTO, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_PROTO, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"invalid ch_band %d\n", ch_band);
+ 		break;
+ 	}
+@@ -1973,7 +1973,7 @@
+ 		break;
+ 
+ 	default:
+-		MTWF_DBG(pAd, DBG_CAT_PROTO, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_PROTO, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"invalid ch_band %d\n", ch_band);
+ 		break;
+ 	}
+@@ -2069,7 +2069,7 @@
+ 		break;
+ 
+ 	default:
+-		MTWF_DBG(pAd, DBG_CAT_PROTO, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(pAd, DBG_CAT_PROTO, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			"invalid ch_band %d\n", ch_band);
+ 		break;
+ 	}
+--- a/mt_wifi/mcu/mt_cmd.c
++++ b/mt_wifi/mcu/mt_cmd.c
+@@ -10429,7 +10429,7 @@
+ 	MtAndesAppendCmdMsg(msg, (char *)&MacEnableCmd, sizeof(EXT_CMD_MAC_ENABLE_CTRL_T));
+ 	ret = chip_cmd_tx(pAd, msg);
+ error:
+-	MTWF_DBG(pAd, DBG_CAT_FW, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++	MTWF_DBG(pAd, DBG_CAT_FW, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			 "(ret = %d)\n", ret);
+ 	return ret;
+ }
+--- a/mt_wifi/os/linux/multi_main_dev.c
++++ b/mt_wifi/os/linux/multi_main_dev.c
+@@ -83,7 +83,7 @@
+ 	}
+ 
+ 	if (count == 0)
+-		MTWF_DBG(NULL, DBG_CAT_INIT, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(NULL, DBG_CAT_INIT, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			 "failed to find nonempty adapt_list!\n");
+ 	return count;
+ }
+@@ -102,7 +102,7 @@
+ 		}
+ 	}
+ 	if (active_cnt == 0)
+-		MTWF_DBG(NULL, DBG_CAT_INIT, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++		MTWF_DBG(NULL, DBG_CAT_INIT, DBG_SUBCAT_ALL, DBG_LVL_DEBUG,
+ 			 "failed to find nonempty adapt_list!\n");
+ 	return active_cnt;
+ }

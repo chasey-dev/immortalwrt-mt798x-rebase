@@ -6,6 +6,61 @@ USE_PROCD=1
 
 QDMA_RATE_MAX=1000000
 TOTAL_RATE_MAX=1000
+HQOS_LOCK="/var/lock/eqos-hqos.lock"
+HQOS_OWNER="/var/run/eqos-hqos.owner"
+HQOS_LOCKED=0
+
+# procd_lock() in procd.sh claims fd 1000 for the per-service lock, and
+# rc.common takes it before start_service/stop_service/reload_service run.
+# Reusing 1000 here would drop that lock and later make procd_lock believe
+# it holds it while actually holding this one, so use a private fd.
+lock_hqos() {
+	mkdir -p /var/lock /var/run || return 1
+	exec 900>"$HQOS_LOCK" || return 1
+	flock 900 || return 1
+	HQOS_LOCKED=1
+}
+
+unlock_hqos() {
+	[ "$HQOS_LOCKED" -eq 1 ] || return 0
+	flock -u 900
+	HQOS_LOCKED=0
+}
+
+publish_hqos_owner() {
+	local mode="$1"
+	local tmp="${HQOS_OWNER}.$$"
+
+	case "$mode" in
+		manual|smart) ;;
+		*) return 1 ;;
+	esac
+
+	if ! printf '%s\n' "$mode" > "$tmp" || ! mv -f "$tmp" "$HQOS_OWNER"; then
+		rm -f "$tmp"
+		return 1
+	fi
+}
+
+clear_hqos_owner() {
+	rm -f "$HQOS_OWNER"
+}
+
+restore_mtkhqos() {
+	[ -x /sbin/mtkhqos ] || return 0
+	/sbin/mtkhqos || {
+		logger -t eqos "failed to restore mtkhqos baseline"
+		return 1
+	}
+}
+
+rollback_eqos() {
+	eqos stop >/dev/null 2>&1
+	eqos smart-clear >/dev/null 2>&1
+	clear_hqos_owner
+	unlock_hqos
+	restore_mtkhqos >/dev/null 2>&1 || true
+}
 
 is_uinteger() {
 	case "$1" in
@@ -100,6 +155,10 @@ validate_device() {
 	else
 		selector_key="ip6:$ip6"
 	fi
+	if ! eqos check-selector "${selector_key%%:*}" "${selector_key#*:}"; then
+		CONFIG_ERROR=1
+		return 0
+	fi
 
 	case "$USED_SELECTORS" in
 		*" $selector_key "*)
@@ -139,9 +198,12 @@ parse_device() {
 start_service() {
 	config_load eqos
 
-	local enabled
+	local enabled smarthqos mode
 	config_get_bool enabled config enabled 0
 	[ "$enabled" -eq 1 ] || return 0
+	config_get_bool smarthqos config smarthqos 0
+	mode=manual
+	[ "$smarthqos" -eq 0 ] || mode=smart
 
 	local download upload
 	config_get download config download
@@ -154,32 +216,82 @@ start_service() {
 		return 1
 	fi
 
-	CONFIG_ERROR=0
-	USED_QUEUES=" "
-	USED_SELECTORS=" "
-	config_foreach validate_device device
-	[ "$CONFIG_ERROR" -eq 0 ] || return 1
+	if [ "$mode" = manual ]; then
+		CONFIG_ERROR=0
+		USED_QUEUES=" "
+		USED_SELECTORS=" "
+		config_foreach validate_device device
+		[ "$CONFIG_ERROR" -eq 0 ] || return 1
+	fi
+	lock_hqos || return 1
+	clear_hqos_owner
 
-	if ! eqos start "$download" "$upload"; then
-		eqos stop >/dev/null 2>&1
+	if ! eqos start "$download" "$upload" "$mode"; then
+		rollback_eqos
 		return 1
 	fi
 
-	CONFIG_ERROR=0
-	config_foreach parse_device device
-	if [ "$CONFIG_ERROR" -ne 0 ]; then
-		eqos stop >/dev/null 2>&1
-		return 1
+	if [ "$mode" = manual ]; then
+		CONFIG_ERROR=0
+		config_foreach parse_device device
+		if [ "$CONFIG_ERROR" -ne 0 ]; then
+			rollback_eqos
+			return 1
+		fi
 	fi
 
 	if ! eqos enable; then
-		eqos stop >/dev/null 2>&1
+		rollback_eqos
 		return 1
 	fi
+
+	if ! publish_hqos_owner "$mode"; then
+		rollback_eqos
+		return 1
+	fi
+
+	unlock_hqos
 }
 
 stop_service() {
+	lock_hqos || return 1
+	if [ ! -e "$HQOS_OWNER" ]; then
+		unlock_hqos
+		return 0
+	fi
 	eqos stop
+	local ret=$?
+	eqos smart-clear >/dev/null 2>&1
+	clear_hqos_owner
+	unlock_hqos
+
+	restore_mtkhqos || ret=1
+
+	return "$ret"
+}
+
+smart_rebuild() {
+	local enabled smarthqos ret
+
+	config_load eqos
+	config_get_bool enabled config enabled 0
+	config_get_bool smarthqos config smarthqos 0
+	[ "$enabled" -eq 1 ] && [ "$smarthqos" -eq 1 ] || return 0
+
+	lock_hqos || return 1
+	config_load eqos
+	config_get_bool enabled config enabled 0
+	config_get_bool smarthqos config smarthqos 0
+	if [ "$enabled" -ne 1 ] || [ "$smarthqos" -ne 1 ] ||
+	   [ "$(cat "$HQOS_OWNER" 2>/dev/null)" != smart ]; then
+		unlock_hqos
+		return 0
+	fi
+
+	eqos smart-rebuild
+	ret=$?
+	unlock_hqos
+	return "$ret"
 }
 
 reload_service() {
@@ -197,3 +309,7 @@ reload_service() {
 service_triggers() {
 	procd_add_reload_trigger eqos
 }
+
+EXTRA_COMMANDS="smart_rebuild"
+EXTRA_HELP="
+	smart_rebuild Rebuild SMART_HWQOS lease mappings"

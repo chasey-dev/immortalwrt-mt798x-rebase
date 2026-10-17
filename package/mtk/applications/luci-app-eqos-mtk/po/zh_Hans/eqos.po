@@ -11,6 +11,9 @@ msgstr ""
 msgid "Device rules"
 msgstr "设备规则"
 
+msgid "Automatically assigns fair hardware queues to DHCP clients. Manual device rules are preserved but inactive while enabled."
+msgstr "自动为 DHCP 客户端分配公平硬件队列。启用期间保留手动设备规则，但这些规则不生效。"
+
 msgid "EQoS"
 msgstr "网速控制"
 
@@ -20,11 +23,17 @@ msgstr "授予 luci-app-eqos 访问 UCI 配置的权限"
 msgid "Maximum rate in Mbit/s. Use 0 for no limit."
 msgstr "最大速率，单位为 Mbit/s；填 0 表示不限制该方向。"
 
+msgid "Manual device rules are preserved and will become active again after SMART_HWQOS is disabled."
+msgstr "手动设备规则已保留；关闭智能硬件QOS后将重新生效。"
+
 msgid "Network speed control service for MediaTek HNAT."
 msgstr "面向 MediaTek HNAT 的网速控制服务。"
 
 msgid "Queue ID"
 msgstr "队列编号"
+
+msgid "SMART_HWQOS"
+msgstr "智能硬件QOS"
 
 msgid "This value is already in use."
 msgstr "该值已被使用。"

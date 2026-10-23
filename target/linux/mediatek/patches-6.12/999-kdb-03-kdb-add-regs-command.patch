@@ -1,0 +1,415 @@
+---
+[v1] kdb: add MMIO register command
+
+Add the regs command for physical MMIO register reads, writes, bit-field
+updates, and dumps from KDB. This provides register diagnostics while the
+system is stopped in the debugger.
+---
+v1: Add the KDB MMIO register diagnostic command.
+---
+
+From cb17389899a311407275f72286b3a279f1c635ab Mon Sep 17 00:00:00 2001
+From: Evan Zhang <evan.zhang@mediatek.com>
+Date: Mon, 10 Aug 2026 17:04:27 +0800
+Subject: [PATCH] kdb: add MMIO register command
+
+Add the regs command for KDB MMIO register diagnostics.
+
+Signed-off-by: Evan Zhang <Evan.Zhang@mediatek.com>
+---
+
+diff --git a/kernel/debug/kdb/Makefile b/kernel/debug/kdb/Makefile
+index 02e395f..82547f6 100644
+--- a/kernel/debug/kdb/Makefile
++++ b/kernel/debug/kdb/Makefile
+@@ -6,7 +6,7 @@
+ # Copyright (c) 2009 Wind River Systems, Inc. All Rights Reserved.
+ #
+ 
+-obj-y := kdb_io.o kdb_main.o kdb_support.o kdb_bt.o gen-kdb_cmds.o kdb_bp.o kdb_debugger.o kdb_dis.o
++obj-y := kdb_io.o kdb_main.o kdb_support.o kdb_bt.o gen-kdb_cmds.o kdb_bp.o kdb_debugger.o kdb_dis.o kdb_regs.o
+ obj-$(CONFIG_KDB_KEYBOARD)    += kdb_keyboard.o
+ 
+ clean-files := gen-kdb_cmds.c
+diff --git a/kernel/debug/kdb/kdb_regs.c b/kernel/debug/kdb/kdb_regs.c
+new file mode 100644
+index 0000000..157b8fb
+--- /dev/null
++++ b/kernel/debug/kdb/kdb_regs.c
+@@ -0,0 +1,374 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ *   Copyright (C) 2026 MediaTek Inc.
++ */
++
++/*
++ * kdb_regs.c: KDB command for physical register read/write/modify/dump
++ *
++ * KDB implementation notes:
++ *   MMIO pages are mapped through the FIX_TEXT_POKE0 fixmap slot.  This
++ *   avoids vmalloc allocation and locking, and is safe while KDB stops CPUs.
++ *
++ * Commands registered:
++ *   regs r <phys_addr> [startbit datalen]  - read register (optionally bit field)
++ *   regs w <phys_addr> <value>             - write register
++ *   regs m <phys_addr> <value> <startbit> <datalen> - modify bit field
++ *   regs d <phys_addr>                     - dump 64 words (256 bytes)
++ *
++ * This file is subject to the terms and conditions of the GNU General Public
++ * License.  See the file "COPYING" in the main directory of this archive
++ * for more details.
++ */
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/io.h>
++#include <linux/kdb.h>
++#include <asm/fixmap.h>
++#include <asm/pgtable-prot.h>
++#include "kdb_private.h"
++
++/*
++ * kdb_regs_fixmap_map() / kdb_regs_fixmap_unmap()
++ *
++ * Map a physical address for MMIO access using the FIX_TEXT_POKE0 fixmap
++ * slot.  This is safe in KDB context because __set_fixmap() only writes a
++ * single PTE and issues a local TLB invalidation via the ARM64 TLBI
++ * instruction (broadcast via Inner Shareable domain -- no IPI needed).
++ *
++ * The caller must call kdb_regs_fixmap_unmap() after the access to clear
++ * the mapping and avoid leaving stale entries.
++ */
++static void __iomem *kdb_regs_fixmap_map(phys_addr_t phys)
++{
++	phys_addr_t page_base = phys & PAGE_MASK;
++	unsigned long offset  = (unsigned long)(phys & ~PAGE_MASK);
++
++	/*
++	 * FIXMAP_PAGE_IO = PROT_DEVICE_nGnRE (device, non-cacheable).
++	 * __set_fixmap() writes the PTE directly -- no vmalloc_lock needed.
++	 */
++	__set_fixmap(FIX_TEXT_POKE0, page_base, FIXMAP_PAGE_IO);
++
++	return (void __iomem *)(fix_to_virt(FIX_TEXT_POKE0) + offset);
++}
++
++static void kdb_regs_fixmap_unmap(void)
++{
++	/*
++	 * Clear the PTE and flush the local TLB entry.
++	 * clear_fixmap() calls __set_fixmap(idx, 0, FIXMAP_PAGE_CLEAR).
++	 */
++	clear_fixmap(FIX_TEXT_POKE0);
++}
++
++/* ------------------------------------------------------------------ */
++/* Dump 64 x 32-bit words (256 bytes) starting at phys_addr.          */
++/* Handles page-crossing by remapping as needed.                       */
++/* ------------------------------------------------------------------ */
++static void kdb_regs_dump(phys_addr_t phys_addr)
++{
++	int i;
++	phys_addr_t cur_page = (phys_addr_t)(~0ULL);
++	void __iomem *vbase = NULL;
++
++	for (i = 0; i < 64; i += 4) {
++		phys_addr_t pa  = phys_addr + (phys_addr_t)(i * 4);
++		phys_addr_t pg  = pa & PAGE_MASK;
++		unsigned long off = (unsigned long)(pa & ~PAGE_MASK);
++
++		/* Remap only when we cross a page boundary */
++		if (pg != cur_page) {
++			if (vbase)
++				kdb_regs_fixmap_unmap();
++			__set_fixmap(FIX_TEXT_POKE0, pg, FIXMAP_PAGE_IO);
++			vbase = (void __iomem *)fix_to_virt(FIX_TEXT_POKE0);
++			cur_page = pg;
++		}
++
++		kdb_printf("0x%llx: %08x %08x %08x %08x\n",
++			   (unsigned long long)pa,
++			   readl(vbase + off),
++			   readl(vbase + off + 4),
++			   readl(vbase + off + 8),
++			   readl(vbase + off + 12));
++	}
++
++	if (vbase)
++		kdb_regs_fixmap_unmap();
++}
++
++/* ------------------------------------------------------------------ */
++/* Modify a bit field [startbit, startbit+datalen-1] of the register. */
++/* ------------------------------------------------------------------ */
++static int kdb_regs_mod_bits(void __iomem *vaddr, u32 data,
++			     int startbit, int datalen)
++{
++	u32 mask = 0;
++	u32 value;
++	int i;
++
++	if (startbit < 0 || startbit > 31 ||
++	    datalen < 1 || datalen > 32 ||
++	    startbit + datalen > 32) {
++		kdb_printf("regs: Startbit range[0~31], DataLen range[1~32], ");
++		kdb_printf("Startbit+DataLen <= 32\n");
++		return KDB_ARGCOUNT;
++	}
++
++	for (i = 0; i < datalen; i++) {
++		if (startbit + i > 31)
++			break;
++		mask |= 1u << (startbit + i);
++	}
++
++	value = readl(vaddr);
++	value &= ~mask;
++	value |= (data << startbit) & mask;
++	writel(value, vaddr);
++
++	kdb_printf("Modify 0x%X[%d:%d]; ", data,
++		   startbit + datalen - 1, startbit);
++	return 0;
++}
++
++/* ------------------------------------------------------------------ */
++/* Print a 32-bit value in binary (bit31 down to bit0).               */
++/* ------------------------------------------------------------------ */
++static void kdb_print_binary(u32 data)
++{
++	int i;
++
++	for (i = 31; i >= 0; i--)
++		kdb_printf("%c", (data >> i) & 1 ? '1' : '0');
++}
++
++/* ------------------------------------------------------------------ */
++/* Read and display a bit field [startbit, startbit+datalen-1].       */
++/* ------------------------------------------------------------------ */
++static void kdb_regs_read_bits(void __iomem *vaddr, phys_addr_t paddr,
++				int startbit, int datalen)
++{
++	u32 mask = 0;
++	u32 value;
++	u32 field;
++	int i;
++
++	if (startbit < 0 || startbit > 31 ||
++	    datalen < 1 || datalen > 32 ||
++	    startbit + datalen > 32) {
++		kdb_printf("regs: Startbit range[0~31], DataLen range[1~32], ");
++		kdb_printf("Startbit+DataLen <= 32\n");
++		return;
++	}
++
++	for (i = 0; i < datalen; i++) {
++		if (startbit + i > 31)
++			break;
++		mask |= 1u << (startbit + i);
++	}
++
++	value = readl(vaddr);
++	field = (value & mask) >> startbit;
++
++	if (startbit == 0 && datalen == 32) {
++		kdb_printf("0x%llx: %08x\n",
++			   (unsigned long long)paddr, value);
++	} else {
++		kdb_printf("0x%llx[%2d:%2d] = %x (hex)\n",
++			   (unsigned long long)paddr,
++			   startbit + datalen - 1, startbit, field);
++		kdb_printf("%17s = %u (dec)\n", "", field);
++		kdb_printf("%17s = ", "");
++		kdb_print_binary(field);
++		kdb_printf(" (bin)\n");
++	}
++}
++
++/* ------------------------------------------------------------------ */
++/* KDB command handler                                                  */
++/*                                                                      */
++/* argv[0] = "regs"  (not counted in argc)                             */
++/* argv[1] = op: r | w | m | d                                         */
++/* argv[2] = phys_addr (always hex, with or without 0x prefix)        */
++/*                                                                      */
++/*   regs r <addr>                       argc == 2                     */
++/*   regs r <addr> <startbit> <datalen>  argc == 4                     */
++/*   regs w <addr> <value>               argc == 3                     */
++/*   regs m <addr> <value> <sb> <dl>     argc == 5                     */
++/*   regs d <addr>                       argc == 2                     */
++/* ------------------------------------------------------------------ */
++static int kdb_regs_cmd(int argc, const char **argv)
++{
++	unsigned long tmp;
++	phys_addr_t phys_addr;
++	void __iomem *vaddr;
++	u32 read_result;
++	u32 writeval;
++	int startbit, datalen;
++	char op;
++	int ret = 0;
++
++	if (argc < 2) {
++		kdb_printf("Usage: regs <r|w|m|d> <phys_addr> [args]\n");
++		kdb_printf("  r <addr>                      - read full 32-bit register\n");
++		kdb_printf("  r <addr> <startbit> <datalen>  - read bit field\n");
++		kdb_printf("  w <addr> <value>              - write register\n");
++		kdb_printf("  m <addr> <value> <sb> <dl>    - modify bit field\n");
++		kdb_printf("  d <addr>                      - dump 256 bytes (64 words)\n");
++		kdb_printf("Note: addr is always hex (0x prefix optional)\n");
++		kdb_printf("Example:\n");
++		kdb_printf("  regs r 15110000\n");
++		kdb_printf("  regs r 15110000 29 3\n");
++		kdb_printf("  regs w 15110000 0x1234\n");
++		kdb_printf("  regs m 15110000 0x0 29 3\n");
++		kdb_printf("  regs d 15110000\n");
++		return 0;
++	}
++
++	op = argv[1][0];
++
++	if ((op == 'w' && argc < 3) || (op == 'm' && argc < 5)) {
++		kdb_printf("regs: too few arguments for '%c'\n", op);
++		return KDB_ARGCOUNT;
++	}
++
++	/*
++	 * Parse physical address: always force base-16 regardless of
++	 * whether the user typed a "0x" prefix.  Physical addresses are always
++	 * hexadecimal, and kstrtoul() rejects invalid input.
++	 */
++	ret = kstrtoul(argv[2], 16, &tmp);
++	if (ret) {
++		kdb_printf("regs: invalid address '%s'\n", argv[2]);
++		return KDB_BADINT;
++	}
++	phys_addr = (phys_addr_t)tmp;
++
++	/* Dump is handled separately (may cross page boundary) */
++	if (op == 'd') {
++		kdb_regs_dump(phys_addr);
++		return 0;
++	}
++
++	/*
++	 * For r/w/m: map one page via fixmap.
++	 * __set_fixmap() writes a PTE directly -- safe in KDB context.
++	 * ARM64 TLBI instruction broadcasts to all CPUs via Inner Shareable
++	 * domain without needing IPIs.
++	 */
++	vaddr = kdb_regs_fixmap_map(phys_addr);
++
++	switch (op) {
++	case 'r':
++		if (argc == 2) {
++			kdb_regs_read_bits(vaddr, phys_addr, 0, 32);
++		} else if (argc >= 4) {
++			ret = kdbgetularg(argv[3], &tmp);
++			if (ret) {
++				kdb_printf("regs: invalid startbit '%s'\n",
++					   argv[3]);
++				goto out;
++			}
++			startbit = (int)tmp;
++
++			ret = kdbgetularg(argv[4], &tmp);
++			if (ret) {
++				kdb_printf("regs: invalid datalen '%s'\n",
++					   argv[4]);
++				goto out;
++			}
++			datalen = (int)tmp;
++
++			kdb_regs_read_bits(vaddr, phys_addr, startbit, datalen);
++		} else {
++			kdb_printf("regs: 'r' needs addr, or addr startbit datalen\n");
++			ret = KDB_ARGCOUNT;
++			goto out;
++		}
++		break;
++
++	case 'w':
++		ret = kdbgetularg(argv[3], &tmp);
++		if (ret) {
++			kdb_printf("regs: invalid value '%s'\n", argv[3]);
++			goto out;
++		}
++		writeval = (u32)tmp;
++
++		read_result = readl(vaddr);
++		kdb_printf("Value at 0x%llx: 0x%08X\n",
++			   (unsigned long long)phys_addr, read_result);
++
++		writel(writeval, vaddr);
++		kdb_printf("Written 0x%08X; ", writeval);
++
++		read_result = readl(vaddr);
++		kdb_printf("Readback 0x%08X\n", read_result);
++		break;
++
++	case 'm':
++		ret = kdbgetularg(argv[3], &tmp);
++		if (ret) {
++			kdb_printf("regs: invalid value '%s'\n", argv[3]);
++			goto out;
++		}
++		writeval = (u32)tmp;
++
++		ret = kdbgetularg(argv[4], &tmp);
++		if (ret) {
++			kdb_printf("regs: invalid startbit '%s'\n", argv[4]);
++			goto out;
++		}
++		startbit = (int)tmp;
++
++		ret = kdbgetularg(argv[5], &tmp);
++		if (ret) {
++			kdb_printf("regs: invalid datalen '%s'\n", argv[5]);
++			goto out;
++		}
++		datalen = (int)tmp;
++
++		read_result = readl(vaddr);
++		kdb_printf("Value at 0x%llx: 0x%08X\n",
++			   (unsigned long long)phys_addr, read_result);
++
++		ret = kdb_regs_mod_bits(vaddr, writeval, startbit, datalen);
++		if (ret)
++			goto out;
++
++		read_result = readl(vaddr);
++		kdb_printf("Readback 0x%08X\n", read_result);
++		break;
++
++	default:
++		kdb_printf("regs: unknown operation '%c'. Use r/w/m/d.\n", op);
++		ret = KDB_ARGCOUNT;
++		goto out;
++	}
++
++	ret = 0;
++out:
++	kdb_regs_fixmap_unmap();
++	return ret;
++}
++
++static kdbtab_t regs_cmds[] = {
++	{
++		.name		= "regs",
++		.func		= kdb_regs_cmd,
++		.usage		= "<r|w|m|d> <phys_addr> [value] [startbit] [datalen]",
++		.help		= "Read/Write/Modify/Dump physical MMIO register",
++		.minlen		= 4,
++		.flags		= KDB_ENABLE_MEM_READ | KDB_ENABLE_MEM_WRITE,
++	},
++};
++
++static int __init kdb_regs_init(void)
++{
++	kdb_register_table(regs_cmds, ARRAY_SIZE(regs_cmds));
++	return 0;
++}
++
++early_initcall(kdb_regs_init);
+-- 
+2.45.2

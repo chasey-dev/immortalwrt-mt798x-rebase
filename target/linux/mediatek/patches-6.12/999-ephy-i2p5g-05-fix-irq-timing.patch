@@ -1,0 +1,21 @@
+From e13c818d963f40202688bcc0972fd449ed0eb3b2 Thu Apr 16 13:55:04 2026
+From: Sky Huang <skylake.huang@mediatek.com>
+Date: Thu, 16 Apr 2026 13:55:04 +0800
+Subject: [PATCH v1] net: phy: mtk-2p5g: Fix IRQ timing issue
+
+Add a delay time for i2.5Gphy to stable after configuring IRQ.
+
+---
+v1: Fix IRQ timing issue
+---
+--- a/drivers/net/phy/mediatek/mtk-2p5ge.c
++++ b/drivers/net/phy/mediatek/mtk-2p5ge.c
+@@ -714,6 +714,8 @@ static int mt798x_2p5ge_phy_config_intr(
+ 	else
+ 		reg_set_bits(priv, MTK_2P5GPHY_CHIP_SCU + IRQ_MASK, PHY_IRQ_MASK);
+ 
++	usleep_range(5000, 6000);
++
+ 	return mtk_phy_config_intr(phydev);
+ }
+ 

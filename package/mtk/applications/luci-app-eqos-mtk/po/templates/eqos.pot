@@ -1,0 +1,65 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+msgid "Address"
+msgstr ""
+
+msgid "Device rules"
+msgstr ""
+
+msgid "Download"
+msgstr ""
+
+msgid "EQoS"
+msgstr ""
+
+msgid "Enable"
+msgstr ""
+
+msgid "General Settings"
+msgstr ""
+
+msgid "Grant UCI access for luci-app-eqos"
+msgstr ""
+
+msgid "IPv4 address"
+msgstr ""
+
+msgid "IPv6 address"
+msgstr ""
+
+msgid "Maximum rate in Mbit/s. Use 0 for no limit."
+msgstr ""
+
+msgid "Network speed control service for MediaTek HNAT."
+msgstr ""
+
+msgid "Queue ID"
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "This value is already in use."
+msgstr ""
+
+msgid "Total download bandwidth."
+msgstr ""
+
+msgid "Total upload bandwidth."
+msgstr ""
+
+msgid "Type"
+msgstr ""
+
+msgid "Upload"
+msgstr ""
+
+msgid "Values 1-31 use HNAT HQoS. Values 32 and above use software shaping."
+msgstr ""
+
+msgid "unlimited"
+msgstr ""
+
+msgid "unspecified"
+msgstr ""

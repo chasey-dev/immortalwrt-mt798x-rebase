@@ -1,0 +1,62 @@
+From 9842c8e5847b2f51b486dcd2ed939af04dc6946a Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Thu, 2 Apr 2026 14:13:03 +0800
+Subject: [PATCH] ppp: add ndo_flow_offload_stats64_add for
+ offload stats correction
+
+Implement the ndo_flow_offload_stats64_add callback for PPP virtual
+devices to correct per-CPU software statistics when flows are
+hardware-offloaded.
+
+When a flow is offloaded to hardware, packets bypass the CPU and the
+PPP device's software counters (dev->tstats) become inaccurate. The
+new ppp_flow_offload_stats64_add() function compensates by atomically
+adding the hardware-reported rx/tx packet and byte counts into the
+per-CPU pcpu_sw_netstats via u64_stats_add(), ensuring that
+ppp_get_stats64() returns an accurate total inclusive of offloaded
+traffic.
+---
+ drivers/net/ppp/ppp_generic.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/drivers/net/ppp/ppp_generic.c b/drivers/net/ppp/ppp_generic.c
+index 8a052c5..70c67e6 100644
+--- a/drivers/net/ppp/ppp_generic.c
++++ b/drivers/net/ppp/ppp_generic.c
+@@ -1541,6 +1541,25 @@ ppp_get_stats64(struct net_device *dev, struct rtnl_link_stats64 *stats64)
+ 	dev_fetch_sw_netstats(stats64, dev->tstats);
+ }
+ 
++static int ppp_flow_offload_stats64_add(struct net_device *dev,
++					const struct rtnl_link_stats64 *stats64)
++{
++	struct pcpu_sw_netstats *tstats;
++
++	if (!dev->tstats)
++		return -EINVAL;
++
++	tstats = this_cpu_ptr(dev->tstats);
++	u64_stats_update_begin(&tstats->syncp);
++	u64_stats_add(&tstats->rx_packets, stats64->rx_packets);
++	u64_stats_add(&tstats->rx_bytes, stats64->rx_bytes);
++	u64_stats_add(&tstats->tx_packets, stats64->tx_packets);
++	u64_stats_add(&tstats->tx_bytes, stats64->tx_bytes);
++	u64_stats_update_end(&tstats->syncp);
++
++	return 0;
++}
++
+ static int ppp_dev_init(struct net_device *dev)
+ {
+ 	struct ppp *ppp;
+@@ -1641,6 +1660,7 @@ static const struct net_device_ops ppp_netdev_ops = {
+ #if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
+ 	.ndo_flow_offload_check = ppp_flow_offload_check,
+ #endif
++	.ndo_flow_offload_stats64_add = ppp_flow_offload_stats64_add,
+ };
+ 
+ static const struct device_type ppp_type = {
+-- 
+2.45.2
+

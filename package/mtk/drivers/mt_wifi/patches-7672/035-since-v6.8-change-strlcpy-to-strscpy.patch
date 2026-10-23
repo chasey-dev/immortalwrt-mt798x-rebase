@@ -1,0 +1,51 @@
+--- a/mt_wifi/embedded/common/cmm_cfg.c
++++ b/mt_wifi/embedded/common/cmm_cfg.c
+@@ -910,7 +910,7 @@ INT RtmpIoctl_rt_ioctl_giwname(
+ 					return NDIS_STATUS_FAILURE;
+ 				}
+ 			} else {
+-				strlcpy(pData, "RTWIFI SoftAP", strlen("RTWIFI SoftAP") + 1);
++				strscpy(pData, "RTWIFI SoftAP", strlen("RTWIFI SoftAP") + 1);
+ 			}
+ 		}
+ 	}
+--- a/mt_wifi/embedded/common/cmm_info.c
++++ b/mt_wifi/embedded/common/cmm_info.c
+@@ -16479,7 +16479,7 @@ INT Set_TxBfProfileDataWrite(RTMP_ADAPTE
+ 		strLen = strlen(value);
+ 
+ 		if (strLen & 1) {
+-			strlcpy(value_T, "0", sizeof(value_T));
++			strscpy(value_T, "0", sizeof(value_T));
+ 			strncat(value_T, value, strLen);
+ 			AtoH(value_T, (PCHAR)(&Input[i]), 2);
+ 			Input[i] = be2cpu16(Input[i]);
+@@ -16641,7 +16641,7 @@ between : */
+ 		str_len = strlen(value);
+ 
+ 		if (str_len & 1) {
+-			strlcpy(value_t, "0", sizeof(value_t));
++			strscpy(value_t, "0", sizeof(value_t));
+ 			strncat(value_t, value, str_len);
+ 			AtoH(value_t, (PCHAR)(&input[i]), 2);
+ 			input[i] = be2cpu16(input[i]);
+@@ -16811,7 +16811,7 @@ INT Set_TxBfProfilePnWrite(RTMP_ADAPTER
+ 		strLen = strlen(value);
+ 
+ 		if (strLen & 1) {
+-			strlcpy(value_T, "0", sizeof(value_T));
++			strscpy(value_T, "0", sizeof(value_T));
+ 			strncat(value_T, value, strLen);
+ 			AtoH(value_T, (PCHAR)(&Input[i]), 2);
+ 			Input[i] = be2cpu16(Input[i]);
+--- a/mt_wifi/embedded/include/meminfo_list.h
++++ b/mt_wifi/embedded/include/meminfo_list.h
+@@ -344,7 +344,7 @@ static inline VOID MIListAddHead(MEM_INF
+ 	pEntry->Line = Line;
+ 	pEntry->pLastPos = 0;
+ 	pEntry->uPosIdx = 0;
+-	strlcpy(pEntry->Func, Func, sizeof(pEntry->Func));
++	strscpy(pEntry->Func, Func, sizeof(pEntry->Func));
+ 	pheadMemEntry = &MIList->pMemAddr[MemIndex];
+ 	pheadCalEntry = &MIList->pCaller[CallerIdx];
+ 	

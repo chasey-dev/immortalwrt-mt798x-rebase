@@ -1,0 +1,146 @@
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -344,6 +344,19 @@ static const char * const mtk_clks_sourc
+ 	"top_netsys_warp_sel",
+ };
+ 
++static const char * const mtk_reset_event_name[32] = {
++	[MTK_EVENT_FORCE]	= "Force",
++	[MTK_EVENT_WARM_CNT]	= "Warm",
++	[MTK_EVENT_COLD_CNT]	= "Cold",
++	[MTK_EVENT_TOTAL_CNT]	= "Total",
++	[MTK_EVENT_FQ_EMPTY]	= "FQ Empty",
++	[MTK_EVENT_TSO_FAIL]	= "TSO Fail",
++	[MTK_EVENT_TSO_ILLEGAL]	= "TSO Illegal",
++	[MTK_EVENT_TSO_ALIGN]	= "TSO Align",
++	[MTK_EVENT_RFIFO_OV]	= "RFIFO OV",
++	[MTK_EVENT_RFIFO_UF]	= "RFIFO UF",
++};
++
+ struct net_device *(*mtk_get_tnl_dev)(u8 tops_crsn) = NULL;
+ EXPORT_SYMBOL(mtk_get_tnl_dev);
+ 
+@@ -4450,6 +4463,42 @@ static irqreturn_t mtk_handle_irq(int ir
+ 	return IRQ_HANDLED;
+ }
+ 
++static irqreturn_t mtk_handle_irq_misc(int irq, void *_eth)
++{
++	struct mtk_eth *eth = _eth;
++	u32 status, val;
++
++	status = mtk_r32(eth, MTK_FE_INT_STATUS) & mtk_r32(eth, MTK_FE_INT_ENABLE);
++	if (!status)
++		return IRQ_NONE;
++
++	dev_err(eth->dev, "trigger FE Misc ISR: 0x%x\n", status);
++	mtk_w32(eth, status, MTK_FE_INT_STATUS);
++
++	while (status) {
++		val = __ffs(status);
++		status &= ~BIT(val);
++
++		if (val != MTK_EVENT_FQ_EMPTY &&
++		    val != MTK_EVENT_TSO_FAIL &&
++		    val != MTK_EVENT_TSO_ILLEGAL &&
++		    val != MTK_EVENT_TSO_ALIGN &&
++		    val != MTK_EVENT_RFIFO_OV &&
++		    val != MTK_EVENT_RFIFO_UF)
++			continue;
++
++		dev_err(eth->dev, "detect reset event: %s !\n",
++			mtk_reset_event_name[val]);
++		if (atomic_read(&eth->reset.force) &&
++		    !test_bit(MTK_RESETTING, &eth->state)) {
++			schedule_work(&eth->pending_work);
++			break;
++		}
++	}
++
++	return IRQ_HANDLED;
++}
++
+ #ifdef CONFIG_NET_POLL_CONTROLLER
+ static void mtk_poll_controller(struct net_device *dev)
+ {
+@@ -5629,6 +5678,14 @@ static int mtk_hw_init(struct mtk_eth *e
+ 		mtk_w32(eth, 0x21021000, MTK_FE_INT_GRP);
+ 	}
+ 
++	if (mtk_is_netsys_v2_or_greater(eth)) {
++		mtk_m32(eth, MTK_FE_INT_MISC, FIELD_PREP(MTK_FE_INT_MISC, MTK_FE_IRQ_MISC),
++			     MTK_FE_INT_GRP);
++		mtk_w32(eth, MTK_FE_INT_FQ_EMPTY | MTK_FE_INT_TSO_FAIL |
++			     MTK_FE_INT_TSO_ILLEGAL | MTK_FE_INT_TSO_ALIGN |
++			     MTK_FE_INT_RFIFO_OV | MTK_FE_INT_RFIFO_UF, MTK_FE_INT_ENABLE);
++	}
++
+ 	if (mtk_is_netsys_v3_or_greater(eth)) {
+ 		/* PSE dummy page mechanism */
+ 		mtk_w32(eth, PSE_DUMMY_WORK_GDM(1) | PSE_DUMMY_WORK_GDM(2) |
+@@ -7287,6 +7344,12 @@ static int mtk_probe(struct platform_dev
+ 			goto err_free_dev;
+ 
+ 		if (MTK_HAS_CAPS(eth->soc->caps, MTK_PDMA_INT)) {
++			err = devm_request_irq(eth->dev, eth->irq_fe[MTK_FE_IRQ_MISC],
++					       mtk_handle_irq_misc, 0,
++					       dev_name(eth->dev), eth);
++			if (err)
++				goto err_free_dev;
++
+ 			err = devm_request_irq(eth->dev, eth->irq_pdma[0],
+ 					       mtk_handle_irq_rx, IRQF_SHARED,
+ 					       dev_name(eth->dev), &eth->rx_napi[0]);
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -115,6 +115,7 @@
+ 
+ /* Frame Engine Interrupt Grouping Register */
+ #define MTK_FE_INT_GRP		0x20
++#define MTK_FE_INT_MISC		GENMASK(3, 0)
+ 
+ /* Frame Engine Interrupt Status 2 Register */
+ #define MTK_FE_INT_STATUS2	0x28
+@@ -893,7 +894,10 @@
+ #define MTK_FE_IRQ_SHARED	0
+ #define MTK_FE_IRQ_TX		1
+ #define MTK_FE_IRQ_RX		2
+-#define MTK_FE_IRQ_NUM		(MTK_FE_IRQ_RX + 1)
++#define MTK_FE_IRQ_MISC		3
++#define MTK_FE_IRQ_NUM		(mtk_is_netsys_v2_or_greater(eth) ?	\
++				 MTK_FE_IRQ_MISC + 1 : MTK_FE_IRQ_RX + 1)
++#define MTK_MAX_FE_IRQS		4
+ 
+ struct mtk_rx_dma {
+ 	unsigned int rxd1;
+@@ -1650,6 +1654,19 @@ struct mtk_soc_data {
+ 
+ #define MTK_DMA_MONITOR_TIMEOUT		msecs_to_jiffies(1000)
+ 
++enum mtk_reset_event_id {
++	MTK_EVENT_FORCE		= 0,
++	MTK_EVENT_WARM_CNT	= 1,
++	MTK_EVENT_COLD_CNT	= 2,
++	MTK_EVENT_TOTAL_CNT	= 3,
++	MTK_EVENT_FQ_EMPTY	= 8,
++	MTK_EVENT_TSO_FAIL	= 12,
++	MTK_EVENT_TSO_ILLEGAL	= 13,
++	MTK_EVENT_TSO_ALIGN	= 14,
++	MTK_EVENT_RFIFO_OV	= 18,
++	MTK_EVENT_RFIFO_UF	= 19,
++};
++
+ /* currently no SoC has more than 3 macs */
+ #define MTK_MAX_DEVS	3
+ 
+@@ -1711,8 +1728,8 @@ struct mtk_eth {
+ 	struct net_device		*netdev[MTK_MAX_DEVS];
+ 	struct mtk_mac			*mac[MTK_MAX_DEVS];
+ 	struct mtk_mux			*mux[MTK_MAX_DEVS];
+-	int				irq[MTK_FE_IRQ_NUM];
+-	int				irq_fe[MTK_FE_IRQ_NUM];
++	int				irq[MTK_MAX_FE_IRQS];
++	int				irq_fe[MTK_MAX_FE_IRQS];
+ 	int				irq_pdma[MTK_PDMA_IRQ_NUM];
+ 	u32				msg_enable;
+ 	unsigned long			sysclk;

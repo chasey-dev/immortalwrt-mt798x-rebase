@@ -1,0 +1,11 @@
+--- a/platform/consys_hw_plat_data.c
++++ b/platform/consys_hw_plat_data.c
+@@ -6,7 +6,7 @@
+ *                    E X T E R N A L   R E F E R E N C E S
+ ********************************************************************************
+ */
+-#include <linux/of_device.h>
++#include <linux/mod_devicetable.h>
+ 
+ #include "consys_hw.h"
+ 

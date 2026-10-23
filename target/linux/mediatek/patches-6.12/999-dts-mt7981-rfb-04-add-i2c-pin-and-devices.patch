@@ -1,0 +1,32 @@
+---
+[v2] arm64: dts: mt7981 rfb: add i2c pin and devices
+
+Add I2C pin configuration and I2C device support for MT7981 RFB including various
+peripherals for sensor and peripheral connectivity.
+---
+v2: Move I2C pins to mt7981-pinctrl.dtsi for better organization.
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+@@ -120,6 +120,18 @@
+ 	};
+ };
+ 
++&i2c0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c0_1_pins>;
++	status = "okay";
++
++	at24c32: at24c32@57 {
++		compatible = "atmel,24c32";
++		reg = <0x57>;
++		status = "disabled";
++	};
++};
++
+ &mdio_bus {
+ 	switch: switch@1f {
+ 		compatible = "mediatek,mt7531";

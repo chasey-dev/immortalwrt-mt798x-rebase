@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=mtwifi-cfg-ucode
 PKG_LICENSE:=GPL-2.0
 PKG_VERSION:=4
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -49,6 +49,11 @@ endef
 
 define Package/mtwifi-cfg-ucode/install
 	$(CP) ./files/* $(1)/
+	# Source ZIPs copied through Windows may lose Unix executable bits.
+	# These are invoked directly by /sbin/wifi and netifd, not sourced data.
+	$(INSTALL_BIN) ./files/lib/wifi/mtwifi.uc $(1)/lib/wifi/mtwifi.uc
+	$(INSTALL_BIN) ./files/lib/wifi/mtwifi.sh $(1)/lib/wifi/mtwifi.sh
+	$(INSTALL_BIN) ./files/lib/netifd/wireless/mtwifi.sh $(1)/lib/netifd/wireless/mtwifi.sh
 endef
 
 $(eval $(call BuildPackage,mtwifi-cfg-ucode))

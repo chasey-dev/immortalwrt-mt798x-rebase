@@ -1,0 +1,23 @@
+Subject: [PATCH] iwinfo: query the radio regulatory domain using its WIPHY
+
+NL80211_CMD_GET_REG selects a per-radio domain using NL80211_ATTR_WIPHY.
+An interface name supplies only IFINDEX through nl80211_request(), which
+can return the global intersection domain instead. Resolve the PHY before
+the request so all iwinfo users see the same radio country. Retain the old
+request as a fallback if the per-PHY query is unavailable.
+
+--- a/iwinfo_nl80211.c
++++ b/iwinfo_nl80211.c
+@@ -3327,5 +3327,12 @@
+ static int nl80211_get_country(const char *ifname, char *buf)
+ {
++	const char *phy = nl80211_ifname2phy(ifname);
++
++	/* GET_REG needs WIPHY, not IFINDEX, to select a radio domain. */
++	if (phy && !nl80211_request(phy, NL80211_CMD_GET_REG, 0,
++	                          nl80211_get_country_cb, buf))
++		return 0;
++
+ 	if (nl80211_request(ifname, NL80211_CMD_GET_REG, 0,
+ 	                    nl80211_get_country_cb, buf))
+ 		return -1;

@@ -1,5 +1,5 @@
 #!/usr/bin/env ucode
-import { readfile } from "fs";
+import { readfile, readlink } from "fs";
 import * as uci from 'uci';
 
 const bands_order = [ "60G", "6G", "5G", "2G" ];
@@ -32,6 +32,10 @@ function radio_exists(path, macaddr, phy, radio) {
 }
 
 for (let phy_name, phy in board.wlan) {
+	// HWIFI exposes cfg80211 PHYs, but mtwifi owns their UCI/netifd setup.
+	if (match(readlink(`/sys/class/ieee80211/${phy_name}/device/driver/module`) || "", /\/mtk_pci$/))
+		continue;
+
 	let info = phy.info;
 	if (!info || !length(info.bands))
 		continue;

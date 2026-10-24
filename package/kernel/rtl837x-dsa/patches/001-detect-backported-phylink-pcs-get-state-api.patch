@@ -1,0 +1,15 @@
+Subject: [PATCH] rtl837x: allow the backported pcs_get_state neg_mode ABI
+
+The MTK Linux 6.12 branch backports the three-argument pcs_get_state API.
+Let the package detect that ABI in its actual phylink.h rather than relying
+only on LINUX_VERSION_CODE. Native old kernels retain the old prototype.
+
+--- a/src/rtl8372n.c
++++ b/src/rtl8372n.c
+@@ -668,5 +668,5 @@
+-#if KERNEL_VERSION(6, 18, 0) <= LINUX_VERSION_CODE
++#if defined(RTL837X_PCS_GET_STATE_HAS_NEG_MODE) || KERNEL_VERSION(6, 18, 0) <= LINUX_VERSION_CODE
+ static void rtl8372n_sds_pcs_get_state(struct phylink_pcs *pcs, unsigned int neg_mode,
+ 				 struct phylink_link_state *state)
+ #else
+ static void rtl8372n_sds_pcs_get_state(struct phylink_pcs *pcs,

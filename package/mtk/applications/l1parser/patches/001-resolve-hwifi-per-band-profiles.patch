@@ -1,0 +1,36 @@
+Subject: [PATCH] l1parser: resolve HWIFI band profiles from the init DAT
+
+HWIFI consumes INDEXn_profile_path as one physical-device init DAT. Its
+BNn_profile_path keys select the actual band DATs. Resolve those keys for
+userspace while preserving legacy semicolon-separated profile lists.
+
+--- a/lib/l1parser.cpp
++++ b/lib/l1parser.cpp
+@@ -130,5 +130,26 @@
+         if (props.find(k) != props.end()) {
+             auto parts = utils::split(props.at(k), ';', true);
+-            if (band_index < parts.size()) return parts[band_index];
++            if (k == "profile_path" && parts.size() == 1 && !parts[0].empty()) {
++                // New HWIFI uses one init DAT for the physical device.
++                // Do not expose it as a band DAT: radio updates belong in BNn.
++                std::ifstream init(parts[0]);
++                const std::string band_key = "BN" + std::to_string(band_index) + "_profile_path";
++                std::string line;
++                bool has_band_profiles = false;
++                while (std::getline(init, line)) {
++                    const std::string text = utils::trim(line.substr(0, line.find('#')));
++                    const size_t eq = text.find('=');
++                    if (eq == std::string::npos) continue;
++                    const std::string key = utils::trim(text.substr(0, eq));
++                    if (key.size() > 3 && key.compare(0, 2, "BN") == 0 &&
++                        key.find("_profile_path", 2) != std::string::npos)
++                        has_band_profiles = true;
++                    if (key == band_key)
++                        return utils::trim(text.substr(eq + 1));
++                }
++                // A missing band must not fall back to the physical init DAT.
++                if (has_band_profiles) return "";
++            }
++            if (band_index < parts.size()) return parts[band_index];
+         }
+         return "";

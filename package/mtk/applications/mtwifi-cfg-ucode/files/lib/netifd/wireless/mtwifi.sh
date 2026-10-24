@@ -21,6 +21,7 @@
 'use strict';
 
 import * as fs from 'fs';
+import * as uci from 'uci';
 import * as l1parser from 'l1parser';
 import * as datconf from 'datconf';
 
@@ -322,16 +323,10 @@ function wait_for_ap(ifname) {
  *
  * @param {Object} data - netifd wireless device payload with mtwifi_ifname values.
  * @param {Object} cur_dev - L1 device descriptor for current radio.
+ * @param {string} phy - cfg80211 phy resolved during setup.
  * @returns {boolean} true when all enabled AP/STA interfaces were registered.
  */
-function setup_wpad(data, cur_dev) {
-    let phy = driver.phy_from_ifname(cur_dev.main_ifname);
-
-    if (!phy) {
-        netifd.setup_failed("PHY_NOT_FOUND");
-        return false;
-    }
-
+function setup_wpad(data, cur_dev, phy) {
     let ap_items = [];
     let sta_items = [];
 
@@ -474,14 +469,30 @@ function resolve_band_profile_path(dev, all_devs) {
     return dev.profile_path;
 }
 
+// iwinfo resolves radio section names through UCI, independently of netifd.
+function update_radio_phy(dev) {
+    let phy = driver.phy_from_ifname(dev.main_ifname);
+    if (!phy)
+        return null;
+
+    let cursor = uci.cursor();
+    if (cursor.get("wireless", cur_devname, "phy") != phy) {
+        if (!cursor.set("wireless", cur_devname, "phy", phy) ||
+            !cursor.commit("wireless"))
+            log.warn(`[Setup] Unable to save PHY for ${cur_devname}: ${uci.error()}`);
+    }
+
+    return phy;
+}
+
 function handle_setup(data) {
     let l1 = l1parser.open();
+    let all_devs = l1.getall();
+    let cur_dev = all_devs[cur_devname];
+    let phy = cur_dev ? update_radio_phy(cur_dev) : null;
 
     if (data.config.disabled) {
         // Disabled radios still complete setup after removing stale runtime state.
-        let all_devs = l1.getall();
-        let cur_dev = all_devs[cur_devname];
-
         if (cur_dev) {
             teardown_wpad(cur_dev);
             cfg.down(cur_devname, all_devs);
@@ -493,12 +504,14 @@ function handle_setup(data) {
     }
 
 
-    // get all devices from L1 Profile
-    let all_devs = l1.getall();
-    let cur_dev = all_devs[cur_devname];
-
     if (!cur_dev) {
         netifd.setup_failed("DEVICE_NOT_FOUND");
+        l1.close();
+        return;
+    }
+
+    if (!phy) {
+        netifd.setup_failed("PHY_NOT_FOUND");
         l1.close();
         return;
     }
@@ -600,7 +613,7 @@ function handle_setup(data) {
         return;
     }
 
-    if (!setup_wpad(data, cur_dev)) {
+    if (!setup_wpad(data, cur_dev, phy)) {
         teardown_wpad(cur_dev);
         driver.ifdown(cur_dev.main_ifname);
         l1.close();

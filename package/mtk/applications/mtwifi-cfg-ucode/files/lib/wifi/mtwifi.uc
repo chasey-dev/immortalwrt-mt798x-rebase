@@ -107,7 +107,6 @@ for (let devname in all_devnames) {
     // call helper functions to batch set properties
     set_section_options("wireless", devname, {
         "type": "mtwifi",
-        "phy": phy,
         "band": band,
         "channel": "auto",
         "txpower": 100,

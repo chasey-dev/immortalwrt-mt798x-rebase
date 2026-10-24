@@ -1,0 +1,14 @@
+Subject: [PATCH] warp: put storage class first in v3 CCIF tables
+
+The MT7988 WARP v3 build enables -Werror and diagnoses the storage class
+after a type qualifier as an old-style declaration. Put static first,
+without changing either table's type, contents or linkage.
+
+--- a/regs/reg_v3/warp_hw_ccif.c
++++ b/regs/reg_v3/warp_hw_ccif.c
+@@ -79,1 +79,1 @@
+-const static u32 ccif_dummy_table[] = {
++static const u32 ccif_dummy_table[] = {
+@@ -90,1 +90,1 @@
+-const static u32 ccif_shadow_table[] = {
++static const u32 ccif_shadow_table[] = {

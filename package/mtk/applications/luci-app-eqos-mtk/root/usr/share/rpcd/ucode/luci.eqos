@@ -1,0 +1,101 @@
+/**
+ * luci.eqos - EQoS queue monitor backend
+ *
+ * HNAT path only. Reads HQoS/QDMA queue statistics from debugfs
+ * (/sys/kernel/debug/hnat) and reports per-queue usage plus real-time
+ * rates (computed from cumulative counters between successive calls).
+ **/
+
+'use strict';
+import { readfile } from 'fs';
+
+const HNAT_DIR = '/sys/kernel/debug/hnat';
+
+let last = null;
+
+const read_trimmed = (p) => {
+	let c = readfile(p);
+	return c ? trim(c) : null;
+};
+
+/* parse per-queue qdma_txq%d nodes exposing "packet count"/"bytes count"
+ * cumulative counters (available on all QDMA queues 0-63). */
+const parse_qdma_tx = () => {
+	let out = {};
+	for (let i = 0; i < 64; i++) {
+		let t = read_trimmed(HNAT_DIR + '/qdma_txq' + i);
+		if (!t)
+			continue;
+		let pm = match(t, /packet count:\s*(\d+)/);
+		let bm = match(t, /bytes count:\s*(\d+)/);
+		if (pm && bm)
+			out[i] = { packets: int(pm[1]), bytes: int(bm[1]) };
+	}
+	return out;
+};
+
+const methods = {
+	getShortPkt: {
+		call: function(req) {
+			return {
+				qos: read_trimmed(HNAT_DIR + '/short_pkt_toggle') || null,
+				len: read_trimmed(HNAT_DIR + '/short_pkt_len') || null,
+				qid: read_trimmed(HNAT_DIR + '/short_pkt_qid') || null,
+				qos_toggle: read_trimmed(HNAT_DIR + '/qos_toggle') || null,
+				path: 'hnat'
+			};
+		}
+	},
+
+	getQueueStats: {
+		call: function(req) {
+			let hq = parse_qdma_tx();
+			let has_counters = length(hq) > 0;
+
+			let ck = clock();
+			let now = ck[0] * 1000 + int(ck[1] / 1000000);
+			let queues = {};
+			let total = { packets: 0, bytes: 0, bps: 0, pps: 0 };
+
+			for (let q in hq) {
+				let g = hq[q];
+				queues[q] = {
+					packets: g.packets,
+					bytes: g.bytes,
+					bps: 0,
+					pps: 0
+				};
+				total.packets += g.packets;
+				total.bytes += g.bytes;
+			}
+
+			/* compute rates vs previous sample; ignore gaps longer than 10s
+			 * and negative deltas (qdma_txq%d counters can be reset) */
+			if (has_counters && last && (now - last.time) < 10000) {
+				let dt = (now - last.time) / 1000;
+				for (let q in queues) {
+					let lp = last.queues[q];
+					if (!lp)
+						continue;
+					let dp = queues[q].packets - lp.packets;
+					let db = queues[q].bytes - lp.bytes;
+					if (dp < 0 || db < 0)
+						continue;
+					queues[q].bps = int(db * 8 / dt);
+					queues[q].pps = int(dp / dt);
+					total.bps += queues[q].bps;
+					total.pps += queues[q].pps;
+				}
+			}
+
+			let snapshot = {};
+			for (let q in queues)
+				snapshot[q] = { packets: queues[q].packets, bytes: queues[q].bytes };
+			last = { time: now, queues: snapshot };
+
+			return { queues: queues, total: total, has_counters: has_counters };
+		}
+	}
+};
+
+return { 'luci.eqos': methods };

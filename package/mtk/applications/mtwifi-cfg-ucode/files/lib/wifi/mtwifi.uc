@@ -90,6 +90,13 @@ for (let devname in all_devnames) {
     
     // if node exists, skip
     if (type == "wifi-device") {
+        // Older configurations may have been created before the PHY existed.
+        // iwinfo/LuCI need this binding for section-based capability queries.
+        if (phy && cursor.get("wireless", devname, "type") == "mtwifi" &&
+            !cursor.get("wireless", devname, "phy")) {
+            cursor.set("wireless", devname, "phy", phy);
+            need_commit = true;
+        }
         continue;
     }
 

@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=mtwifi-cfg-ucode
 PKG_LICENSE:=GPL-2.0
 PKG_VERSION:=4
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 include $(INCLUDE_DIR)/package.mk
 

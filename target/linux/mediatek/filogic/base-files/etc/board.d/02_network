@@ -8,6 +8,9 @@ mediatek_setup_interfaces()
 	local board="$1"
 
 	case $board in
+	tplink,tl-7dr7299-v1)
+		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5 lan6 sfp" "eth1"
+		;;
 	abt,asr3000|\
 	buffalo,wsr-6000ax8|\
 	cmcc,rax3000m|\

@@ -3456,6 +3456,36 @@ define Device/tplink_tl-7dr-common
   ARTIFACTS := preloader.bin bl31-uboot.fip
 endef
 
+define Device/tplink_tl-7dr7299-v1
+  DEVICE_VENDOR := TP-Link
+  DEVICE_MODEL := TL-7DR7299
+  DEVICE_VARIANT := v1
+  DEVICE_DTS := mt7988a-tplink-tl-7dr7299-v1
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_DTS_LOADADDR := 0x47f00000
+  DEVICE_PACKAGES := kmod-mt798x-2p5g-phy kmod-phy-rtl8261d \
+	kmod-dsa-rtl837x -kmod-switch-rtl837x -kmod-swconfig -swconfig kmod-sfp kmod-usb3 \
+	kmod-mediatek_hnat kmod-warp kmod-mt_wifi_osal kmod-mt_wifi7 \
+	kmod-mt_hwifi kmod-mtk_pci kmod-mtk_wed kmod-connac_if \
+	kmod-mt7992 kmod-mt799a luci-app-mtwifi-cfg mtwifi-cfg-ucode \
+	kmod-gpio-button-hotplug kmod-leds-gpio luci-light \
+	wpad-openssl -wpad-basic-mbedtls
+  KERNEL_LOADADDR := 0x48000000
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  KERNEL_IN_UBI := 1
+  UBOOTENV_IN_UBI := 1
+  IMAGES := sysupgrade.itb
+  KERNEL_INITRAMFS_SUFFIX := -recovery.itb
+  KERNEL := kernel-bin | gzip
+  KERNEL_INITRAMFS := kernel-bin | lzma | \
+	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
+  IMAGE/sysupgrade.itb := append-kernel | \
+	fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-with-rootfs | pad-rootfs | append-metadata
+endef
+TARGET_DEVICES += tplink_tl-7dr7299-v1
+
 define Device/tplink_tl-7dr7230-v1
   DEVICE_MODEL := TL-7DR7230
   DEVICE_VARIANT := v1

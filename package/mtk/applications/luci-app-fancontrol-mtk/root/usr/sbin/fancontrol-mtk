@@ -165,6 +165,8 @@ apply_pwm() {
 	}
 }
 
+temp_failed=0
+
 while :; do
 	read_settings || exit 1
 
@@ -176,18 +178,23 @@ while :; do
 	case "$mode" in
 	manual)
 		pwm="$manual_pwm"
+		temp_failed=0
 		;;
 	auto)
-		temp_path="$(find_temp_source "$temp_source")" || {
-			log_msg "temperature source not found"
-			exit 1
-		}
-		temp_mC="$(cat "$temp_path" 2>/dev/null)" || exit 1
-		is_uint "$temp_mC" || {
-			log_msg "invalid temperature from $temp_path"
-			exit 1
-		}
-		pwm="$(calc_auto_pwm "$temp_mC")"
+		pwm=255
+		if temp_path="$(find_temp_source "$temp_source")" &&
+		   temp_mC="$(cat "$temp_path" 2>/dev/null)" &&
+		   is_uint "$temp_mC"; then
+			pwm="$(calc_auto_pwm "$temp_mC")"
+			if [ "$temp_failed" -eq 1 ]; then
+				log_msg "temperature reading recovered"
+				temp_failed=0
+			fi
+		elif [ "$temp_failed" -eq 0 ]; then
+			log_msg "cannot read a valid temperature from ${temp_path:-$temp_source}," \
+				"using full fan speed"
+			temp_failed=1
+		fi
 		;;
 	esac
 

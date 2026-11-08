@@ -238,71 +238,92 @@ if (length(ext_devs) > 0) {
 		log.info(`ext devices: ${ext_devs}, enable ${RX_PPD_NAME} on ${br_dev}`);
 		/* add Rx PPD */
 		if (!sysnet.dev_exist(RX_PPD_NAME)) {
-			push(rx_ppd_cmd, `ip link add ${RX_PPD_NAME} type dummy`);
-			push(rx_ppd_cmd, `ip link set ${RX_PPD_NAME} up`);
+			push(rx_ppd_cmd, [ 'ip', 'link', 'add', RX_PPD_NAME, 'type', 'dummy' ]);
+			push(rx_ppd_cmd, [ 'ip', 'link', 'set', RX_PPD_NAME, 'up' ]);
 		}
 		/* add Rx PPD to bridge */
 		if (index(sysnet.br_members(br_dev), RX_PPD_NAME) < 0) {
-			push(rx_ppd_cmd, `ip link set ${RX_PPD_NAME} master ${br_dev}`);
+			push(rx_ppd_cmd, [ 'ip', 'link', 'set', RX_PPD_NAME, 'master', br_dev ]);
 		}
     }
 } else {
 	/* no ext devices, remove Rx PPD from bridge */
 	if (sysnet.dev_exist(RX_PPD_NAME) && index(sysnet.br_members(br_dev), RX_PPD_NAME) >= 0) {
-		push(rx_ppd_cmd, `ip link set ${RX_PPD_NAME} nomaster`);
+		push(rx_ppd_cmd, [ 'ip', 'link', 'set', RX_PPD_NAME, 'nomaster' ]);
 		log.info(`No ext devices, removing ${RX_PPD_NAME}`);
 	}
 }
 
+function run_command(cmd) {
+	let rc = system(cmd, 5000);
+	if (rc != 0)
+		log.error(`command failed (${rc}): ${join(' ', cmd)}`);
+	return rc == 0;
+}
+
 /* Apply:
- * - WAN: only write when we resolved a GMAC/switch endpoint (never apcli0/aplicx0).
- * - LAN/LAN2: always write the safe result.
- * - Rx PPD: batch exec queued commands.
+ * - Write resolved GMAC attributes and execute queued Rx PPD commands.
+ * - Suspend enabled hooks during updates, then restore their original state.
+ * - Report failed operations. Applied changes are not rolled back.
  */
+let hook_state = debugfs.hook_toggle.read();
+if (hook_state != 'enabled' && hook_state != 'disabled') {
+	log.error('cannot read HNAT hook state');
+	exit(1);
+}
 
-const hook_toggle = () => debugfs.hook_toggle.read() == 'enabled' ? true : false;
-
-let cur_state = {
-	hook_toggle: hook_toggle(),
-	ppd: debugfs.ppd.read(),
-	wan: debugfs.wan.read(),
-	lan: debugfs.lan.read(),
-	lan2: debugfs.lan2.read(),
+let next_state = {
+	ppd: ppd_name,
+	wan: wan_name,
+	lan: lan_name,
+	lan2: lan2_name,
 };
+let changes = [];
 
-let changed = (ppd_name && ppd_name != cur_state.ppd) ||
-	(wan_name && wan_name != cur_state.wan) ||
-	(lan_name && lan_name != cur_state.lan) ||
-	(lan2_name && lan2_name != cur_state.lan2) || 
-	(length(rx_ppd_cmd) > 0);
-
-/* if changed, disable hook first */
-if (changed && cur_state.hook_toggle) {
-	debugfs.hook_toggle.write("0");
+for (let key, value in next_state) {
+	if (!value)
+		continue;
+	let current = debugfs[key].read();
+	if (!current) {
+		log.error(`cannot read HNAT ${key} state`);
+		exit(1);
+	}
+	if (value != current)
+		push(changes, { key, value });
 }
 
-if (!ppd_name)
-	log.debug('skip PPD write: cannot safely resolve a GMAC device for Ping-Pong Device');
-else if (ppd_name != cur_state.ppd)
-	debugfs.ppd.write(ppd_name);
+if (!length(changes) && !length(rx_ppd_cmd))
+	exit(0);
 
-if (!wan_name)
-	log.debug('skip WAN write: NAT endpoint not on GMAC/switch (likely Wi-Fi/apcli)');
-else if (wan_name != cur_state.wan)
-	debugfs.wan.write(wan_name);
-
-if (lan_name != cur_state.lan)
-	debugfs.lan.write(lan_name);
-
-if (lan2_name != cur_state.lan2)
-	debugfs.lan2.write(lan2_name);
-
-for (let cmd in rx_ppd_cmd) {
-	system(cmd);
+let failed = false;
+/* Disable enabled hooks to clear stale FOE entries before applying changes. */
+if (hook_state == 'enabled') {
+	if (!debugfs.hook_toggle.write('0'))
+		failed = true;
 }
 
-if (cur_state.hook_toggle && !hook_toggle()) {
-	debugfs.hook_toggle.write("1");
+if (!failed) {
+	/* Apply GMAC attribute changes. */
+	for (let change in changes) {
+		if (!debugfs[change.key].write(change.value)) {
+			log.error(`cannot apply HNAT ${change.key}`);
+			failed = true;
+		}
+	}
+
+	/* Apply Rx PPD commands in dependency order. */
+	for (let cmd in rx_ppd_cmd) {
+		if (!run_command(cmd)) {
+			failed = true;
+			break;
+		}
+	}
 }
 
-exit(0);
+/* Restore the initial hook state even when an update failed. */
+if (hook_state == 'enabled') {
+	if (!debugfs.hook_toggle.write('1'))
+		failed = true;
+}
+
+exit(failed ? 1 : 0);

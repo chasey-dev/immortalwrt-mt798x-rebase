@@ -50,6 +50,18 @@ const rw = (path) => {
                 return false;
             }
 
+            /* fs.writefile may miss errors while flushing. Verify the stored value. */
+            let expected = value;
+
+            /* Hooks accept 1/0 on write and return enabled/disabled on read. */
+            if (_path == HNAT_PATH_HOOK_TOOGLE)
+                expected = value == '1' ? 'enabled' : 'disabled';
+
+            if (read_first_line(_path) != expected) {
+                log.error(`readback failed: ${_path}, expected ${expected}`);
+                return false;
+            }
+
             log.info(`write: ${_path} = ${value}`);
             return true;
         }

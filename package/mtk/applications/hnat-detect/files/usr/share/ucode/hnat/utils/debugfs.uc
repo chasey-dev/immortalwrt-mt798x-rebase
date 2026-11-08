@@ -43,8 +43,8 @@ const rw = (path) => {
             if (value == null || value == '')
                 return false;
 
-            /* fs.writefile returns written bytes or null on error */
-            let n = fs.writefile(_path, value + '\n');
+            /* A trailing newline would reach IFNAMSIZ for a 15-character name. */
+            let n = fs.writefile(_path, value);
             if (n == null) {
                 log.error(`write failed: ${_path} err= ${fs.error()}`);
                 return false;

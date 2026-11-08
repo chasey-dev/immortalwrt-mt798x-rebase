@@ -187,16 +187,10 @@ export function get_all_switch_ports(roots) {
  * Every matching netdev must be a switch port on an MTK GMAC.
  * This avoids accidentally matching Wi-Fi/USB/etc.
  */
-export function get_switch_prefix(ports, roots) {
-    if (!ports || !length(ports)) return null;
-
-    let pref = null;
-    for (let port in ports) {
-        let m = match(port, /^([A-Za-z_-]+)[0-9]+$/);
-        if (!m) return null;
-        if (pref == null) pref = m[1];
-        if (pref != m[1]) return null;
-    }
+export function get_switch_prefix(port, roots) {
+    let m = match(port, /^([A-Za-z_-]+)[0-9]+$/);
+    if (!m) return null;
+    let pref = m[1];
 
     /* Do not include devices outside the supported GMAC topology. */
     for (let d in devs()) {

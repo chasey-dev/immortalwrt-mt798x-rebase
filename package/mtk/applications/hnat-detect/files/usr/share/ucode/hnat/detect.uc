@@ -23,8 +23,7 @@
  *      (1) GMAC root netdev: of_node compatible contains "mediatek,eth-mac"
  *      (2) Switch (DSA-like) user port netdev:
  *          has phys_switch_id + phys_port_name, and has a lower_* chain to a GMAC root
- *  - All switch ports are summarized as a single LAN prefix (e.g. "lan") for driver prefix match.
- *  - LAN2 is an independent PHY GMAC-root (has phydev). If none -> "/".
+ *  - LAN follows the primary source zone. LAN2 covers another source endpoint group.
  *  - Rx PPD for Ext devices HNAT, only add to bridge when an ext device is detected.
  */
 
@@ -32,7 +31,7 @@
 
 import * as fs from 'fs';
 import * as ubus from 'ubus';
-import { log, merge } from 'hnat.utils.common';
+import { log } from 'hnat.utils.common';
 import * as debugfs from 'hnat.utils.debugfs';
 import * as sysnet from 'hnat.utils.sysnet';
 import * as fw4 from 'hnat.utils.fw4_parser';
@@ -88,7 +87,7 @@ if (type(network?.interface) != 'array') {
 	exit(1);
 }
 
-let z = fw4.zmap(state);
+let zones = fw4.zmap(state);
 
 let nat_zone = fw4.pick_nat_zone(state, INTERFACE);
 let src_zones = nat_zone ? fw4.forward_src_zones(nat_zone.name) : [];
@@ -98,47 +97,52 @@ if (src_zones == null) {
 }
 log.debug(`forward src_zones: ${src_zones} -> nat_zone: ${nat_zone?.name || '-'}`);
 
-/* pick lan/lan2 zones */
-let lan_zone_name = fw4.pick_best(src_zones, [ 'lan' ]);
-let lan2_zone_name = null;
+/* Prefer "lan", otherwise the first forwarding source, for LAN, PPD and Rx PPD. */
+let lan_zone_name = index(src_zones, 'lan') >= 0 ? 'lan' : src_zones[0];
 
-if (length(src_zones) > 1) {
-	let other = filter(src_zones, s => s != lan_zone_name);
-	lan2_zone_name = fw4.pick_best(other, [ 'lan2', 'dmz', 'guest' ]);
+function resolve_zone_endpoints(zone) {
+	let endpoints = [];
+	for (let dev in fw4.zone_devices(zone))
+		push(endpoints, ...sysnet.resolve_endpoints(dev, roots));
+	return uniq(endpoints);
 }
 
-log.debug(`lan_zone = ${lan_zone_name || '-'}, lan2_zone = ${lan2_zone_name || '-'}`);
+/* Prefer switch prefixes or port names, then GMAC roots. */
+function get_lan_names(endpoints) {
+	let ports = filter(endpoints, dev => sysnet.is_switch_port_on_gmac(dev, roots));
+	let gmacs = filter(endpoints, dev => index(roots, dev) >= 0);
+	let names = uniq([
+		...map(ports, dev => sysnet.get_switch_prefix(dev, roots) || dev),
+		...gmacs,
+	]);
 
-/* resolve zone endpoints */
-const zone_devs = (zone_name) => {
-	let zone = z[zone_name];
-	let devs = fw4.zone_devices(zone);
+	/* The driver matches prefixes, so shorter names cover longer candidates. */
+	return filter(names, name => {
+		for (let prefix in names) {
+			if (prefix == name)
+				continue;
+			if (index(name, prefix) == 0)
+				return false;
+		}
+		return true;
+	});
+}
 
-	if (zone && !length(zone.related_physdevs || []) && length(zone.match_devices || []))
-		log.debug(`zone ${zone_name}: related_physdevs empty, fallback match_devices = ${devs}`);
+let wan_eps = resolve_zone_endpoints(nat_zone);
+let lan_eps = resolve_zone_endpoints(zones[lan_zone_name]);
+let all_lan_eps = [ ...lan_eps ];
+for (let name in src_zones) {
+	if (name != lan_zone_name)
+		push(all_lan_eps, ...resolve_zone_endpoints(zones[name]));
+}
+all_lan_eps = uniq(all_lan_eps);
 
-	return devs;
-};
-
-const zone_eps = (devs) => uniq(merge(...map(devs, d => sysnet.resolve_endpoints(d, roots, 0))));
-
-let nat_zone_devs  = zone_devs(nat_zone?.name);
-let lan_zone_devs  = lan_zone_name  ? zone_devs(lan_zone_name)  : [];
-let lan2_zone_devs = lan2_zone_name ? zone_devs(lan2_zone_name) : [];
-
-let wan_eps  = zone_eps(nat_zone_devs);
-let lan_eps  = zone_eps(lan_zone_devs);
-let lan2_eps = zone_eps(lan2_zone_devs);
-
-log.debug(`eps: wan = ${wan_eps}, lan = ${lan_eps}, lan2 = ${lan2_eps}`);
+log.debug(`eps: wan = ${wan_eps}, lan = ${all_lan_eps}`);
 
 /* classify */
 const is_phy_root = (d) => (index(roots, d) >= 0) && sysnet.has_phy(d);
 const is_sw_port  = (d) => sysnet.is_switch_port_on_gmac(d, roots);
 const is_gmac     = (d) => (index(roots, d) >= 0);
-
-let all_sw = filter(lan_eps, (d) => sysnet.is_switch_port_on_gmac(d, roots));
-let has_sw = length(all_sw) > 0;
 
 /* WAN selection:
  * Prefer PHY root > switch port > any GMAC root.
@@ -151,53 +155,34 @@ let wan_name =
 	null;
 
 /* LAN selection:
- * Prefer switch prefix "lan" (safe) when switch ports exist, else pick GMAC root endpoint from LAN zone.
+ * Prefer a switch prefix (or port name), otherwise a GMAC root in the primary source.
+ * WAN may share the LAN prefix. No LAN -> keep GMAC settings and continue Rx PPD cleanup.
  */
-let lan_name = null;
-
-if (has_sw) {
-	let prefix = sysnet.get_switch_prefix(all_sw, roots);
-
-	/* avoid prefix swallowing WAN if WAN itself shares that prefix (rare, but possible) */
-	if (prefix && (!wan_name || index(wan_name, prefix) != 0))
-		lan_name = prefix;
-	else {
-		/* fallback: pick one LAN endpoint not equal to WAN */
-		lan_name =
-			filter(lan_eps, d => is_sw_port(d) && d != wan_name)[0] ||
-			filter(lan_eps, d => is_gmac(d) && d != wan_name)[0]    ||
-			filter(lan_eps, d => d != wan_name)[0]                  ||
-			null;
-	}
-} else {
-	lan_name =
-		filter(lan_eps, d => is_gmac(d))[0] ||
-		null;
-}
+let lan_name = get_lan_names(lan_eps)[0] || null;
 
 if (!lan_name)
 	log.warn('skip: cannot resolve LAN endpoint safely');
 
 /* LAN2 selection:
- * - Exception 1: No switch, 2 PHY roots, WAN is on one of them -> LAN2 must be "/".
- * - Exception 2: No switch, 2 PHY roots, but WAN is NOT on GMAC (e.g. Wi-Fi) -> Allow LAN2.
+ * - Cover source endpoints not matched by LAN, including DSA ports such as sfp.
+ * - Prefer switch prefixes or port names, then GMAC roots. Use "/" when unused.
  */
 let lan2_name = '/';
+if (lan_name) {
+	for (let name in get_lan_names(all_lan_eps)) {
+		if (index(name, lan_name) == 0)
+			continue;
+		lan2_name = name;
+		break;
+	}
+}
 
-/* Check basic topology for Exception 1 */
-let two_phy_roots = (length(roots) == 2 && length(filter(roots, r => sysnet.has_phy(r))) == 2);
-
-/* Exception 2: No switch AND 2 PHY roots AND WAN is actually using a GMAC */
-let block_lan2 = (!has_sw && two_phy_roots && wan_name != null);
-
-if (!block_lan2 && length(roots) >= 2) {
-	let prefer =
-		filter(lan2_eps, d => is_phy_root(d) && d != wan_name && d != lan_name)[0] ||
-		filter(roots,    r => sysnet.has_phy(r) && r != wan_name && r != lan_name)[0]  ||
-		null;
-
-	if (prefer)
-		lan2_name = prefer;
+/* Uncovered endpoints do not prevent applying settings or cleaning up Rx PPD. */
+if (lan_name) {
+	let uncovered = filter(all_lan_eps, dev =>
+		index(dev, lan_name) != 0 && index(dev, lan2_name) != 0);
+	if (length(uncovered))
+		log.warn(`LAN/LAN2: uncovered endpoints = ${uncovered}`);
 }
 
 /* PPD (Ping-Pong Device) selection (must be an exact GMAC root):
@@ -207,10 +192,10 @@ if (!block_lan2 && length(roots) >= 2) {
  * - Source zone is PHY + PHY -> keep existing PPD (apcli scenario)
  */
 
+let lan_ports = filter(lan_eps, dev => sysnet.is_switch_port_on_gmac(dev, roots));
 let ppd_name = null;
-
-if (has_sw) {
-	ppd_name = sysnet.resolve_gmac_endpoint(all_sw[0], roots);
+if (length(lan_ports)) {
+	ppd_name = sysnet.resolve_gmac_endpoint(lan_ports[0], roots);
 } else {
 	ppd_name = filter(lan_eps, d => is_gmac(d))[0] || null;
 }
@@ -232,7 +217,7 @@ ext_devs = uniq(ext_devs);
 
 /* Select a source bridge when both Ext and LAN endpoints are available. */
 let rx_ppd_bridge = null;
-let lan_devs = fw4.get_active_zone_devices(z[lan_zone_name], network.interface);
+let lan_devs = fw4.get_active_zone_devices(zones[lan_zone_name], network.interface);
 if (length(ext_devs) && lan_name) {
 	for (let dev in lan_devs) {
 		if (sysnet.is_up(dev) && sysnet.is_bridge(dev)) {

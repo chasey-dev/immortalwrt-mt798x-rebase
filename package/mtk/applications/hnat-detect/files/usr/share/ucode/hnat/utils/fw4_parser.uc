@@ -161,10 +161,3 @@ export function forward_src_zones(dest_zone) {
 
     return uniq(srcs);
 };
-
-export function pick_best(cands, prefer) {
-    for (let p in prefer)
-        for (let c in cands)
-            if (c == p) return c;
-    return length(cands) ? cands[0] : null;
-};

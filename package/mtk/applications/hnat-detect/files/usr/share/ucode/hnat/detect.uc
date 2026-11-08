@@ -30,6 +30,7 @@
 
 'use strict';
 
+import * as fs from 'fs';
 import { log, merge } from 'hnat.utils.common';
 import * as debugfs from 'hnat.utils.debugfs';
 import * as sysnet from 'hnat.utils.sysnet';
@@ -51,6 +52,13 @@ if (ACTION != 'ifup')
 
 if (!INTERFACE || INTERFACE == 'loopback')
 	exit(0);
+
+/* Serialize interface events before reading the current state. */
+let lock = fs.open('/var/run/hnat-detect.lock', 'w');
+if (!lock || !lock.lock('x')) {
+	log.error(`cannot lock hnat-detect: ${fs.error()}`);
+	exit(1);
+}
 
 /* ---------------- Main selection ---------------- */
 

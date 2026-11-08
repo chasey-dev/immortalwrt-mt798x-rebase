@@ -52,11 +52,17 @@ export function zone_devices(zone) {
     return uniq(zone.match_devices || []);
 };
 
-export function zone_has_iface(z, ifname) {
-    let nets = z.network || [];
-    for (let n in nets)
-        if (n.val == ifname || n.device == ifname)
+export function zone_has_iface(zone, ifname) {
+    if (!ifname)
+        return false;
+
+    let nets = zone.network || [];
+    for (let net in nets) {
+        if (net.invert)
+            continue;
+        if (net.val == ifname || net.device == ifname)
             return true;
+    }
     return false;
 };
 

@@ -15,6 +15,7 @@ UCODE_DEPENDS:= \
   +ucode \
   +ucode-mod-fs \
   +ucode-mod-log \
+  +ucode-mod-ubus \
   +ucode-mod-uci
 
 define Package/hnat-detect/Default

@@ -31,25 +31,85 @@ export function load_state() {
 };
 
 export function zmap(state) {
-    let m = {};
-    for (let z in (state.zones || []))
-        m[z.name] = z;
-    return m;
+    let zones = {};
+    for (let zone in state.zones)
+        zones[zone.name] = zone;
+    return zones;
 };
 
+function device_matches(dev, pattern) {
+    if (match(pattern, /[+*]$/))
+        return index(dev, substr(pattern, 0, length(pattern) - 1)) == 0;
+    return dev == pattern;
+}
+
+function get_matching_devices(specs) {
+    if (!length(specs))
+        return [];
+
+    let result = [];
+    let devices = fs.lsdir('/sys/class/net');
+    if (devices == null)
+        die(`cannot list network devices: ${fs.error()}`);
+
+    /* Collect existing devices matched by positive names or prefixes. */
+    for (let spec in specs) {
+        if (spec.invert)
+            continue;
+        let pattern = spec.device || spec.val;
+        push(result, ...filter(devices, dev => device_matches(dev, pattern)));
+    }
+
+    /* Apply exclusions last, regardless of their position in the zone. */
+    for (let spec in specs) {
+        if (!spec.invert)
+            continue;
+        let pattern = spec.device || spec.val;
+        result = filter(result, dev => !device_matches(dev, pattern));
+    }
+
+    return uniq(result);
+}
+
 /*
- * Prefer resolved physical devices from fw4.state.
- * When fw4 leaves related_physdevs empty, fall back to match_devices.
+ * Prefer resolved physical devices for logical networks, then add explicit devices.
+ * Expand wildcard matches and apply explicit exclusions to both sources.
  */
 export function zone_devices(zone) {
     if (!zone)
         return [];
 
-    let phys = uniq(zone.related_physdevs || []);
-    if (length(phys))
-        return phys;
+    let phys = zone.related_physdevs || [];
+    let names = length(phys) ? phys : zone.match_devices || [];
+    let specs = map(names, device => ({ device }));
+    return get_matching_devices([ ...specs, ...(zone.device || []) ]);
+};
 
-    return uniq(zone.match_devices || []);
+/*
+ * Use netifd for active networks because fw4's cached devices may be stale.
+ * Keep inverted networks as exclusions even when they are down.
+ */
+export function get_active_zone_devices(zone, interfaces) {
+    if (!zone)
+        return [];
+
+    let specs = [];
+    for (let net in (zone.network || [])) {
+        let ifname = net.device || net.val;
+        for (let iface in interfaces) {
+            if (iface.interface != ifname)
+                continue;
+            if (!net.invert && !iface.up)
+                continue;
+
+            for (let dev in [iface.device, iface.l3_device]) {
+                if (dev)
+                    push(specs, { device: dev, invert: net.invert });
+            }
+        }
+    }
+
+    return get_matching_devices([ ...specs, ...(zone.device || []) ]);
 };
 
 export function zone_has_iface(zone, ifname) {
@@ -85,7 +145,8 @@ export function pick_nat_zone(state, ifname) {
 
 export function forward_src_zones(dest_zone) {
     let cur = uci.cursor();
-    cur.load('firewall');
+    if (!cur || !cur.load('firewall'))
+        return null;
 
     let srcs = [];
     cur.foreach('firewall', 'forwarding', s => {

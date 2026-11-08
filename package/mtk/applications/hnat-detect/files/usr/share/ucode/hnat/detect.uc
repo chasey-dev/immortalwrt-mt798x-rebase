@@ -31,6 +31,7 @@
 'use strict';
 
 import * as fs from 'fs';
+import * as ubus from 'ubus';
 import { log, merge } from 'hnat.utils.common';
 import * as debugfs from 'hnat.utils.debugfs';
 import * as sysnet from 'hnat.utils.sysnet';
@@ -46,8 +47,7 @@ const INTERFACE = getenv('INTERFACE');
 
 log.debug(`env: ACTION= ${ACTION || ''} INTERFACE= ${INTERFACE || ''}`);
 
-// if (ACTION != 'ifup' && ACTION != 'update' && ACTION != 'ifupdate')
-if (ACTION != 'ifup')
+if (index([ 'ifup', 'ifdown', 'ifupdate', 'update' ], ACTION) < 0)
 	exit(0);
 
 if (!INTERFACE || INTERFACE == 'loopback')
@@ -63,29 +63,35 @@ if (!lock || !lock.lock('x')) {
 /* ---------------- Main selection ---------------- */
 
 let state = fw4.load_state();
-if (!state || !state.zones) {
+if (type(state?.zones) != 'array') {
 	log.error('skip: /var/run/fw4.state missing or invalid JSON');
-	exit(0);
+	exit(1);
 }
 
 let roots = sysnet.get_gmac_roots();
 log.debug('gmac_roots=' + sprintf('%J', roots));
 
-if (!length(roots)) {
-	log.error('skip: no GMAC roots (mediatek,eth-mac) found');
-	exit(0);
+if (!length(roots))
+	log.warn('no GMAC roots found, keeping HNAT interface settings');
+
+let conn = ubus.connect(null, 5);
+let network = conn?.call('network.interface', 'dump', {});
+let network_error = ubus.error(true);
+conn?.disconnect();
+if (type(network?.interface) != 'array') {
+	log.error(`cannot read netifd interface state: ubus status ${network_error}`);
+	exit(1);
 }
 
 let z = fw4.zmap(state);
 
 let nat_zone = fw4.pick_nat_zone(state, INTERFACE);
-if (!nat_zone) {
-	log.warn('skip: no NAT (masq) zone found');
-	exit(0);
+let src_zones = nat_zone ? fw4.forward_src_zones(nat_zone.name) : [];
+if (src_zones == null) {
+	log.error('cannot read firewall forwarding configuration');
+	exit(1);
 }
-
-let src_zones = fw4.forward_src_zones(nat_zone.name);
-log.debug(`forward src_zones: ${src_zones} -> nat_zone: ${nat_zone.name}`);
+log.debug(`forward src_zones: ${src_zones} -> nat_zone: ${nat_zone?.name || '-'}`);
 
 /* pick lan/lan2 zones */
 let lan_zone_name = fw4.pick_best(src_zones, [ 'lan' ]);
@@ -111,7 +117,7 @@ const zone_devs = (zone_name) => {
 
 const zone_eps = (devs) => uniq(merge(...map(devs, d => sysnet.resolve_endpoints(d, roots, 0))));
 
-let nat_zone_devs  = zone_devs(nat_zone.name);
+let nat_zone_devs  = zone_devs(nat_zone?.name);
 let lan_zone_devs  = lan_zone_name  ? zone_devs(lan_zone_name)  : [];
 let lan2_zone_devs = lan2_zone_name ? zone_devs(lan2_zone_name) : [];
 
@@ -164,10 +170,8 @@ if (has_sw) {
 		null;
 }
 
-if (!lan_name) {
+if (!lan_name)
 	log.warn('skip: cannot resolve LAN endpoint safely');
-	exit(0);
-}
 
 /* LAN2 selection:
  * - Exception 1: No switch, 2 PHY roots, WAN is on one of them -> LAN2 must be "/".
@@ -208,50 +212,46 @@ if (has_sw) {
 
 log.info(`chosen: ppd = ${ppd_name || '(keep)'}, wan = ${wan_name || '(keep)'}, lan = ${lan_name}, lan2 = ${lan2_name}`);
 
-/* Rx PPD detect logic:
- * Rx PPD is used for Ext devices (such as USB, WWAN) HNAT
- * If NAT zone physical device is ext device, add Rx PPD to bridge device in src zone.
- * Else delete Rx PPD from bridge device in src zone.
+/* Rx PPD configuration:
+ * - Active Ext devices + LAN endpoint -> first active bridge in the source zone.
+ * - No target bridge -> detach Rx PPD.
  */
-
 const RX_PPD_NAME = "rxppd";
-const is_ext = (name) => {
-    return match(name, /^(usb|wwan|eth)/); 
-};
-let ext_devs = filter(nat_zone_devs, d => is_ext(d) && !is_gmac(d));
 
-/* cmd queue to exec */
-let rx_ppd_cmd = [];
+/* Resolve active Ext devices in the NAT zone. */
+let active_devs = fw4.get_active_zone_devices(nat_zone, network.interface);
+let ext_devs = [];
+for (let dev in active_devs)
+	push(ext_devs, ...sysnet.resolve_ext_devices(dev, roots));
+ext_devs = uniq(ext_devs);
 
-/* find bridge device in lan zone */
-let br_dev = null;
-let lan_devs = lan_zone_devs;
-for (let dev in lan_devs) {
-	if (sysnet.is_bridge(dev)) {
-		br_dev = dev;
-		break;
+/* Select a source bridge when both Ext and LAN endpoints are available. */
+let rx_ppd_bridge = null;
+let lan_devs = fw4.get_active_zone_devices(z[lan_zone_name], network.interface);
+if (length(ext_devs) && lan_name) {
+	for (let dev in lan_devs) {
+		if (sysnet.is_up(dev) && sysnet.is_bridge(dev)) {
+			rx_ppd_bridge = dev;
+			break;
+		}
 	}
 }
 
-if (length(ext_devs) > 0) {
-	if (br_dev) {
-		log.info(`ext devices: ${ext_devs}, enable ${RX_PPD_NAME} on ${br_dev}`);
-		/* add Rx PPD */
-		if (!sysnet.dev_exist(RX_PPD_NAME)) {
-			push(rx_ppd_cmd, [ 'ip', 'link', 'add', RX_PPD_NAME, 'type', 'dummy' ]);
-			push(rx_ppd_cmd, [ 'ip', 'link', 'set', RX_PPD_NAME, 'up' ]);
-		}
-		/* add Rx PPD to bridge */
-		if (index(sysnet.br_members(br_dev), RX_PPD_NAME) < 0) {
-			push(rx_ppd_cmd, [ 'ip', 'link', 'set', RX_PPD_NAME, 'master', br_dev ]);
-		}
-    }
-} else {
-	/* no ext devices, remove Rx PPD from bridge */
-	if (sysnet.dev_exist(RX_PPD_NAME) && index(sysnet.br_members(br_dev), RX_PPD_NAME) >= 0) {
-		push(rx_ppd_cmd, [ 'ip', 'link', 'set', RX_PPD_NAME, 'nomaster' ]);
-		log.info(`No ext devices, removing ${RX_PPD_NAME}`);
-	}
+let rx_ppd_master = sysnet.get_master(RX_PPD_NAME);
+let rx_ppd_cmd = [];
+
+/* Detach from the old bridge when the target changes or disappears. */
+if (rx_ppd_master && rx_ppd_master != rx_ppd_bridge)
+	push(rx_ppd_cmd, [ 'ip', 'link', 'set', RX_PPD_NAME, 'nomaster' ]);
+
+if (rx_ppd_bridge) {
+	/* Create the dummy device when needed. */
+	if (!sysnet.dev_exist(RX_PPD_NAME))
+		push(rx_ppd_cmd, [ 'ip', 'link', 'add', RX_PPD_NAME, 'type', 'dummy' ]);
+
+	/* Attach to the target bridge or restore UP on the current bridge. */
+	if (rx_ppd_master != rx_ppd_bridge || !sysnet.is_up(RX_PPD_NAME))
+		push(rx_ppd_cmd, [ 'ip', 'link', 'set', RX_PPD_NAME, 'up', 'master', rx_ppd_bridge ]);
 }
 
 function run_command(cmd) {
@@ -280,16 +280,19 @@ let next_state = {
 };
 let changes = [];
 
-for (let key, value in next_state) {
-	if (!value)
-		continue;
-	let current = debugfs[key].read();
-	if (!current) {
-		log.error(`cannot read HNAT ${key} state`);
-		exit(1);
+/* Without a LAN endpoint, keep the current GMAC interface attributes. */
+if (lan_name) {
+	for (let key, value in next_state) {
+		if (!value)
+			continue;
+		let current = debugfs[key].read();
+		if (!current) {
+			log.error(`cannot read HNAT ${key} state`);
+			exit(1);
+		}
+		if (value != current)
+			push(changes, { key, value });
 	}
-	if (value != current)
-		push(changes, { key, value });
 }
 
 if (!length(changes) && !length(rx_ppd_cmd))
@@ -316,6 +319,19 @@ if (!failed) {
 		if (!run_command(cmd)) {
 			failed = true;
 			break;
+		}
+	}
+
+	/* Verify the final Rx PPD bridge and link state. */
+	if (length(rx_ppd_cmd)) {
+		if (sysnet.get_master(RX_PPD_NAME) != rx_ppd_bridge) {
+			log.error('Rx PPD bridge did not match the requested configuration');
+			failed = true;
+		} else if (rx_ppd_bridge && !sysnet.is_up(RX_PPD_NAME)) {
+			log.error('Rx PPD is not UP on the target bridge');
+			failed = true;
+		} else {
+			log.info(`ext devices: ${ext_devs}, ${RX_PPD_NAME} bridge: ${rx_ppd_bridge || '(none)'}`);
 		}
 	}
 }

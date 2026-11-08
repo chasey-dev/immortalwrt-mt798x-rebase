@@ -28,7 +28,14 @@ const p = (dev, sub) => `${SYS_NET_PATH}/${dev}/${sub ? `/${sub}` : ''}`;
 let _devs  = null;
 let _roots = null;
 
-const devs = () => _devs ||= (fs.lsdir(SYS_NET_PATH) || []);
+function devs() {
+    if (_devs == null) {
+        _devs = fs.lsdir(SYS_NET_PATH);
+        if (_devs == null)
+            die(`cannot list network devices: ${fs.error()}`);
+    }
+    return _devs;
+}
 
 function is_gmac_root(dev) {
     let c = fs.readfile(p(dev, 'of_node/compatible'));
@@ -46,6 +53,15 @@ export function get_gmac_roots() {
 
 export function dev_exist(dev) {
     return fs.stat(p(dev)) != null;
+};
+
+export function is_up(dev) {
+    return !!(int(fs.readfile(p(dev, 'flags')), 16) & 1);
+};
+
+export function get_master(dev) {
+    let link = fs.readlink(p(dev, 'master'));
+    return link ? fs.basename(link) : null;
 };
 
 function get_lower_devs(dev) {
@@ -95,6 +111,25 @@ function get_switch_master_on_gmac(dev, roots, depth) {
 
 export function is_switch_port_on_gmac(port, roots) {
     return (is_switch_port(port) && get_switch_master_on_gmac(port, roots) != null);
+};
+
+/*
+ * Resolve a NAT zone device to Ext device names.
+ * - Require administrative UP state and exclude MTK GMACs and their switch ports.
+ * - Follow lower_* links through upper devices such as VLANs and bridges.
+ * - At devices without lowers, accept usb/wwan/eth name prefixes.
+ * - Return unique names. Detection uses names, not bus or driver information.
+ */
+export function resolve_ext_devices(dev, roots, depth) {
+    if (depth == null) depth = 0;
+    if (depth > 12 || !is_up(dev)) return [];
+    if (index(roots, dev) >= 0 || is_switch_port_on_gmac(dev, roots)) return [];
+
+    let lowers = get_lower_devs(dev);
+    if (length(lowers))
+        return uniq(merge(...map(lowers, d => resolve_ext_devices(d, roots, depth + 1))));
+
+    return match(dev, /^(usb|wwan|eth)/) ? [ dev ] : [];
 };
 
 /*

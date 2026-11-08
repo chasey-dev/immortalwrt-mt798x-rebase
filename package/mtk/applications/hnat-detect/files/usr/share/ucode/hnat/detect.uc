@@ -47,13 +47,13 @@ const INTERFACE = getenv('INTERFACE');
 
 log.debug(`env: ACTION= ${ACTION || ''} INTERFACE= ${INTERFACE || ''}`);
 
-if (index([ 'ifup', 'ifdown', 'ifupdate', 'update' ], ACTION) < 0)
+if (index([ 'ifup', 'ifdown', 'ifupdate', 'update', 'reload' ], ACTION) < 0)
 	exit(0);
 
-if (!INTERFACE || INTERFACE == 'loopback')
+if (ACTION != 'reload' && (!INTERFACE || INTERFACE == 'loopback'))
 	exit(0);
 
-/* Serialize interface events before reading the current state. */
+/* Serialize hotplug and explicit reloads before reading the current state. */
 let lock = fs.open('/var/run/hnat-detect.lock', 'w');
 if (!lock || !lock.lock('x')) {
 	log.error(`cannot lock hnat-detect: ${fs.error()}`);
@@ -79,6 +79,11 @@ let network = conn?.call('network.interface', 'dump', {});
 let network_error = ubus.error(true);
 conn?.disconnect();
 if (type(network?.interface) != 'array') {
+	/* S19firewall runs before netifd. Interface hotplug applies HNAT later. */
+	if (ACTION == 'reload' && network == null && network_error == ubus.STATUS_NOT_FOUND) {
+		log.info('defer HNAT setup until netifd registers network.interface');
+		exit(0);
+	}
 	log.error(`cannot read netifd interface state: ubus status ${network_error}`);
 	exit(1);
 }

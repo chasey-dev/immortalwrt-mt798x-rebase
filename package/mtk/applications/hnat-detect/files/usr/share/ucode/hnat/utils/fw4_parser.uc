@@ -83,9 +83,13 @@ export function forward_src_zones(dest_zone) {
 
     let srcs = [];
     cur.foreach('firewall', 'forwarding', s => {
-        let en = (s.enabled == null) ? '1' : s.enabled;
-        if (en != '0' && s.dest == dest_zone && s.src)
-            push(srcs, s.src);
+        if (s.dest != dest_zone || !s.src)
+            return;
+        /* Match fw4 boolean values. Forwardings are enabled by default. */
+        let enabled = s.enabled ?? '1';
+        if (index(['1', 'on', 'true', 'yes'], enabled) < 0)
+            return;
+        push(srcs, s.src);
     });
 
     return uniq(srcs);

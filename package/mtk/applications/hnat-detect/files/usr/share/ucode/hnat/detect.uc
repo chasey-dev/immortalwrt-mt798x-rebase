@@ -87,10 +87,10 @@ if (type(network?.interface) != 'array') {
 	exit(1);
 }
 
-let zones = fw4.zmap(state);
+let zones = fw4.map_zones(state);
 
 let nat_zone = fw4.pick_nat_zone(state, INTERFACE);
-let src_zones = nat_zone ? fw4.forward_src_zones(nat_zone.name) : [];
+let src_zones = nat_zone ? fw4.get_forward_src_zones(nat_zone.name) : [];
 if (src_zones == null) {
 	log.error('cannot read firewall forwarding configuration');
 	exit(1);
@@ -102,7 +102,7 @@ let lan_zone_name = index(src_zones, 'lan') >= 0 ? 'lan' : src_zones[0];
 
 function resolve_zone_endpoints(zone) {
 	let endpoints = [];
-	for (let dev in fw4.zone_devices(zone))
+	for (let dev in fw4.get_zone_devices(zone))
 		push(endpoints, ...sysnet.resolve_endpoints(dev, roots));
 	return uniq(endpoints);
 }
@@ -139,20 +139,14 @@ all_lan_eps = uniq(all_lan_eps);
 
 log.debug(`eps: wan = ${wan_eps}, lan = ${all_lan_eps}`);
 
-/* classify */
-const is_phy_root = (d) => (index(roots, d) >= 0) && sysnet.has_phy(d);
-const is_sw_port  = (d) => sysnet.is_switch_port_on_gmac(d, roots);
-const is_gmac     = (d) => (index(roots, d) >= 0);
-
 /* WAN selection:
  * Prefer PHY root > switch port > any GMAC root.
  * If WAN cannot be resolved (e.g. NAT on apcli0/apclix0), do NOT touch WAN
  */
-let wan_name =
-	filter(wan_eps, d => is_phy_root(d))[0] ||
-	filter(wan_eps, d => is_sw_port(d))[0]  ||
-	filter(wan_eps, d => is_gmac(d))[0]     ||
-	null;
+let wan_gmacs = filter(wan_eps, dev => index(roots, dev) >= 0);
+let wan_phys = filter(wan_gmacs, sysnet.has_phy);
+let wan_ports = filter(wan_eps, dev => sysnet.is_switch_port_on_gmac(dev, roots));
+let wan_name = wan_phys[0] || wan_ports[0] || wan_gmacs[0] || null;
 
 /* LAN selection:
  * Prefer a switch prefix (or port name), otherwise a GMAC root in the primary source.
@@ -197,7 +191,7 @@ let ppd_name = null;
 if (length(lan_ports)) {
 	ppd_name = sysnet.resolve_gmac_endpoint(lan_ports[0], roots);
 } else {
-	ppd_name = filter(lan_eps, d => is_gmac(d))[0] || null;
+	ppd_name = filter(lan_eps, dev => index(roots, dev) >= 0)[0] || null;
 }
 
 log.info(`chosen: ppd = ${ppd_name || '(keep)'}, wan = ${wan_name || '(keep)'}, lan = ${lan_name}, lan2 = ${lan2_name}`);

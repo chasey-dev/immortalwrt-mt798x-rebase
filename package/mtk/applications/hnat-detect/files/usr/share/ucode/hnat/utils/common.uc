@@ -46,34 +46,16 @@ export const log = {
     }
 };
 
-// read command output (trim all spaces, "\n"s)
-export function read_pipe(cmd) {
-	let fp = fs.popen(cmd, "r");
-	if (!fp) return "";
-	let txt = fp.read("all");
-	fp.close();
-	return txt ? replace(txt, /^[\s\n]+|[\s\n]+$/g, '') : "";
-};
-
-function get_first_token(s) {
-    if (s == null) return null;
-    s = trim(s);
-    let m = match(s, /^(\S+)/);
-    return m ? m[1] : null;
-}
-
-export function read(path){ 
-    return fs.readfile(path);
-};
-
-export function read_first_line(path) {
-    return get_first_token(read(path));
+export function read_first_token(path) {
+    let text = fs.readfile(path);
+    if (text == null)
+        return null;
+    return match(trim(text), /^(\S+)/)?.[1];
 };
 
 export function merge(...arrays) {
     let r = [];
     for (let a in arrays)
-        if (a && length(a))
-            push(r, ...a);    /* variadic push + spread is idiomatic in ucode */
+        push(r, ...a);
     return r;
 };

@@ -30,7 +30,7 @@ export function load_state() {
     try { return json(s); } catch (e) { return null; }
 };
 
-export function zmap(state) {
+export function map_zones(state) {
     let zones = {};
     for (let zone in state.zones)
         zones[zone.name] = zone;
@@ -75,7 +75,7 @@ function get_matching_devices(specs) {
  * Prefer resolved physical devices for logical networks, then add explicit devices.
  * Expand wildcard matches and apply explicit exclusions to both sources.
  */
-export function zone_devices(zone) {
+export function get_zone_devices(zone) {
     if (!zone)
         return [];
 
@@ -143,7 +143,7 @@ export function pick_nat_zone(state, ifname) {
     return masq[0];
 };
 
-export function forward_src_zones(dest_zone) {
+export function get_forward_src_zones(dest_zone) {
     let cur = uci.cursor();
     if (!cur || !cur.load('firewall'))
         return null;

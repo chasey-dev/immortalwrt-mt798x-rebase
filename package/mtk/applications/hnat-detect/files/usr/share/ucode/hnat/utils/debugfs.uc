@@ -19,12 +19,12 @@
  */
 'use strict';
 
-import * as fs from 'fs'; 
-import { log, read_first_line } from 'hnat.utils.common';
+import * as fs from 'fs';
+import { log, read_first_token } from 'hnat.utils.common';
 
 const HNAT_PATH = '/sys/kernel/debug/hnat';
 
-const HNAT_PATH_HOOK_TOOGLE = `${HNAT_PATH}/hook_toggle`;
+const HNAT_PATH_HOOK_TOGGLE = `${HNAT_PATH}/hook_toggle`;
 
 const HNAT_PATH_PPD_IF = `${HNAT_PATH}/hnat_ppd_if`;
 const HNAT_PATH_WAN_IF = `${HNAT_PATH}/hnat_wan_if`;
@@ -35,18 +35,14 @@ export function is_hnat_present() {
     return fs.access(HNAT_PATH);
 };
 
-const rw = (path) => {
-    let _path = path;
+function create_attr_access(path) {
     return {
-        read: () => read_first_line(_path),
+        read: () => read_first_token(path),
         write: (value) => {
-            if (value == null || value == '')
-                return false;
-
             /* A trailing newline would reach IFNAMSIZ for a 15-character name. */
-            let n = fs.writefile(_path, value);
+            let n = fs.writefile(path, value);
             if (n == null) {
-                log.error(`write failed: ${_path} err= ${fs.error()}`);
+                log.error(`write failed: ${path} err= ${fs.error()}`);
                 return false;
             }
 
@@ -54,23 +50,23 @@ const rw = (path) => {
             let expected = value;
 
             /* Hooks accept 1/0 on write and return enabled/disabled on read. */
-            if (_path == HNAT_PATH_HOOK_TOOGLE)
+            if (path == HNAT_PATH_HOOK_TOGGLE)
                 expected = value == '1' ? 'enabled' : 'disabled';
 
-            if (read_first_line(_path) != expected) {
-                log.error(`readback failed: ${_path}, expected ${expected}`);
+            if (read_first_token(path) != expected) {
+                log.error(`readback failed: ${path}, expected ${expected}`);
                 return false;
             }
 
-            log.info(`write: ${_path} = ${value}`);
+            log.info(`write: ${path} = ${value}`);
             return true;
         }
-    }
-};
+    };
+}
 
-export const hook_toggle = rw(HNAT_PATH_HOOK_TOOGLE);
+export const hook_toggle = create_attr_access(HNAT_PATH_HOOK_TOGGLE);
 
-export const ppd = rw(HNAT_PATH_PPD_IF);
-export const wan = rw(HNAT_PATH_WAN_IF);
-export const lan = rw(HNAT_PATH_LAN_IF);
-export const lan2 = rw(HNAT_PATH_LAN2_IF);
+export const ppd = create_attr_access(HNAT_PATH_PPD_IF);
+export const wan = create_attr_access(HNAT_PATH_WAN_IF);
+export const lan = create_attr_access(HNAT_PATH_LAN_IF);
+export const lan2 = create_attr_access(HNAT_PATH_LAN2_IF);

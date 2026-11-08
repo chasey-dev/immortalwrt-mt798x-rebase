@@ -184,10 +184,10 @@ export function get_all_switch_ports(roots) {
 
 /*
  * Compute a safe numeric prefix for switch ports (e.g. lan1/lan2 -> "lan").
- * Safety: any netdev starting with prefix must ALSO be a switch port.
+ * Every matching netdev must be a switch port on an MTK GMAC.
  * This avoids accidentally matching Wi-Fi/USB/etc.
  */
-export function get_switch_prefix(ports) {
+export function get_switch_prefix(ports, roots) {
     if (!ports || !length(ports)) return null;
 
     let pref = null;
@@ -198,9 +198,9 @@ export function get_switch_prefix(ports) {
         if (pref != m[1]) return null;
     }
 
-    /* safety: prefix must not match non-switch devices */
+    /* Do not include devices outside the supported GMAC topology. */
     for (let d in devs()) {
-        if (index(d, pref) == 0 && !is_switch_port(d))
+        if (index(d, pref) == 0 && !is_switch_port_on_gmac(d, roots))
             return null;
     }
 

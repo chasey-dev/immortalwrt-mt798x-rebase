@@ -156,7 +156,7 @@ let wan_name =
 let lan_name = null;
 
 if (has_sw) {
-	let prefix = sysnet.get_switch_prefix(all_sw);
+	let prefix = sysnet.get_switch_prefix(all_sw, roots);
 
 	/* avoid prefix swallowing WAN if WAN itself shares that prefix (rare, but possible) */
 	if (prefix && (!wan_name || index(wan_name, prefix) != 0))

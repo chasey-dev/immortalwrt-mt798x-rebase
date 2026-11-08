@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=hnat-detect
 PKG_LICENSE:=GPL-2.0
 PKG_VERSION:=1
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -30,7 +30,7 @@ endef
 
 define Package/hnat-detect
   $(call Package/hnat-detect/Default)
-  DEPENDS:=$(UCODE_DEPENDS) +kmod-dummy
+  DEPENDS:=$(UCODE_DEPENDS) +kmod-dummy +ip-tiny +firewall4
 endef
 
 define Build/Prepare

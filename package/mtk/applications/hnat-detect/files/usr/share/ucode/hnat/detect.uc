@@ -19,7 +19,7 @@
  *
  * Basic rules:
  *  - Never write Wi-Fi/USB/virtual device names into HNAT.
- *  - Only accept endpoints on GMAC0/GMAC1:
+ *  - Only accept endpoints on MTK GMACs:
  *      (1) GMAC root netdev: of_node compatible contains "mediatek,eth-mac"
  *      (2) Switch (DSA-like) user port netdev:
  *          has phys_switch_id + phys_port_name, and has a lower_* chain to a GMAC root
@@ -183,7 +183,7 @@ if (lan_name) {
  * - Source zone is switch ports -> PPD = switch's GMAC root
  * - Source zone is PHY -> PPD = that PHY's GMAC root
  * - Source zone is PHY + switch ports -> prefer switch GMAC root
- * - Source zone is PHY + PHY -> keep existing PPD (apcli scenario)
+ * - Multiple PHY roots -> use the first GMAC endpoint in the source zone
  */
 
 let lan_ports = filter(lan_eps, dev => sysnet.is_switch_port_on_gmac(dev, roots));

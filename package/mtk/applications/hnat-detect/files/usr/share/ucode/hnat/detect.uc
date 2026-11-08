@@ -215,11 +215,6 @@ let ext_devs = filter(nat_zone_devs, d => is_ext(d) && !is_gmac(d));
 /* cmd queue to exec */
 let rx_ppd_cmd = [];
 
-/* remove useless "dummy0" created by default */
-if (sysnet.dev_exist("dummy0")) {
-	push(rx_ppd_cmd, `ip link delete dummy0`);
-}
-
 /* find bridge device in lan zone */
 let br_dev = null;
 let lan_devs = lan_zone_devs;

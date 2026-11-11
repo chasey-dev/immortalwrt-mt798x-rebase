@@ -732,132 +732,42 @@ module_exist()
 
 setup_model()
 {
-	board=$(board_name)
+	local compatible
+
+	compatible=$(tr '\0' ' ' < /proc/device-tree/compatible)
+	compatible=${compatible% }
 	num_of_wifi=$(get_wifi_num)
 	mt_whnat_en=$(module_exist "mt_whnat")
 	usbnet=$(get_usbnet)
 
-	logger -t "mtk_smp" "board=${board}, wifi_num=${num_of_wifi}, cpu_num=${NUM_OF_CPU}, usbnet=${usbnet}"
+	logger -t "mtk_smp" "compatible=[${compatible}], wifi_num=${num_of_wifi}, cpu_num=${NUM_OF_CPU}, usbnet=${usbnet}"
 
-	case $board in
-	acelink,ew-7886cax |\
-	acer,predator-w6* |\
-	acer,vero-w6m |\
-	asiarf,ap7986-003 |\
-	asus,rt-ax59u |\
-	asus,tuf-ax4200* |\
-	asus,tuf-ax6000 |\
-	bananapi,bpi-r3* |\
-	buffalo,wsr-6000ax8 |\
-	clx,s20l |\
-	clx,s20m |\
-	clx,s20p |\
-	dlink,aquila-pro-ai-m60-a1 |\
-	glinet,gl-mt6000 |\
-	iptime,ax7800m-6e |\
-	jdcloud,re-cp-03 |\
-	mercusys,mr90x* |\
-	netcore,n60* |\
-	netgear,wax220 |\
-	ruijie,rg-x60-new*|\
-	ruijie,rg-x60-pro |\
-	smartrg,sdg-86* |\
-	tplink,archer-ax80-v1 |\
-	tplink,re6000xd |\
-	tplink,tl-xdr4288 |\
-	tplink,tl-xdr608* |\
-	tplink,tl-xtr8488 |\
-	wavlink,wl-wn536ax6-a |\
-	xiaomi,redmi-router-ax6000* |\
-	zyxel,ex5601* |\
-	zyxel,ex5700* |\
-	*7986*)
+	case "$compatible" in
+	*mediatek,mt7986*)
 		MT7986_whnat $num_of_wifi $usbnet
 		;;
-	abt,asr3000* |\
-	aigo,ags21|\
-	asus,rt-ax52 |\
-	cetron,ct3003* |\
-	cmcc,a10* |\
-	cmcc,rax3000m* |\
-	cmcc,xr30* |\
-	comfast,cf-e393ax |\
-	comfast,cf-wr632ax* |\
-	confiabits,mt7981 |\
-	cudy,*3000* |\
-	creatlentem,clt-r30b1* |\
-	dlink,aquila-pro-ai-m30-a1 |\
-	edgecore,eap111 |\
-	elecom,wrc-x3000gs3 |\
-	gatonetworks,gdsp |\
-	glinet,gl-mt2500* |\
-	glinet,gl-mt3000 |\
-	glinet,gl-x3000 |\
-	glinet,gl-xe3000 |\
-	h3c,magic-nx30-pro* |\
-	huasifei,wh3000* |\
-	imou,hx21 |\
-	imou,lc-hx3001 |\
-	iptime,ax3000* |\
-	jcg,q30-pro |\
-	kebidumei,ax3000-u22 |\
-	keenetic,kn-* |\
-	konka,komi-a31 |\
-	livinet,zr-3020* |\
-	mercusys,mr80x* |\
-	mercusys,mr85x |\
-	netgear,eax17 |\
-	netis,nx30v2 |\
-	netis,nx31 |\
-	nokia,ea0326gmp |\
-	nradio,c8-668gl |\
-	openembed,som7981 |\
-	openfi,6c |\
-	openwrt,one |\
-	qihoo,360t7 |\
-	routerich,ax3000* |\
-	ruijie,rg-x30e-pro |\
-	sl,3000-emmc |\
-	snr,snr-cpe-ax2 |\
-	teltonika,rutc50 |\
-	tenbay,wr3000k |\
-	totolink,x6000r |\
-	tplink,fr365-v1 |\
-	ubnt,unifi-6-plus |\
-	unielec,u7981* |\
-	viettel,32x6 |\
-	viettel,nr3053 |\
-	wavlink,wl-wn551x3 |\
-	wavlink,wl-wn586x3* |\
-	wavlink,wl-wn573hx3 |\
-	widelantech,wap430x |\
-	wirelesstag,zx7981pd-ubootmod|\
-	xiaomi,mi-router-ax3000t* |\
-	xiaomi,mi-router-wr30u* |\
-	yuncore,ax835 |\
-	zbtlink,zbt-z810* |\
-	zhao,7981r128 |\
-	zyxel,nwa50ax-pro |\
-	*7981*)
+	*mediatek,mt7981*)
 		MT7981_whnat $num_of_wifi $usbnet
 		;;
-	*)
-		if [ "$NUM_OF_CPU" = "4" ]; then
-			dbg "setup_model:MT7623 wifi#=$num_of_wifi"
-			MT7623 $num_of_wifi
-		elif [ "$NUM_OF_CPU" = "2" ]; then
-			if [ "$mt_whnat_en" = "1" ];then
-				MT7622_whnat $num_of_wifi
-			else
-				if [ "$wifi1_dbdc_idx" = "1" ]; then
-					MT7622_dbdc1 $num_of_wifi
-				else
-					MT7622 $num_of_wifi
-				fi
-			fi
+	*mediatek,mt7623*)
+		MT7623 $num_of_wifi
+		;;
+	*mediatek,mt7622*)
+		if [ "$mt_whnat_en" = "1" ]; then
+			MT7622_whnat $num_of_wifi
+		elif [ "$wifi1_dbdc_idx" = "1" ]; then
+			MT7622_dbdc1 $num_of_wifi
+		else
+			MT7622 $num_of_wifi
 		fi
 		;;
+	*)
+		logger -t "mtk_smp" "unsupported SoC!"
+		return 1
+		;;
 	esac
+
+	return 0
 }
 
 get_virtual_irq()
@@ -976,7 +886,7 @@ get_wifi_if_name	# It will add all wifi interfaces into $RPS_IF_LIST
 dbg2 "# default RPS_IF_LIST=$RPS_IF_LIST"
 IS_USBNET=0
 scan_usbnet
-setup_model
+setup_model || exit 1
 set_rps_cpu_bitmap
 set_rps_cpus $DEFAULT_RPS
 set_smp_affinity

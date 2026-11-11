@@ -3,6 +3,7 @@
 NPROCS="$(grep -c "^processor.*:" /proc/cpuinfo)"
 case "$NPROCS" in
     2) RPS_CPUS=1 ;; # set to CPU0
+    3) RPS_CPUS=2 ;; # set to CPU1
     4) RPS_CPUS=8 ;; # set to CPU3
     *) exit ;;
 esac

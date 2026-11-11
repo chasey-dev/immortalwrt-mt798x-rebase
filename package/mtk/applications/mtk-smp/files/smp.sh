@@ -638,9 +638,9 @@ get_wifi_if_name()
 		# idx = 1 : main(physical) interface of 1st Wi-Fi band
 		# idx > 1 : virtual interface of other Wi-Fi band
 		# idx = "": Wi-Fi interface does not exist in l1profile
-		wifi1_dbdc_idx=`l1dat if2dbdcidx $wifi1`
-		wifi2_dbdc_idx=`l1dat if2dbdcidx $wifi2`
-		wifi3_dbdc_idx=`l1dat if2dbdcidx $wifi3`
+		[ -n "$wifi1" ] && wifi1_dbdc_idx=`l1dat if2dbdcidx "$wifi1"`
+		[ -n "$wifi2" ] && wifi2_dbdc_idx=`l1dat if2dbdcidx "$wifi2"`
+		[ -n "$wifi3" ] && wifi3_dbdc_idx=`l1dat if2dbdcidx "$wifi3"`
 	fi
 
 	dbg2 "# Wi-Fi interface list"

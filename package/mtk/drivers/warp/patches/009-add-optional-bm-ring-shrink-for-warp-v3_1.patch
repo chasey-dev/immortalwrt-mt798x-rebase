@@ -1,15 +1,22 @@
 From: chasey-dev <ellenyoung0912@gmail.com>
-Subject: [PATCH] warp: Add optional BM ring shrinking
+Subject: [PATCH] warp: Add optional BM ring shrinking for WARP 3.1
 
 BM descriptor rings reserve 65536 entries even when configured buffer
-counts are smaller. Optional shrinking sizes allocations from the buffer
-counts, rounded to 128 entries and capped at 65536.
+counts are smaller. WARP 3.1 programs WED BM range registers from these
+counts, so optional shrinking sizes allocations to the counts, rounded
+to 128 entries and capped at 65536.
+
+WARP 3 only initializes WED BM tail indices and retains the full 16-bit
+ring range. Shrinking its descriptor allocation allows DMA to access
+memory outside the ring as descriptors are returned. Restrict shrinking
+to WARP 3.1 and retain 65536 entries on other versions.
 
 RX allocation uses the hardware token limit before dynamic BM adjustments.
 The RX page pool size can also be configured independently. Parameter
 messages use the existing INFO debug level.
 
 Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
+---
 --- a/Makefile
 +++ b/Makefile
 @@ -12,6 +12,14 @@ ifeq ($(CONFIG_WARP_MEMORY_LEAK_DBG), y)
@@ -29,7 +36,7 @@ Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
  endif
 --- a/warp_bm.h
 +++ b/warp_bm.h
-@@ -20,6 +20,18 @@
+@@ -20,6 +20,23 @@
  #include "warp_wifi.h"
  #include <linux/interrupt.h>
  
@@ -37,7 +44,12 @@ Signed-off-by: chasey-dev <ellenyoung0912@gmail.com>
 +
 +static inline u32 warp_bm_ring_len(u32 n)
 +{
-+#ifdef WARP_BM_SHRINK_RING
++	/*
++	 * WARP 3.1 programs WED BM bounds from buffer counts, allowing smaller
++	 * rings. WARP 3 only initializes tail indices and needs the full
++	 * 16-bit ring range.
++	 */
++#if defined(WARP_BM_SHRINK_RING) && defined(CONFIG_WARP_V3_1)
 +	u32 len = ALIGN(n, WARP_BM_ALIGN);
 +	return len > 65536 ? 65536 : len;
 +#else

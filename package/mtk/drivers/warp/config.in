@@ -53,10 +53,13 @@ config WARP_MEMORY_LEAK_DBG
 
 config WARP_BM_SHRINK_RING
 	bool "Shrink WARP BM ring to actual pkt/page count"
+	depends on WARP_VERSION = "3_1"
 	default n
 	help
-	  Allocate WARP TXBM/RXBM/PageBM ring descriptors according to
-	  actual pkt_num/page_num instead of fixed 65536 entries.
+	  Allocate WARP 3.1 TXBM/RXBM/PageBM ring descriptors according to
+	  actual pkt_num/page_num instead of fixed 65536 entries. WARP 3
+	  requires the full descriptor rings because WED BM indices do not
+	  wrap at the configured buffer count.
 
 config WARP_RX_PAGE_BM_NUM
 	int "WARP RX Page BM number"

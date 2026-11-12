@@ -38,7 +38,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  #include <linux/jhash.h>
  #include <linux/bitfield.h>
  #include <net/dsa.h>
-@@ -5168,6 +5169,228 @@ static const struct net_device_ops mtk_n
+@@ -5186,6 +5187,228 @@ static const struct net_device_ops mtk_n
  	.ndo_select_queue	= mtk_select_queue,
  };
  
@@ -267,16 +267,16 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  static int mtk_add_mac(struct mtk_eth *eth, struct device_node *np)
  {
  	const __be32 *_id = of_get_property(np, "reg", NULL);
-@@ -5469,7 +5692,7 @@ static int mtk_sgmii_init(struct mtk_eth
+@@ -5508,7 +5731,7 @@ static int mtk_setup_legacy_sram(struct
  static int mtk_probe(struct platform_device *pdev)
  {
- 	struct resource *res = NULL, *res_sram;
+ 	struct resource *res = NULL;
 -	struct device_node *mac_np;
-+	struct device_node *mac_np, *mux_np;;
++	struct device_node *mac_np, *mux_np;
  	struct mtk_eth *eth;
  	int err, i;
  
-@@ -5702,6 +5925,26 @@ static int mtk_probe(struct platform_dev
+@@ -5731,6 +5954,26 @@ static int mtk_probe(struct platform_dev
  			goto err_free_dev;
  	}
  
@@ -303,7 +303,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  	if (eth->soc->offload_version) {
  		u8 ppe_num = eth->soc->ppe_num;
  
-@@ -5761,6 +6004,7 @@ err_unreg_netdev:
+@@ -5790,6 +6033,7 @@ err_unreg_netdev:
  	mtk_unreg_dev(eth);
  err_deinit_ppe:
  	mtk_ppe_deinit(eth);
@@ -311,7 +311,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  	mtk_mdio_cleanup(eth);
  err_free_dev:
  	mtk_free_dev(eth);
-@@ -5802,6 +6046,7 @@ static void mtk_remove(struct platform_d
+@@ -5831,6 +6075,7 @@ static void mtk_remove(struct platform_d
  	mtk_cleanup(eth);
  	free_netdev(eth->dummy_dev);
  	mtk_mdio_cleanup(eth);

@@ -150,7 +150,7 @@ rbus_pa_lan_config(struct platform_device *pdev, unsigned int devfn, unsigned ch
 		return ret;
 	}
 
-	strncpy(state, "state_epa", sizeof("state_epa"));
+	strncpy(state, "state_epa", sizeof(state));
 
 	s = pinctrl_lookup_state(p, state);
 
@@ -325,11 +325,10 @@ static int rbus_probe(struct platform_device *pdev)
 /*
 *
 */
-static int rbus_remove(struct platform_device *pdev)
+static void rbus_remove(struct platform_device *pdev)
 {
 	struct rbus_dev *rbus = platform_get_drvdata(pdev);
 	dev_err(&pdev->dev, "remove rbus name: %s\n", rbus->name);
-	return 0;
 }
 
 

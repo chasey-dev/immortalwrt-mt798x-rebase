@@ -171,3 +171,106 @@ msgstr "HNAT PPE数量"
 
 msgid "Bind Entries"
 msgstr "已绑定连接数"
+
+msgid "Fullcone NAT (IPv4)"
+msgstr "全锥形 NAT(IPv4)"
+
+msgid "Fullcone NAT (IPv6)"
+msgstr "全锥形 NAT(IPv6)"
+
+msgid "Global gate for fullcone NAT. Turn it on here, then opt in per zone on the Firewall page, where it can also be limited to specific protocols."
+msgstr "全锥形 NAT 的全局总开关。在此启用后，再到「防火墙」页面按区域分别开启，并可限定只对特定协议生效。"
+
+msgid "Global gate for fullcone NAT on IPv6. Most IPv6 setups do not need fullcone."
+msgstr "IPv6 的全锥形 NAT 全局总开关。大多数 IPv6 环境不需要全锥形 NAT。"
+
+msgid "SONiC Fullcone"
+msgstr "SONiC 全锥形 NAT(nft_masq 内置)"
+
+# --- fullcone NAT (added by the fullcone branch) ---
+
+msgid "SONiC Fullcone"
+msgstr "SONiC 全锥形 NAT(nft_masq 内置)"
+
+msgid "Fullcone NAT"
+msgstr "全锥形 NAT"
+
+msgid "Fullcone NAT (IPv4)"
+msgstr "全锥形 NAT(IPv4)"
+
+msgid "Fullcone NAT (IPv6)"
+msgstr "全锥形 NAT(IPv6)"
+
+msgid "Global switches"
+msgstr "全局开关"
+
+msgid "Per-zone control"
+msgstr "按区域控制"
+
+msgid "Zone"
+msgstr "区域"
+
+msgid "IPv4 masquerading"
+msgstr "IPv4 伪装"
+
+msgid "Protocols"
+msgstr "协议"
+
+msgid "UDP-Lite"
+msgstr "UDP-Lite"
+
+msgid "Endpoint-independent mapping and filtering for masqueraded traffic. The kernel keeps a second hash table inside conntrack, keyed by the translated 3-tuple (protocol, source address, source port), so peers can reach a client from an address it never contacted."
+msgstr "为伪装的流量提供端点无关的映射与过滤。内核在 conntrack 内维护第二张哈希表，以转换后的三元组（协议、源地址、源端口）为索引，因此对端可以从客户端从未联系过的地址主动访问它。"
+
+msgid "These are master gates. With a gate off, no zone gets fullcone regardless of its own setting."
+msgstr "这里是总闸。任一家族的总闸关闭时，无论区域如何设置都不会启用全锥形 NAT。"
+
+msgid "Master gate for IPv4 fullcone."
+msgstr "IPv4 全锥形 NAT 的总闸。"
+
+msgid "Master gate for IPv6. Most IPv6 setups do not need fullcone."
+msgstr "IPv6 的总闸。大多数 IPv6 环境不需要全锥形 NAT。"
+
+msgid "Fullcone only takes effect on zones that masquerade IPv4 traffic, normally just the wan zone."
+msgstr "全锥形 NAT 只对启用了 IPv4 伪装的区域生效，通常只有 wan 区域符合。"
+
+msgid "Enable fullcone for this zone. Uncheck to keep plain masquerading here."
+msgstr "为本站区启用全锥形 NAT。取消勾选则本站区保持普通伪装。"
+
+msgid "Restrict fullcone to the selected L4 protocols; every other protocol keeps plain masquerading. Leave empty to apply fullcone to all protocols."
+msgstr "限定全锥形 NAT 只对选中的 L4 协议生效，其余协议仍走普通伪装。留空表示对所有协议生效。"
+
+
+
+
+#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js
+msgid "Direction"
+msgstr "方向"
+
+#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js
+msgid "Packets"
+msgstr "数据包"
+
+#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js
+msgid "Bytes"
+msgstr "字节"
+
+#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js
+msgid "No fullcone rule is active in the running ruleset."
+msgstr "当前规则集中没有生效中的全锥规则。"
+
+#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js
+msgid "Peer"
+msgstr "对端"
+
+#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js
+msgid "LAN host"
+msgstr "内网主机"
+
+#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js
+msgid "Port"
+msgstr "端口"
+
+#: applications/luci-app-turboacc/htdocs/luci-static/resources/view/turboacc.js
+msgid "No inbound flow produced by fullcone yet."
+msgstr "全锥当前还没有产生入站会话。"

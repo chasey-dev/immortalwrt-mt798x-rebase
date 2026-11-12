@@ -235,6 +235,7 @@
 #define DEF_UDP_KA		1
 #define MAX_EXT_DEVS		(0x3fU)
 #define MAX_IF_NUM		64
+#define MAX_EXT_PREFIX_NUM	8
 
 #if defined(CONFIG_MEDIATEK_NETSYS_V3)
 #define MAX_PPE_NUM		3
@@ -253,12 +254,17 @@
 /* If user wants to change default FOE entry number, both DEF_ETRY_NUM and
  * DEF_ETRY_NUM_CFG need to be modified.
  */
+#if defined(CONFIG_MEDIATEK_NETSYS_V3)
 #define DEF_ETRY_NUM		32768
 /* feasible values : 32768, 16384, 8192, 4096, 2048, 1024 */
 #define DEF_ETRY_NUM_CFG	TABLE_32K
 /* corresponding values : TABLE_32K, TABLE_16K, TABLE_8K, TABLE_4K, TABLE_2K,
  * TABLE_1K
  */
+#else
+#define DEF_ETRY_NUM		16384
+#define DEF_ETRY_NUM_CFG	TABLE_16K
+#endif
 #define MAX_PPE_CACHE_NUM	(128)
 #else
 #define DEF_ETRY_NUM		8192
@@ -1071,6 +1077,7 @@ struct mtk_hnat {
 	char lan[IFNAMSIZ];
 	char lan2[IFNAMSIZ];
 	char ppd[IFNAMSIZ];
+	char rx_ppd[IFNAMSIZ];
 	u16 lvid;
 	u16 wvid;
 
@@ -1095,6 +1102,7 @@ struct mtk_hnat {
 	struct net_device *g_wandev;
 	struct net_device *wifi_hook_if[MAX_IF_NUM];
 	struct extdev_entry *ext_if[MAX_EXT_DEVS];
+	const char *ext_if_prefix[MAX_EXT_PREFIX_NUM];
 	struct timer_list hnat_sma_build_entry_timer;
 	struct timer_list hnat_reset_timestamp_timer;
 	struct timer_list hnat_mcast_check_timer;
@@ -1362,6 +1370,7 @@ enum FoeIpAct {
 	 (get_wifi_hook_if_index_from_dev(dev) != 0)) ? 1 : 0)
 #define IS_EXT(dev) ((get_index_from_dev(dev) != 0) ? 1 : 0)
 #define IS_PPD(dev) (!strcmp(dev->name, hnat_priv->ppd))
+#define IS_RX_PPD(dev) (!strcmp(dev->name, hnat_priv->rx_ppd))
 #define IS_L2_BRIDGE(x) (((x)->bfib1.pkt_type == L2_BRIDGE) ? 1 : 0)
 #define IS_IPV4_HNAPT(x) (((x)->bfib1.pkt_type == IPV4_HNAPT) ? 1 : 0)
 #define IS_IPV4_HNAT(x) (((x)->bfib1.pkt_type == IPV4_HNAT) ? 1 : 0)
@@ -1458,6 +1467,8 @@ enum FoeIpAct {
 extern const struct of_device_id of_hnat_match[];
 extern struct mtk_hnat *hnat_priv;
 
+extern struct net_device *g_rx_ppdev;
+
 int hnat_dsa_fill_stag(const struct net_device *netdev,
 		       struct foe_entry *entry,
 		       u16 eth_proto, int mape);
@@ -1524,6 +1535,40 @@ extern int qos_toggle;
 extern int l2br_toggle;
 extern int l4s_toggle;
 extern int tnl_toggle;
+/* The QDMA queue index carried in the low bits of skb->mark.
+ *
+ * skb->mark layout used by the MTK feeds:
+ *   bit 7      HNAT_EXCEPTION_BIT - opt a flow out of hardware offload
+ *   bit 0..6   QDMA queue id (netsys v2/v3)
+ *   bit 0..3   QDMA queue id (netsys v1.x)
+ * Everything below HNAT_EXCEPTION_BIT is therefore queue number, which is
+ * how the HQoS path reads it back. Keeping the mask below bit 7 means the
+ * exception bit never leaks into a queue id.
+ *
+ * This must NOT be expressed via MTK_QDMA_QUEUE_MASK: that macro is
+ * redefined per kernel series (the 64-queue patch turns it into
+ * GENMASK(15, 0), other series expand it to a per-SoC expression that
+ * needs 'eth' in scope). Either variant covers bits that are no longer
+ * queue bits, which silently defeats the classification below - and once
+ * HNAT takes over the flow the kernel never sees these packets again.
+ */
+#define HNAT_QDMA_QUEUE_MASK_MORE	GENMASK(6, 0)
+#define HNAT_QDMA_QUEUE_MASK_LESS	GENMASK(3, 0)
+#define HNAT_QDMA_QUEUE_MASK								\
+	((hnat_priv->data->version == MTK_HNAT_V2 ||				\
+	  hnat_priv->data->version == MTK_HNAT_V3) ?				\
+		 HNAT_QDMA_QUEUE_MASK_MORE : HNAT_QDMA_QUEUE_MASK_LESS)
+
+/* Number of QDMA TX queues HNAT creates debugfs entries for. The
+ * per-SoC value lives in mtk_soc_data::num_tx_queues and is not
+ * reachable from the HNAT files (see above), so use the widest one
+ * the driver knows about (32 on MT7988, 16 elsewhere).
+ */
+#define HNAT_QDMA_NUM_QUEUES			32
+
+extern int short_pkt_toggle;
+extern int short_pkt_qid;
+extern int short_pkt_len;
 extern int (*mtk_tnl_encap_offload)(struct sk_buff *skb, struct ethhdr *eth);
 extern int (*mtk_tnl_decap_offload)(struct sk_buff *skb);
 extern bool (*mtk_tnl_decap_offloadable)(struct sk_buff *skb);

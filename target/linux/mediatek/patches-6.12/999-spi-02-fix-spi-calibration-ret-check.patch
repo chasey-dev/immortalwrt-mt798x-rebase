@@ -1,0 +1,24 @@
+--- a/drivers/spi/spi.c
++++ b/drivers/spi/spi.c
+@@ -1536,10 +1536,10 @@ int spi_do_calibration(struct spi_contro
+ 		total_hit = 0;
+ 		origin = *target->cal_item;
+ 
+-		for(i=target->cal_min; i<=target->cal_max; i+=target->step) {
++		for(i = target->cal_min; i <= target->cal_max; i += target->step) {
+ 			*target->cal_item = i;
+ 			ret = (*cal_read)(drv_priv, ctlr->cal_rule->addr, addrlen, buf, datalen);
+-			if(ret)
++			if (ret < 0)
+ 				break;
+ 			dev_dbg(&spi->dev, "controller cal item value: 0x%x\n", i);
+ 			if(memcmp(ctlr->cal_rule->match_data, buf, datalen * sizeof(u8)) == 0) {
+@@ -1549,7 +1549,7 @@ int spi_do_calibration(struct spi_contro
+ 				dev_dbg(&spi->dev, "golden data matches data read!\n");
+ 			}
+ 		}
+-		if(hit) {
++		if (hit) {
+ 			*target->cal_item = DIV_ROUND_CLOSEST(hit_val, total_hit);
+ 			dev_info(&spi->dev, "calibration result: 0x%x", *target->cal_item);
+ 		} else {

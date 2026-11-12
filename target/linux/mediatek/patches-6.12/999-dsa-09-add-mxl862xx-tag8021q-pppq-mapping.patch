@@ -1,0 +1,34 @@
+---
+[v1] net: dsa: add queue mapping information to skb for netsys PPPQ
+
+Add queue mapping information to skb for netsys PPPQ.
+
+---
+v1: add queue mapping information to skb for netsys PPPQ
+---
+
+From 26d275c3fb325063a20f4a72eba6b5ba00c82568 Mon Sep 17 00:00:00 2001
+From: "neal.yen" <neal.yen@mediatek.com>
+Date: Thu, 1 Oct 2026 14:59:34 +0800
+Subject: [PATCH] net: dsa: add queue mapping information to skb for
+netsys PPPQ
+
+---
+ net/dsa/tag_mxl862xx_8021q.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/net/dsa/tag_mxl862xx_8021q.c b/net/dsa/tag_mxl862xx_8021q.c
+index e761034..576e10a 100644
+--- a/net/dsa/tag_mxl862xx_8021q.c
++++ b/net/dsa/tag_mxl862xx_8021q.c
+@@ -47,6 +47,7 @@ static struct sk_buff *mxl862_8021q_tag_xmit(struct sk_buff *skb,
+ 	u16 tx_vid = dsa_tag_8021q_standalone_vid(dp);
+ 	u16 queue_mapping = skb_get_queue_mapping(skb);
+ 	u8 pcp = netdev_txq_to_tc(dev, queue_mapping);
++	skb_set_queue_mapping(skb, dp->index);
+ 
+ 	dsa_8021q_xmit(skb, dev, ETH_P_8021Q,
+ 			      ((pcp << VLAN_PRIO_SHIFT) | tx_vid));
+-- 
+2.45.2
+

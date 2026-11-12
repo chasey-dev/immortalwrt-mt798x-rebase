@@ -1,5 +1,5 @@
 ---
-[v3] arm64: dts: mediatek: mt7987: Add basic device tree support
+[v4] arm64: dts: mediatek: mt7987: Add basic device tree support
 
 Add basic device tree support for MediaTek MT7987 SoC. This includes the main
 SoC dtsi file `mt7987.dtsi`. Variant-specific dtsi files `mt7987a.dtsi` and
@@ -14,6 +14,8 @@ files using the overlay DTS to support different network components based on
 your board with only one Linux image.
 
 ---
+v4: Change to use the Generic SRAM allocator to allocate SRAM memory regions
+    for the ETH driver.
 v3: Seperate mt7987 mtkhnat related overlays to independent patch.
 v2: Add and align mt798x flash DTS clock/driving settings. Add SPI2 driving
     configuration for MT7987 flash support.
@@ -310,7 +312,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987.dtsi
-@@ -0,0 +1,782 @@
+@@ -0,0 +1,779 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
 +/*
 + * Copyright (C) 2023 MediaTek Inc.
@@ -748,8 +750,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +		};
 +
 +		spi0: spi@11007800 {
-+			compatible = "mediatek,ipm-spi-quad",
-+				     "mediatek,spi-ipm";
++			compatible = "mediatek,mt7987-spi";
 +			reg = <0 0x11007800 0 0x100>;
 +			interrupts = <GIC_SPI 140 IRQ_TYPE_LEVEL_HIGH>;
 +			clocks = <&topckgen CLK_TOP_CB_M_D2>,
@@ -766,8 +767,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +		};
 +
 +		spi1: spi@11008800 {
-+			compatible = "mediatek,ipm-spi-single",
-+				     "mediatek,spi-ipm";
++			compatible = "mediatek,mt7987-spi";
 +			reg = <0 0x11008800 0 0x100>;
 +			interrupts = <GIC_SPI 141 IRQ_TYPE_LEVEL_HIGH>;
 +			clocks = <&topckgen CLK_TOP_CB_M_D2>,
@@ -785,8 +785,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +		};
 +
 +		spi2: spi@11009800 {
-+			compatible = "mediatek,ipm-spi-quad",
-+				     "mediatek,spi-ipm";
++			compatible = "mediatek,mt7987-spi";
 +			reg = <0 0x11009800 0 0x100>;
 +			interrupts = <GIC_SPI 142 IRQ_TYPE_LEVEL_HIGH>;
 +			clocks = <&topckgen CLK_TOP_CB_M_D2>,
@@ -1166,7 +1165,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +};
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7987-netsys.dtsi
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,121 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
 +/*
 + * Copyright (C) 2025 MediaTek Inc.
@@ -1188,8 +1187,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +
 +	eth: ethernet@15100000 {
 +		compatible = "mediatek,mt7987-eth";
-+		reg = <0 0x15100000 0 0x80000>,
-+		      <0 0x15400000 0 0x20000>;
++		reg = <0 0x15100000 0 0x80000>;
 +		interrupts = <GIC_SPI 189 IRQ_TYPE_LEVEL_HIGH>,
 +			     <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>,
 +			     <GIC_SPI 191 IRQ_TYPE_LEVEL_HIGH>,
@@ -1223,6 +1221,7 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +		assigned-clock-parents = <&apmixedsys CLK_APMIXED_NET2PLL>,
 +					 <&apmixedsys CLK_APMIXED_SGMPLL>,
 +					 <&apmixedsys CLK_APMIXED_SGMPLL>;
++		sram = <&eth_sram>;
 +		mediatek,ethsys = <&ethsys>;
 +		mediatek,infracfg = <&topmisc>;
 +		pinctrl-names = "default";
@@ -1257,6 +1256,14 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +			#size-cells = <0>;
 +
 +		};
++	};
++
++	eth_sram: sram@15400000 {
++		compatible = "mmio-sram";
++		reg = <0 0x15400000 0 0x20000>;
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges = <0 0x15400000 0 0x20000>;
 +	};
 +
 +	crypto: crypto@15600000 {

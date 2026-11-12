@@ -1,9 +1,12 @@
 ---
-[v3] net: ethernet: mtk_ppe: change to internal QoS mode
+[v4] net: ethernet: mtk_ppe: change to internal QoS mode
 
 Without this patch, the users are unable to use the proprietary HQoS
 and PPPQ modes.
 ---
+v4: Get DSA user port link speed from the per-port speed cached by the
+    conduit, and only use link speed for PPPQ path selection on netsys v3;
+    keep the DSA port index check for netsys v1/v2.
 v3: Add guard ct mark and ieee80211_ptr with their configs.
 v2: Enable HQoS PPPQ for non-DSA egress ports linked at 1G or below on netsys v3.
 v1: Add internal HQoS and PPPQ QoS mode support with debugfs control.
@@ -28,21 +31,30 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
-@@ -1775,6 +1775,7 @@ struct mtk_eth {
+@@ -22,6 +22,7 @@
+ #include <linux/bitfield.h>
+ #include <net/page_pool/types.h>
+ #include <linux/bpf_trace.h>
++#include <net/dsa.h>
+ #include "mtk_ppe.h"
+ #include "mtk_tnl.h"
  
+@@ -1809,6 +1810,7 @@ struct mtk_eth {
  	struct metadata_dst		*dsa_meta[MTK_MAX_DSA_PORTS];
+ 	u8				dsa_queue_count;
  
 +	u8				qos_toggle;
  	u8				l4s_toggle;
  	struct mtk_ppe			*ppe[3];
  	struct rhashtable		flow_table;
-@@ -1987,6 +1988,62 @@ static inline u32 mtk_get_ib2_multicast_
+@@ -2028,6 +2030,77 @@ static inline u32 mtk_get_ib2_multicast_
  	return MTK_FOE_IB2_MULTICAST;
  }
  
 +static inline int
 +mtk_dev_link_speed(struct mtk_eth *eth, struct net_device *dev)
 +{
++	struct dsa_port *dp = NULL;
 +	size_t i;
 +
 +	if (!dev)
@@ -51,10 +63,22 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 +	if (dev->phydev)
 +		return READ_ONCE(dev->phydev->speed);
 +
++#if IS_ENABLED(CONFIG_NET_DSA)
++	if (dsa_user_dev_check(dev)) {
++		dp = dsa_port_from_netdev(dev);
++		if (IS_ERR(dp) || dp->index >= MTK_DSA_USER_PORT_MAX)
++			return SPEED_UNKNOWN;
++
++		dev = dsa_port_to_conduit(dp);
++	}
++#endif
++
 +	for (i = 0; i < ARRAY_SIZE(eth->netdev); i++) {
 +		if (dev == eth->netdev[i]) {
 +			struct mtk_mac *mac = netdev_priv(dev);
-+			return READ_ONCE(mac->speed);
++
++			return dp ? READ_ONCE(mac->dsa_port_speed[dp->index]) :
++				    READ_ONCE(mac->speed);
 +		}
 +	}
 +
@@ -79,17 +103,19 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 +	bool wifi_rx = mtk_dev_is_wireless(idev);
 +	int odev_speed;
 +
-+	if ((dsa_port >= 0 && dsa_port <= 4) ||
-+	    (dsa_port == 5 && wifi_rx))
-+		return 1;
-+
-+	odev_speed = mtk_dev_link_speed(eth, odev);
-+	if (odev_speed <= 0)
-+		return 0;
-+
 +	if (mtk_is_netsys_v3_or_greater(eth)) {
-+		/* Handle cases of GMAC port linked less or equal to 1Gbps */
++		odev_speed = mtk_dev_link_speed(eth, odev);
++		if (odev_speed <= 0)
++			return 0;
++
 +		if (odev_speed <= SPEED_1000)
++			return 1;
++
++		if (odev_speed <= SPEED_2500 && wifi_rx)
++			return 1;
++	} else {
++		if ((dsa_port >= 0 && dsa_port <= 4) ||
++		    (dsa_port == 5 && wifi_rx))
 +			return 1;
 +	}
 +

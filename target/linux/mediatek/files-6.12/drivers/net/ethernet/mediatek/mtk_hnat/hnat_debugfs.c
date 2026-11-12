@@ -44,6 +44,9 @@ int tnl_toggle;
 int xlat_toggle;
 int l2br_toggle;
 int l4s_toggle;
+int short_pkt_toggle;
+int short_pkt_qid = 14;
+int short_pkt_len = 64;
 struct hnat_desc headroom[DEF_ETRY_NUM];
 unsigned int dbg_cpu_reason_cnt[MAX_CRSN_NUM];
 
@@ -893,11 +896,19 @@ static int binding_threshold(int threshold)
 {
 	int i;
 
+	/* check illegal input */
+	if (threshold < 0 || threshold > 65535) {
+		pr_err("current binding threshold =%d is forbidden! should be 0~65535\n", threshold);
+		return 0;
+	}
+
 	pr_info("Binding Threshold = %d\n", threshold);
 	hnat_priv->bind_threshold = threshold;
 
+	/* only set lower bit here, since writel may cause unexpected behavior */
 	for (i = 0; i < CFG_PPE_NUM; i++)
-		writel(threshold, hnat_priv->ppe_base[i] + PPE_BNDR);
+		cr_set_field(hnat_priv->ppe_base[i] + PPE_BNDR,
+			     BIND_RATE, threshold);
 
 	return 0;
 }
@@ -1930,14 +1941,15 @@ static void dbg_dump_entry(struct seq_file *m, struct foe_entry *entry,
 
 	if (IS_IPV4_HNAPT(entry)) {
 		seq_printf(m,
-			   "NAPT(%d): %pI4:%d->%pI4:%d => %pI4:%d->%pI4:%d\n",
+			   "NAPT(%d): %pI4:%d->%pI4:%d => %pI4:%d->%pI4:%d qid=%d\n",
 			   index, &saddr, entry->ipv4_hnapt.sport, &daddr,
 			   entry->ipv4_hnapt.dport, &nsaddr,
 			   entry->ipv4_hnapt.new_sport, &ndaddr,
-			   entry->ipv4_hnapt.new_dport);
+			   entry->ipv4_hnapt.new_dport, entry->ipv4_hnapt.iblk2.qid);
 	} else if (IS_IPV4_HNAT(entry)) {
-		seq_printf(m, "NAT(%d): %pI4->%pI4 => %pI4->%pI4\n",
-			   index, &saddr, &daddr, &nsaddr, &ndaddr);
+		seq_printf(m, "NAT(%d): %pI4->%pI4 => %pI4->%pI4 qid=%d\n",
+			   index, &saddr, &daddr, &nsaddr, &ndaddr,
+			   entry->ipv4_hnapt.iblk2.qid);
 	}
 
 	if (IS_IPV4_DSLITE(entry)) {
@@ -2254,6 +2266,61 @@ static const struct file_operations hnat_entry_fops = {
 	.release = single_release,
 };
 
+static int __hnat_stats_read(struct seq_file *m, void *private, u32 ppe_id)
+{
+	struct mtk_hnat *h = hnat_priv;
+	struct foe_entry *entry, *end;
+	int cnt;
+
+	if (ppe_id >= CFG_PPE_NUM)
+		return -EINVAL;
+
+	cnt = 0;
+	entry = h->foe_table_cpu[ppe_id];
+	end = h->foe_table_cpu[ppe_id] + hnat_priv->foe_etry_num;
+
+	while (entry < end) {
+		if (entry->bfib1.state == dbg_entry_state)
+			cnt++;
+		entry++;
+	}
+
+	seq_printf(m, "PPE%d: entry num=%d, %s state num=%d\n",
+		ppe_id, hnat_priv->foe_etry_num,
+		dbg_entry_state == 0 ?
+		"Invalid" : dbg_entry_state == 1 ?
+		"Unbind" : dbg_entry_state == 2 ?
+		"BIND" : dbg_entry_state == 3 ?
+		"FIN" : "Unknown", cnt);
+
+	return 0;
+}
+
+static int hnat_stats_read(struct seq_file *m, void *private)
+{
+	int i;
+
+	seq_printf(m, "PPE num=%d\n", CFG_PPE_NUM);
+
+	for (i = 0; i < CFG_PPE_NUM; i++) {
+		__hnat_stats_read(m, private, i);
+	}
+
+	return 0;
+}
+
+static int hnat_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, hnat_stats_read, file->private_data);
+}
+
+static const struct file_operations hnat_stats_fops = {
+	.open = hnat_stats_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 static int __hnat_setting_read(struct seq_file *m, void *private, u32 ppe_id)
 {
 	struct mtk_hnat *h = hnat_priv;
@@ -2421,10 +2488,14 @@ static void print_hw_mcast(struct ppe_mcast_group *group)
 
 static int mcast_table_dump(struct seq_file *m, void *private)
 {
+	struct ppe_mcast_table *pmcast = hnat_priv->pmcast;
 	struct ppe_mcast_group *group;
 
+	if (!pmcast)
+		return -EOPNOTSUPP;
+
 	pr_info("==== PPE Multicast Group List ====\n");
-	list_for_each_entry(group, &hnat_priv->pmcast->groups, list) {
+	list_for_each_entry(group, &pmcast->groups, list) {
 		if (group->ppe_id != -1)
 			print_hw_mcast(group);
 	}
@@ -2501,11 +2572,11 @@ static const struct file_operations hnat_ext_fops = {
 	.release = single_release,
 };
 
-static ssize_t hnat_ppd_if_write(struct file *file, const char __user *buffer,
-				 size_t count, loff_t *data)
+static ssize_t hnat_wan_if_write(struct file *file, const char __user *buffer,
+				  size_t count, loff_t *data)
 {
 	char buf[IFNAMSIZ];
-	struct net_device *dev;
+	struct net_device *dev, *old_dev;
 	char *p, *tmp;
 
 	if (count >= IFNAMSIZ)
@@ -2517,32 +2588,209 @@ static ssize_t hnat_ppd_if_write(struct file *file, const char __user *buffer,
 
 	tmp = buf;
 	p = strsep(&tmp, "\n\r ");
+	if (!p || !*p)
+		return -EINVAL;
+
 	dev = dev_get_by_name(&init_net, p);
-
-	if (dev) {
-		if (hnat_priv->g_ppdev)
-			dev_put(hnat_priv->g_ppdev);
-		hnat_priv->g_ppdev = dev;
-
-		strncpy(hnat_priv->ppd, p, IFNAMSIZ - 1);
-		pr_info("hnat_priv ppd = %s\n", hnat_priv->ppd);
-	} else {
-		pr_info("no such device!\n");
+	if (!dev) {
+		pr_err("%s : no such device: %s !\n", __func__, p);
+		return -ENODEV;
 	}
+
+	rtnl_lock();
+	/* only update when the dev actually changed */
+	if (hnat_priv->g_wandev == dev &&
+		!strncmp(hnat_priv->wan, p, IFNAMSIZ)) {
+		rtnl_unlock();
+		dev_put(dev);
+
+		goto end;
+	}
+
+	old_dev = hnat_priv->g_wandev;
+	hnat_priv->g_wandev = dev;
+
+	strscpy(hnat_priv->wan, p, IFNAMSIZ);
+	rtnl_unlock();
+
+	if (old_dev)
+		dev_put(old_dev);
+end:
+	pr_info("hnat_priv wan = %s\n", hnat_priv->wan);
+
+	return count;
+}
+
+static int hnat_wan_if_read(struct seq_file *m, void *private)
+{
+	seq_printf(m, "%s\n", hnat_priv->wan);
+	seq_printf(m, "g_wandev=%s\n",
+		   hnat_priv->g_wandev ? hnat_priv->g_wandev->name : "NULL");
+
+	return 0;
+}
+
+static int hnat_wan_if_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, hnat_wan_if_read, file->private_data);
+}
+
+static const struct file_operations hnat_wan_if_fops = {
+	.open = hnat_wan_if_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.write = hnat_wan_if_write,
+	.release = single_release,
+};
+
+static ssize_t hnat_lan_if_write(struct file *file, const char __user *buffer,
+				  size_t count, loff_t *data)
+{
+	char buf[IFNAMSIZ];
+	char *p, *tmp;
+
+	if (count >= IFNAMSIZ)
+		return -EFAULT;
+
+	memset(buf, 0, IFNAMSIZ);
+	if (copy_from_user(buf, buffer, count))
+		return -EFAULT;
+
+	tmp = buf;
+	p = strsep(&tmp, "\n\r ");
+	if (!p || !*p)
+		return -EINVAL;
+
+	/* only update when the name actually changed */
+	if (strncmp(hnat_priv->lan, p, IFNAMSIZ)) {
+		strscpy(hnat_priv->lan, p, IFNAMSIZ);
+	}
+	pr_info("hnat_priv lan = %s\n", hnat_priv->lan);
+
+	return count;
+}
+
+static int hnat_lan_if_read(struct seq_file *m, void *private)
+{
+	seq_printf(m, "%s\n", hnat_priv->lan);
+
+	return 0;
+}
+
+static int hnat_lan_if_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, hnat_lan_if_read, file->private_data);
+}
+
+static const struct file_operations hnat_lan_if_fops = {
+	.open = hnat_lan_if_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.write = hnat_lan_if_write,
+	.release = single_release,
+};
+
+static ssize_t hnat_lan2_if_write(struct file *file, const char __user *buffer,
+				  size_t count, loff_t *data)
+{
+	char buf[IFNAMSIZ];
+	char *p, *tmp;
+
+	if (count >= IFNAMSIZ)
+		return -EFAULT;
+
+	memset(buf, 0, IFNAMSIZ);
+	if (copy_from_user(buf, buffer, count))
+		return -EFAULT;
+
+	tmp = buf;
+	p = strsep(&tmp, "\n\r ");
+	if (!p || !*p)
+		return -EINVAL;
+
+	/* only update when the name actually changed */
+	if (strncmp(hnat_priv->lan2, p, IFNAMSIZ)) {
+		strscpy(hnat_priv->lan2, p, IFNAMSIZ);
+	}
+	pr_info("hnat_priv lan2 = %s\n", hnat_priv->lan2);
+
+	return count;
+}
+
+static int hnat_lan2_if_read(struct seq_file *m, void *private)
+{
+	seq_printf(m, "%s\n", hnat_priv->lan2);
+
+	return 0;
+}
+
+static int hnat_lan2_if_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, hnat_lan2_if_read, file->private_data);
+}
+
+static const struct file_operations hnat_lan2_if_fops = {
+	.open = hnat_lan2_if_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.write = hnat_lan2_if_write,
+	.release = single_release,
+};
+
+static ssize_t hnat_ppd_if_write(struct file *file, const char __user *buffer,
+				 size_t count, loff_t *data)
+{
+	char buf[IFNAMSIZ];
+	struct net_device *dev, *old_dev;
+	char *p, *tmp;
+
+	if (count >= IFNAMSIZ)
+		return -EFAULT;
+
+	memset(buf, 0, IFNAMSIZ);
+	if (copy_from_user(buf, buffer, count))
+		return -EFAULT;
+
+	tmp = buf;
+	p = strsep(&tmp, "\n\r ");
+	if (!p || !*p)
+		return -EINVAL;
+
+	dev = dev_get_by_name(&init_net, p);
+	if (!dev) {
+		pr_err("%s : no such device: %s !\n", __func__, p);
+		return -ENODEV;
+	}
+
+	rtnl_lock();
+	/* only update when the dev actually changed */
+	if (hnat_priv->g_ppdev == dev &&
+		!strncmp(hnat_priv->ppd, p, IFNAMSIZ)) {
+		rtnl_unlock();
+		dev_put(dev);
+
+		goto end;
+	}
+
+	old_dev = hnat_priv->g_ppdev;
+	hnat_priv->g_ppdev = dev;
+
+	strscpy(hnat_priv->ppd, p, IFNAMSIZ);
+	rtnl_unlock();
+
+	if (old_dev)
+		dev_put(old_dev);
+end:
+	pr_info("hnat_priv ppd = %s\n", hnat_priv->ppd);
 
 	return count;
 }
 
 static int hnat_ppd_if_read(struct seq_file *m, void *private)
 {
-	pr_info("hnat_priv ppd = %s\n", hnat_priv->ppd);
-
-	if (hnat_priv->g_ppdev) {
-		pr_info("hnat_priv g_ppdev name = %s\n",
-			hnat_priv->g_ppdev->name);
-	} else {
-		pr_info("hnat_priv g_ppdev is null!\n");
-	}
+	seq_printf(m, "%s\n", hnat_priv->ppd);
+	seq_printf(m, "g_ppdev=%s\n",
+		   hnat_priv->g_ppdev ? hnat_priv->g_ppdev->name : "NULL");
 
 	return 0;
 }
@@ -2559,6 +2807,54 @@ static const struct file_operations hnat_ppd_if_fops = {
 	.write = hnat_ppd_if_write,
 	.release = single_release,
 };
+
+#define DEFINE_HNAT_INT_DEBUGFS(name, var)					\
+static int hnat_##name##_read(struct seq_file *m, void *private)		\
+{										\
+	seq_printf(m, "%d\n", var);						\
+	return 0;								\
+}										\
+static int hnat_##name##_open(struct inode *inode, struct file *file)		\
+{										\
+	return single_open(file, hnat_##name##_read, file->private_data);	\
+}										\
+static ssize_t hnat_##name##_write(struct file *file, const char __user *buffer, \
+				   size_t count, loff_t *data)			\
+{										\
+	char buf[16] = {0};							\
+	long val;								\
+										\
+	if (count >= sizeof(buf) || copy_from_user(buf, buffer, count))		\
+		return -EFAULT;							\
+										\
+	if (kstrtol(buf, 0, &val))						\
+		return -EINVAL;							\
+										\
+	if (var != (int)val) {						\
+		var = val;							\
+		/* Already bound flows keep the queue id stored in their PPE\
+		 * entry: once an entry is written the hardware forwards those\
+		 * packets itself and the kernel never runs this classification\
+		 * again, so drop the bindings to make the new value apply.\
+		 */\
+		foe_clear_all_bind_entries();						\
+	}								\
+									\
+	pr_info("hnat " #name " = %ld\n", val);					\
+	return count;								\
+}										\
+static const struct file_operations hnat_##name##_fops = {			\
+	.open = hnat_##name##_open,						\
+	.read = seq_read,							\
+	.llseek = seq_lseek,							\
+	.write = hnat_##name##_write,						\
+	.release = single_release,						\
+};
+
+DEFINE_HNAT_INT_DEBUGFS(short_pkt_toggle, short_pkt_toggle)
+DEFINE_HNAT_INT_DEBUGFS(short_pkt_qid, short_pkt_qid)
+DEFINE_HNAT_INT_DEBUGFS(short_pkt_len, short_pkt_len)
+#undef DEFINE_HNAT_INT_DEBUGFS
 
 static int hnat_mape_toggle_read(struct seq_file *m, void *private)
 {
@@ -2617,7 +2913,7 @@ static const struct file_operations hnat_mape_toggle_fops = {
 
 static int hnat_hook_toggle_read(struct seq_file *m, void *private)
 {
-	pr_info("value=%d, hook is %s now!\n", hook_toggle, (hook_toggle) ? "enabled" : "disabled");
+	seq_printf(m, "%s\n", (hook_toggle) ? "enabled" : "disabled");
 
 	return 0;
 }
@@ -3274,18 +3570,7 @@ static void hnat_qos_toggle_usage(void)
 
 static int hnat_qos_toggle_read(struct seq_file *m, void *private)
 {
-	if (qos_toggle == 0) {
-		pr_info("HQoS is disabled now!\n");
-	} else if (qos_toggle == 1) {
-		pr_info("HQoS is enabled now!\n");
-		pr_info("HQoS uplink is %s now!\n",
-				qos_ul_toggle ? "enabled" : "disabled");
-		pr_info("HQoS downlink is %s now!\n",
-				qos_dl_toggle ? "enabled" : "disabled");
-	} else if (qos_toggle == 2) {
-		pr_info("Per-port-per-queue mode is enabled!\n");
-	}
-
+	seq_printf(m, "%d\n", qos_toggle);
 	return 0;
 }
 
@@ -4067,6 +4352,8 @@ int hnat_init_debugfs(struct mtk_hnat *h)
 			    &cpu_reason_fops);
 	debugfs_create_file("hnat_entry", 0444, root, h,
 			    &hnat_entry_fops);
+	debugfs_create_file("hnat_stats", 0444, root, h,
+			    &hnat_stats_fops);
 	debugfs_create_file("hnat_setting", 0444, root, h,
 			    &hnat_setting_fops);
 	debugfs_create_file("mcast_table", 0444, root, h,
@@ -4085,6 +4372,12 @@ int hnat_init_debugfs(struct mtk_hnat *h)
 			    &hnat_qos_toggle_fops);
 	debugfs_create_file("hnat_version", 0444, root, h,
 			    &hnat_version_fops);
+	debugfs_create_file("hnat_wan_if", 0444, root, h,
+			    &hnat_wan_if_fops);
+	debugfs_create_file("hnat_lan_if", 0444, root, h,
+			    &hnat_lan_if_fops);
+	debugfs_create_file("hnat_lan2_if", 0444, root, h,
+			    &hnat_lan2_if_fops);
 	debugfs_create_file("hnat_ppd_if", 0444, root, h,
 			    &hnat_ppd_if_fops);
 	debugfs_create_file("static_entry", 0444, root, h,
@@ -4120,7 +4413,7 @@ int hnat_init_debugfs(struct mtk_hnat *h)
 		debugfs_create_symlink(name, root, name_symlink);
 	}
 
-	for (i = 0; i < MTK_QDMA_NUM_QUEUES; i++) {
+	for (i = 0; i < HNAT_QDMA_NUM_QUEUES; i++) {
 		ret = snprintf(name, sizeof(name), "qdma_txq%ld", i);
 		if (ret != strlen(name)) {
 			ret = -ENOMEM;
@@ -4134,6 +4427,13 @@ int hnat_init_debugfs(struct mtk_hnat *h)
 		}
 		debugfs_create_symlink(name, root, name_symlink);
 	}
+
+	debugfs_create_file("short_pkt_toggle", 0644, root, h,
+			    &hnat_short_pkt_toggle_fops);
+	debugfs_create_file("short_pkt_qid", 0644, root, h,
+			    &hnat_short_pkt_qid_fops);
+	debugfs_create_file("short_pkt_len", 0644, root, h,
+			    &hnat_short_pkt_len_fops);
 
 	return 0;
 

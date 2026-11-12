@@ -4,18 +4,40 @@
 
 hqos_path="/sys/kernel/debug/hnat"
 
+# Defaults, also used when the config has no 'global' section at all.
+hnat=1
+hqos=0
+txq_num=16
+sch0_enable=0
+sch0_mode=0
+sch0_bw=1000000
+sch1_enable=0
+sch1_mode=0
+sch1_bw=1000000
+
+# Look the section up by TYPE instead of by name: the shipped config uses an
+# anonymous section ('config global' with no section name), which the previous
+# `config_get <var> global <opt>` name lookup could never match. Every option
+# silently fell back to its default, so the hqos=1 branch was unreachable and
+# configured rates never reached the hardware (upstream issue #87).
+load_global() {
+	local section="$1"
+
+	config_get hnat "$section" hnat 1
+	config_get hqos "$section" hqos 0
+	config_get txq_num "$section" txq_num 16
+
+	config_get sch0_enable "$section" sch0_enable 0
+	config_get sch0_mode "$section" sch0_mode 0
+	config_get sch0_bw "$section" sch0_bw 1000000
+
+	config_get sch1_enable "$section" sch1_enable 0
+	config_get sch1_mode "$section" sch1_mode 0
+	config_get sch1_bw "$section" sch1_bw 1000000
+}
+
 config_load mtkhqos
-config_get hnat global hnat 1
-config_get hqos global hqos 0
-config_get txq_num global txq_num 16
-
-config_get sch0_enable global sch0_enable 0
-config_get sch0_mode global sch0_mode 0
-config_get sch0_bw global sch0_bw 1000000
-
-config_get sch1_enable global sch1_enable 0
-config_get sch1_mode global sch1_mode 0
-config_get sch1_bw global sch1_bw 1000000
+config_foreach load_global global
 
 dbg() {
 	logger -t "mtkhqos_util" "$1"

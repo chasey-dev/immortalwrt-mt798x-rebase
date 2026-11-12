@@ -3,12 +3,12 @@
 		"description": "Grant UCI access for luci-app-turboacc",
 		"read": {
 			"ubus": {
-				"luci.turboacc": [ "getSystemFeatures", "getFastPathStat", "getFullConeStat", "getTCPCCAStat", "getMTKPPEStat" ]
+				"luci.turboacc": [ "getSystemFeatures", "getFastPathStat", "getFullConeStat", "getFullConeCounters", "getFullConeFlows", "getTCPCCAStat", "getMTKPPEStat" ]
 			},
-			"uci": [ "turboacc" ]
+			"uci": [ "turboacc", "firewall" ]
 		},
 		"write": {
-			"uci": [ "turboacc" ]
+			"uci": [ "turboacc", "firewall" ]
 		}
 	}
 }

@@ -1,0 +1,194 @@
+--- a/drivers/spi/spi-mt65xx.c
++++ b/drivers/spi/spi-mt65xx.c
+@@ -4,6 +4,7 @@
+  * Author: Leilk Liu <leilk.liu@mediatek.com>
+  */
+ 
++#include <linux/bitfield.h>
+ #include <linux/clk.h>
+ #include <linux/device.h>
+ #include <linux/err.h>
+@@ -79,6 +80,7 @@
+ #define SPI_CMD_IPM_GET_TICKDLY_OFFSET	22
+ 
+ #define SPI_CMD_IPM_GET_TICKDLY_MASK	GENMASK(24, 22)
++#define SPI_CMD_IPM_V59_GET_TICKDLY_MASK	GENMASK(28, 22)
+ 
+ #define PIN_MODE_CFG(x)	((x) / 2)
+ 
+@@ -118,6 +120,8 @@
+  * @dma_ext:		DMA address extension supported
+  * @no_need_unprepare:	Don't unprepare the SPI clk during runtime
+  * @ipm_design:		Adjust/extend registers to support IPM design IP features
++ * @tick_dly:		delay affected data read timing
++ * @tick_dly_mask:	Tick delay field of SPI_CMD_REG, IPM designs only
+  */
+ struct mtk_spi_compatible {
+ 	bool need_pad_sel;
+@@ -126,6 +130,8 @@ struct mtk_spi_compatible {
+ 	bool dma_ext;
+ 	bool no_need_unprepare;
+ 	bool ipm_design;
++	u32 tick_dly;
++	u32 tick_dly_mask;
+ };
+ 
+ /**
+@@ -175,16 +181,31 @@ struct mtk_spi {
+ 	u32 get_tick_dly;
+ };
+ 
+-static const struct mtk_spi_compatible mtk_common_compat;
++static const struct mtk_spi_compatible mtk_common_compat = {
++	.tick_dly = 2,
++	.tick_dly_mask = SPI_CFG1_GET_TICK_DLY_MASK_V1,
++};
+ 
+ static const struct mtk_spi_compatible mt2712_compat = {
+ 	.must_tx = true,
++	.tick_dly = 2,
++	.tick_dly_mask = SPI_CFG1_GET_TICK_DLY_MASK_V1,
+ };
+ 
+ static const struct mtk_spi_compatible mtk_ipm_compat = {
+ 	.enhance_timing = true,
+ 	.dma_ext = true,
+ 	.ipm_design = true,
++	.tick_dly = 2,
++	.tick_dly_mask = SPI_CMD_IPM_GET_TICKDLY_MASK,
++};
++
++static const struct mtk_spi_compatible mt7987_compat = {
++	.enhance_timing = true,
++	.dma_ext = true,
++	.ipm_design = true,
++	.tick_dly = 2,
++	.tick_dly_mask = SPI_CMD_IPM_V59_GET_TICKDLY_MASK,
+ };
+ 
+ static const struct mtk_spi_compatible mt6765_compat = {
+@@ -192,22 +213,30 @@ static const struct mtk_spi_compatible m
+ 	.must_tx = true,
+ 	.enhance_timing = true,
+ 	.dma_ext = true,
++	.tick_dly = 2,
++	.tick_dly_mask = SPI_CFG1_GET_TICK_DLY_MASK,
+ };
+ 
+ static const struct mtk_spi_compatible mt7622_compat = {
+ 	.must_tx = true,
+ 	.enhance_timing = true,
++	.tick_dly = 2,
++	.tick_dly_mask = SPI_CFG1_GET_TICK_DLY_MASK,
+ };
+ 
+ static const struct mtk_spi_compatible mt8173_compat = {
+ 	.need_pad_sel = true,
+ 	.must_tx = true,
++	.tick_dly = 2,
++	.tick_dly_mask = SPI_CFG1_GET_TICK_DLY_MASK_V1,
+ };
+ 
+ static const struct mtk_spi_compatible mt8183_compat = {
+ 	.need_pad_sel = true,
+ 	.must_tx = true,
+ 	.enhance_timing = true,
++	.tick_dly = 2,
++	.tick_dly_mask = SPI_CFG1_GET_TICK_DLY_MASK,
+ };
+ 
+ static const struct mtk_spi_compatible mt6893_compat = {
+@@ -216,6 +245,8 @@ static const struct mtk_spi_compatible m
+ 	.enhance_timing = true,
+ 	.dma_ext = true,
+ 	.no_need_unprepare = true,
++	.tick_dly = 2,
++	.tick_dly_mask = SPI_CFG1_GET_TICK_DLY_MASK,
+ };
+ 
+ static const struct of_device_id mtk_spi_of_match[] = {
+@@ -240,6 +271,9 @@ static const struct of_device_id mtk_spi
+ 	{ .compatible = "mediatek,mt7629-spi",
+ 		.data = (void *)&mt7622_compat,
+ 	},
++	{ .compatible = "mediatek,mt7987-spi",
++	  	.data = (void *)&mt7987_compat,
++	},
+ 	{ .compatible = "mediatek,mt8135-spi",
+ 		.data = (void *)&mtk_common_compat,
+ 	},
+@@ -343,8 +377,8 @@ static int mtk_spi_set_hw_cs_timing(stru
+ static int mtk_spi_hw_init(struct spi_controller *host,
+ 			   struct spi_device *spi)
+ {
++	u32 reg_val, tickdly, tickdly_mask, tickdly_reg;
+ 	u16 cpha, cpol;
+-	u32 reg_val;
+ 	struct mtk_spi *mdata = spi_controller_get_devdata(host);
+ 
+ 	cpha = spi->mode & SPI_CPHA ? 1 : 0;
+@@ -417,27 +451,14 @@ static int mtk_spi_hw_init(struct spi_co
+ 		       mdata->base + SPI_PAD_SEL_REG);
+ 
+ 	/* tick delay */
+-	if (mdata->dev_comp->enhance_timing) {
+-		if (mdata->dev_comp->ipm_design) {
+-			reg_val = readl(mdata->base + SPI_CMD_REG);
+-			reg_val &= ~SPI_CMD_IPM_GET_TICKDLY_MASK;
+-			reg_val |= ((mdata->get_tick_dly & 0x7)
+-				    << SPI_CMD_IPM_GET_TICKDLY_OFFSET);
+-			writel(reg_val, mdata->base + SPI_CMD_REG);
+-		} else {
+-			reg_val = readl(mdata->base + SPI_CFG1_REG);
+-			reg_val &= ~SPI_CFG1_GET_TICK_DLY_MASK;
+-			reg_val |= ((mdata->get_tick_dly & 0x7)
+-				    << SPI_CFG1_GET_TICK_DLY_OFFSET);
+-			writel(reg_val, mdata->base + SPI_CFG1_REG);
+-		}
+-	} else {
+-		reg_val = readl(mdata->base + SPI_CFG1_REG);
+-		reg_val &= ~SPI_CFG1_GET_TICK_DLY_MASK_V1;
+-		reg_val |= ((mdata->get_tick_dly & 0x3)
+-			    << SPI_CFG1_GET_TICK_DLY_OFFSET_V1);
+-		writel(reg_val, mdata->base + SPI_CFG1_REG);
+-	}
++	tickdly = mdata->get_tick_dly;
++	tickdly_mask = mdata->dev_comp->tick_dly_mask;
++	tickdly_reg = mdata->dev_comp->ipm_design ? SPI_CMD_REG : SPI_CFG1_REG;
++
++	reg_val = readl(mdata->base + tickdly_reg);
++	reg_val &= ~tickdly_mask;
++	reg_val |= field_prep(tickdly_mask, tickdly);
++	writel(reg_val, mdata->base + tickdly_reg);
+ 
+ 	/* set hw cs timing */
+ 	mtk_spi_set_hw_cs_timing(spi);
+@@ -868,10 +889,12 @@ static int mtk_spi_append_caldata(struct
+ {
+ 	struct spi_cal_target *cal_target = kmalloc(sizeof(*cal_target), GFP_KERNEL);
+ 	struct mtk_spi *mdata = spi_controller_get_devdata(ctlr);
++	u32 mask;
+ 
++	mask = mdata->dev_comp->tick_dly_mask;
+ 	cal_target->cal_item = &mdata->get_tick_dly;
+ 	cal_target->cal_min = 0;
+-	cal_target->cal_max = 7;
++	cal_target->cal_max = (mask >> __ffs(mask));
+ 	cal_target->step = 1;
+ 
+ 	list_add(&cal_target->list, ctlr->cal_target);
+@@ -1172,12 +1195,11 @@ static int mtk_spi_probe(struct platform
+ 	host->append_caldata = mtk_spi_append_caldata;
+ 
+ 	mdata = spi_controller_get_devdata(host);
++	mdata->dev_comp = device_get_match_data(dev);
+ 
+ 	/* Set device configs to default first. Calibrate it later. */
+ 	mdata->sample_sel = 0;
+-	mdata->get_tick_dly = 2;
+-
+-	mdata->dev_comp = device_get_match_data(dev);
++	mdata->get_tick_dly = mdata->dev_comp->tick_dly;
+ 
+ 	if (mdata->dev_comp->enhance_timing)
+ 		host->mode_bits |= SPI_CS_HIGH;

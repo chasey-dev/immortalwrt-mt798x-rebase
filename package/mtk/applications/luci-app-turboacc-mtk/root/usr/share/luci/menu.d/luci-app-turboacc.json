@@ -6,8 +6,12 @@
 			"path": "turboacc"
 		},
 		"depends": {
-			"acl": [ "luci-app-turboacc" ],
-			"uci": { "turboacc": true }
+			"acl": [
+				"luci-app-turboacc"
+			],
+			"uci": {
+				"turboacc": true
+			}
 		}
 	}
 }

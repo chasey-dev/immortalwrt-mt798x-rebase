@@ -1,0 +1,61 @@
+---
+[v1] arm64: dts: mediatek: mt7988: add generic sram pool node
+
+---
+v1: Add generic SRAM pool node to the mt7988a.dtsi.
+---
+
+From 306e2cecc489f41b753e8de0b14f1ab6bbd50db4 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Tue, 6 Oct 2026 08:57:00 +0800
+Subject: [PATCH] arm64: dts: mediatek: mt7988: add generic sram pool node
+
+This change was referenced from a part of the following patch [1].
+
+[1] https://github.com/torvalds/linux/commit/65f0e3970143ec5d24271a51e0bc8c0588383280
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ arch/arm64/boot/dts/mediatek/mt7988a.dtsi | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+index e03475a..0b2a855 100644
+--- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
+@@ -1128,8 +1128,7 @@ ethwarp: clock-controller@15031000 {
+ 
+ 		eth: ethernet@15100000 {
+ 			compatible = "mediatek,mt7988-eth";
+-			reg = <0 0x15100000 0 0x80000>,
+-			      <0 0x15400000 0 0x200000>;
++			reg = <0 0x15100000 0 0x80000>;
+ 			interrupts = <GIC_SPI 196 IRQ_TYPE_LEVEL_HIGH>,
+ 				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>,
+ 				     <GIC_SPI 198 IRQ_TYPE_LEVEL_HIGH>,
+@@ -1181,6 +1180,7 @@ eth: ethernet@15100000 {
+ 						 <&topckgen CLK_TOP_NET1PLL_D8_D4>,
+ 						 <&apmixedsys CLK_APMIXED_SGMPLL>,
+ 						 <&apmixedsys CLK_APMIXED_SGMPLL>;
++			sram = <&eth_sram>;
+ 			mediatek,ethsys = <&ethsys>;
+ 			mediatek,infracfg = <&topmisc>;
+ 			mediatek,wed = <&wed0>, <&wed1>, <&wed2>;
+@@ -1245,6 +1245,14 @@ i2p5gbe_led1: i2p5gbe-led1@1 {
+ 			};
+ 		};
+ 
++		eth_sram: sram@15400000 {
++			compatible = "mmio-sram";
++			reg = <0 0x15400000 0 0x200000>;
++			#address-cells = <1>;
++			#size-cells = <1>;
++			ranges = <0 0x15400000 0 0x200000>;
++		};
++
+ 		wo_ccif0: syscon@151a5000 {
+ 			compatible = "mediatek,mt7988-wo-ccif", "syscon";
+ 			reg = <0 0x151a5000 0 0x1000>;
+-- 
+2.45.2
+

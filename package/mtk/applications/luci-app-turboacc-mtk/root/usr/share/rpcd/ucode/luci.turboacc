@@ -5,7 +5,7 @@
 
 'use strict';
 
-import { access, open, stat, readfile } from 'fs';
+import { access, open, popen, stat, readfile } from 'fs';
 import { connect } from 'ubus';
 
 // Persistent ubus connection
@@ -74,7 +74,19 @@ const methods = {
 				fctype = 'nft_fullcone';
 			} else if (module_active('xt_FULLCONENAT')) {
 				fctype = 'xt_FULLCONENAT';
-			} else {
+			} else if (module_active('nft_masq')) {
+				// SONiC-style fullcone lives inside nft_masq.ko and is gated per
+				// zone, so a loaded module alone proves nothing - the running
+				// ruleset has to actually contain fullcone rules.
+				let nft = popen('nft list ruleset 2>/dev/null | grep -m1 fullcone');
+				if (nft) {
+					let line = nft.read('line');
+					if (line) fctype = 'SONiC Fullcone';
+					nft.close();
+				}
+			}
+
+			if (!fctype) {
 				// Only use popen as a fallback for Broadcom check
 				let ipt = popen('iptables -t nat -L zone_wan_postrouting 2>/dev/null');
 				if (ipt) {
@@ -120,6 +132,208 @@ const methods = {
 			}
 			fd.close();
 			return ppe_stat;
+		}
+	},
+
+	getFullConeCounters: {
+		call: function(req) {
+			let rows = [];
+			// Every fullcone rule carries a counter plus a comment that names the
+			// zone, the address family, the L4 protocol and the nat direction:
+			//   meta nfproto ipv4 meta l4proto udp counter packets 1 bytes 48 \
+			//     fullcone comment "!fw4: Handle wan IPv4 udp fullcone NAT srcnat traffic"
+			// Only the comment spells the protocol out - nft renders udplite/sctp/dccp
+			// as their numeric protocol ids in the rule itself.
+			let nft = popen('nft list ruleset 2>/dev/null | grep -i fullcone');
+			if (nft) {
+				for (let line = nft.read('line'); length(line); line = nft.read('line')) {
+					let c = match(line, /counter packets (\d+) bytes (\d+)/);
+					if (!c)
+						continue;
+
+					let zone, family, proto, direction;
+
+					// ucode's regex engine has no non-capturing groups, so the
+					// optional protocol is matched by trying the two shapes.
+					let h = match(line, /Handle (\S+) (IPv4|IPv6) (\S+) fullcone NAT (\S+) traffic/);
+					if (h) {
+						zone = h[1];
+						family = h[2];
+						proto = h[3];
+						direction = h[4];
+					}
+					else {
+						let h2 = match(line, /Handle (\S+) (IPv4|IPv6) fullcone NAT (\S+) traffic/);
+						if (!h2)
+							continue;
+
+						zone = h2[1];
+						family = h2[2];
+						proto = 'any';
+						direction = h2[3];
+					}
+
+					push(rows, {
+						zone: zone,
+						family: family,
+						proto: proto,
+						direction: direction,
+						packets: +c[1],
+						bytes: +c[2]
+					});
+				}
+				nft.close();
+			}
+
+			return { rows: rows };
+		}
+	},
+
+	getFullConeFlows: {
+		call: function(req) {
+			// Ports of the configured forwards - these flows are the user's own
+			// doing, not fullcone's. Ranges must be expanded because conntrack
+			// always carries a concrete port.
+			let excl = {};
+
+			let nft = popen('nft list chain inet fw4 dstnat_wan 2>/dev/null');
+			if (nft) {
+				for (let line = nft.read('line'); length(line); line = nft.read('line')) {
+					let m = match(line, /dport ([0-9]+)-([0-9]+)/);
+					if (m) {
+						let lo = +m[1];
+						let hi = +m[2];
+
+						for (let p = lo; p <= hi && p - lo < 64; p++)
+							excl[p] = true;
+						continue;
+					}
+
+					m = match(line, /dport ([0-9]+)/);
+					if (m)
+						excl[+m[1]] = true;
+				}
+				nft.close();
+			}
+
+			// Which L4 protocols actually traverse the fullcone rules. Anything else
+			// is plain masquerade. An empty set means the rules carry no protocol
+			// restriction, i.e. every protocol is fullcone. nft spells
+			// udplite/sctp/dccp as their numeric protocol ids.
+			let fproto = {};
+			let fc = popen('nft list ruleset 2>/dev/null | grep -i fullcone');
+			if (fc) {
+				for (let line = fc.read('line'); length(line); line = fc.read('line')) {
+					let m = match(line, /meta l4proto ([A-Za-z0-9]+)/);
+
+					if (!m)
+						continue;
+
+					let n = m[1];
+
+					fproto[(n == '136') ? 'udplite' : (n == '132') ? 'sctp' : (n == '33') ? 'dccp' : n] = true;
+				}
+				fc.close();
+			}
+			let all_proto = (length(fproto) == 0);
+
+			// The router's own WAN address: flows the router originates carry it as
+			// source and must not be taken for inbound traffic.
+			let wan = null;
+			let rt = popen('ip -4 route get 1.1.1.1 2>/dev/null | grep -o "src [0-9.]*"');
+			if (rt) {
+				let l = rt.read('line');
+				if (l) {
+					let t = split(trim(l), ' ');
+					wan = t[1];
+				}
+				rt.close();
+			}
+
+			let rows = [];
+			let inbound = 0;
+			let nexcl = 0;
+
+			let fd = open('/proc/net/nf_conntrack', 'r');
+			if (fd) {
+				for (let line = fd.read('line'); length(line); line = fd.read('line')) {
+					if (index(line, 'ipv4') != 0)
+						continue;
+
+					// conntrack pads its columns with several spaces; replace() only
+					// substitutes the first occurrence, so split on a regex.
+					let f = split(trim(line), /[ \t]+/);
+					let s1 = null, s2 = null, port = null;
+					let peer_port = null, host_port = null, packets = null, bytes = null;
+
+					for (let i = 0; i < length(f); i++) {
+						if (index(f[i], 'src=') == 0) {
+							if (s1 == null)
+								s1 = substr(f[i], 4);
+							else if (s2 == null)
+								s2 = substr(f[i], 4);
+						}
+						else if (index(f[i], 'sport=') == 0) {
+							if (peer_port == null)
+								peer_port = +substr(f[i], 6);
+							else if (host_port == null)
+								host_port = +substr(f[i], 6);
+						}
+						else if (index(f[i], 'dport=') == 0) {
+							if (port == null)
+								port = +substr(f[i], 6);
+						}
+						else if (index(f[i], 'packets=') == 0) {
+							if (packets == null)
+								packets = +substr(f[i], 8);
+						}
+						else if (index(f[i], 'bytes=') == 0) {
+							if (bytes == null)
+								bytes = +substr(f[i], 6);
+						}
+					}
+
+					if (s1 == null || s2 == null || port == null)
+						continue;
+
+					// inbound only: public source, ours in the reply tuple
+					if (match(s1, /^(192\.168\.|10\.|127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.)/))
+						continue;
+					if (wan != null && s1 == wan)
+						continue;
+					if (!match(s2, /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/))
+						continue;
+
+					// must go through the fullcone rules, not plain masquerade
+					if (!all_proto && fproto[f[2]] != true)
+						continue;
+
+					inbound++;
+
+					// a configured port forward explains this flow - not fullcone's doing
+					if (excl[port] == true) {
+						nexcl++;
+						continue;
+					}
+
+					if (length(rows) < 60) {
+						push(rows, {
+							peer: s1,
+							peer_port: peer_port,
+							host: s2,
+							host_port: host_port,
+							port: port,
+							proto: f[2],
+							ttl: (f[4] != null && !match(f[4], /=/)) ? +f[4] : 0,
+							packets: packets != null ? packets : 0,
+							bytes: bytes != null ? bytes : 0
+						});
+					}
+				}
+				fd.close();
+			}
+
+			return { rows: rows, inbound: inbound, forward: nexcl, wan: wan };
 		}
 	}
 };

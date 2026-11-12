@@ -62,3 +62,8 @@ feat(ucode): add get all device map support
 
 ## Acknowledgements
 HNAT support for external devices is adapted from [Padavanonly's repo](https://github.com/padavanonly/immortalwrt-mt798x-6.6). 
+
+## Documentation
+| Document | Description |
+|   :---   |   :---      |
+| [MTK-skb-mark-layout.md](MTK-skb-mark-layout.md) | MTK HNAT `skb->mark` bit layout, QDMA queue mask definitions (per NETSYS version), short-packet QoS decision truth tables, known pitfalls, and a checklist to re-verify after every MTK feeds sync. |

@@ -35,11 +35,11 @@
 #include "../mtk_eth_reset.h"
 
 #define do_ge2ext_fast(dev, skb)                                               \
-	((IS_LAN_GRP(dev) || IS_WAN(dev) || IS_PPD(dev)) && \
+	((IS_LAN_GRP(dev) || IS_WAN(dev) || IS_PPD(dev) || IS_RX_PPD(dev)) && \
 	 skb_hnat_is_hashed(skb) && \
 	 skb_hnat_reason(skb) == HIT_BIND_FORCE_TO_CPU)
 #define do_ext2ge_fast_learn(dev, skb)                                         \
-	(IS_PPD(dev) &&                                                        \
+	((IS_PPD(dev) || IS_RX_PPD(dev)) &&                                                        \
 	 (skb_hnat_sport(skb) == NR_PDMA_PORT ||                           \
 	  skb_hnat_sport(skb) == NR_QDMA_PORT) &&                       \
 	  ((get_dev_from_index(skb->vlan_tci & VLAN_VID_MASK)) ||   \
@@ -163,20 +163,58 @@ static inline struct net_device *get_wandev_from_index(int index)
 	return NULL;
 }
 
+static inline bool extif_prefix_match(const char *name)
+{
+	int i;
+	int len;
+
+	for (i = 0; i < MAX_EXT_PREFIX_NUM && hnat_priv->ext_if_prefix[i]; i++) {
+		len = strlen(hnat_priv->ext_if_prefix[i]);
+		if (len && !strncmp(name, hnat_priv->ext_if_prefix[i], len))
+			return true;
+	}
+
+	return false;
+}
+
 static inline int extif_set_dev(struct net_device *dev)
 {
 	int i;
 	struct extdev_entry *ext_entry;
 
+	/* find from existing ext_if first */
 	for (i = 0; i < MAX_EXT_DEVS && hnat_priv->ext_if[i]; i++) {
 		ext_entry = hnat_priv->ext_if[i];
-		if (!strcmp(dev->name, ext_entry->name) && !ext_entry->dev) {
+		if (!strcmp(dev->name, ext_entry->name)) {
+			if (ext_entry->dev)
+				return -1;
+
 			dev_hold(dev);
 			ext_entry->dev = dev;
 			pr_info("%s(%s)\n", __func__, dev->name);
 
 			return ext_entry->dev->ifindex;
 		}
+	}
+
+	/* fallback to match rules */
+	if (extif_prefix_match(dev->name)) {
+		/* filter GMACs */
+		struct device_node *np = dev_of_node(&dev->dev);
+		if (np && of_device_is_compatible(np, "mediatek,eth-mac"))
+			return -1;
+
+		ext_entry = kzalloc(sizeof(*ext_entry), GFP_KERNEL);
+		if (!ext_entry)
+			return -1;
+
+		strscpy(ext_entry->name, dev->name, IFNAMSIZ);
+		dev_hold(dev);
+		ext_entry->dev = dev;
+		ext_if_add(ext_entry);
+
+		pr_info("%s: prefix match (%s)\n", __func__, dev->name);
+		return dev->ifindex;
 	}
 
 	return -1;
@@ -460,12 +498,19 @@ int nf_hnat_netdevice_event(struct notifier_block *unused, unsigned long event,
 			dev_put(dev);
 		}
 
+		if (g_rx_ppdev == dev) {
+			WRITE_ONCE(g_rx_ppdev, NULL);
+			dev_put(dev);
+		}
+
 		break;
 	case NETDEV_REGISTER:
 		if (IS_PPD(dev) && !hnat_priv->g_ppdev)
 			hnat_priv->g_ppdev = dev_get_by_name(&init_net, hnat_priv->ppd);
 		if (IS_WAN(dev) && !hnat_priv->g_wandev)
 			hnat_priv->g_wandev = dev_get_by_name(&init_net, hnat_priv->wan);
+		if (IS_RX_PPD(dev) && !g_rx_ppdev)
+			g_rx_ppdev = dev_get_by_name(&init_net, hnat_priv->rx_ppd);
 		break;
 	case MTK_FE_RESET_NAT_DONE:
 		pr_info("[%s] HNAT driver starts to do warm init !\n", __func__);
@@ -727,11 +772,63 @@ static void fix_skb_packet_type(struct sk_buff *skb, struct net_device *dev,
 	}
 }
 
+static int hnat_ppd_xmit(struct sk_buff *skb, struct net_device *dev)
+{
+	struct sk_buff *orig_skb = skb;
+	struct netdev_queue *txq;
+	bool again = false;
+	u16 queue;
+	int ret;
+
+	if (unlikely(!dev || !netif_running(dev) || !dev->real_num_tx_queues)) {
+		kfree_skb(skb);
+		return -ENETDOWN;
+	}
+
+	queue = dev->real_num_tx_queues - 1;
+	skb->dev = dev;
+	skb_set_queue_mapping(skb, queue);
+
+	skb = validate_xmit_skb_list(skb, dev, &again);
+	if (unlikely(skb != orig_skb || again)) {
+		kfree_skb_list(skb);
+		return -ENOMEM;
+	}
+
+	if (unlikely(dev_xmit_recursion())) {
+		kfree_skb(skb);
+		return -ENETDOWN;
+	}
+
+	txq = netdev_get_tx_queue(dev, queue);
+
+	local_bh_disable();
+	dev_xmit_recursion_inc();
+	HARD_TX_LOCK(dev, txq, smp_processor_id());
+	if (unlikely(netif_xmit_frozen_or_drv_stopped(txq))) {
+		ret = NETDEV_TX_BUSY;
+	} else {
+		ret = netdev_start_xmit(skb, dev, txq, false);
+	}
+	HARD_TX_UNLOCK(dev, txq);
+	dev_xmit_recursion_dec();
+	local_bh_enable();
+
+	if (unlikely(!dev_xmit_complete(ret))) {
+		kfree_skb(skb);
+		return -ENETDOWN;
+	}
+
+	return 0;
+}
+
 static unsigned int do_hnat_ext_to_ge(struct sk_buff *skb, const struct net_device *in,
 				      const char *func)
 {
 	if (hnat_priv->g_ppdev && hnat_priv->g_ppdev->flags & IFF_UP) {
+		u16 vlan_proto;
 		u16 vlan_id = 0;
+		u16 vlan_tci;
 
 		skb_set_network_header(skb, 0);
 		skb_push(skb, ETH_HLEN);
@@ -748,11 +845,12 @@ static unsigned int do_hnat_ext_to_ge(struct sk_buff *skb, const struct net_devi
 		skb->vlan_proto = htons(ETH_P_8021Q);
 		skb->vlan_tci =
 			(VLAN_CFI_MASK | (in->ifindex & VLAN_VID_MASK));
-		skb->dev = hnat_priv->g_ppdev;
-		dev_queue_xmit(skb);
+		vlan_proto = ntohs(skb->vlan_proto);
+		vlan_tci = skb->vlan_tci;
+		hnat_ppd_xmit(skb, hnat_priv->g_ppdev);
 		if (debug_level >= 7) {
 			trace_printk("%s: vlan_prot=0x%x, vlan_tci=%x, in->name=%s, skb->dev->name=%s\n",
-				     __func__, ntohs(skb->vlan_proto), skb->vlan_tci,
+				     __func__, vlan_proto, vlan_tci,
 				     in->name, hnat_priv->g_ppdev->name);
 			trace_printk("%s: called from %s successfully\n", __func__, func);
 		}
@@ -954,7 +1052,7 @@ static inline void hnat_set_iif(const struct nf_hook_state *state,
 		skb_hnat_iface(skb) = FOE_MAGIC_GE_LAN;
 	} else if (IS_LAN2(state->in)) {
 		skb_hnat_iface(skb) = FOE_MAGIC_GE_LAN2;
-	} else if (IS_PPD(state->in)) {
+	} else if (IS_PPD(state->in) || IS_RX_PPD(state->in)) {
 		skb_hnat_iface(skb) = FOE_MAGIC_GE_PPD;
 	} else if (IS_EXT(state->in)) {
 		skb_hnat_iface(skb) = FOE_MAGIC_EXT;
@@ -1046,7 +1144,7 @@ static unsigned int do_hnat_mape_w2l_fast(struct sk_buff *skb, const struct net_
 		skb->dev = hnat_priv->g_ppdev;
 		skb->protocol = htons(ETH_P_IP);
 
-		dev_queue_xmit(skb);
+		hnat_ppd_xmit(skb, hnat_priv->g_ppdev);
 
 		return 0;
 	}
@@ -1254,6 +1352,25 @@ mtk_hnat_ipv6_nf_pre_routing(void *priv, struct sk_buff *skb,
 	if (!skb)
 		goto drop;
 
+	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in))) {
+		if (unlikely(!(g_rx_ppdev && g_rx_ppdev->flags & IFF_UP))) {
+			if (debug_level >= 7)
+				pr_debug("%s:from %s, but g_rx_ppdev not ready!", __func__, state->in->name);
+			return NF_ACCEPT;
+		}
+
+		if (unlikely(skb_shinfo(skb)->frag_list))
+			return NF_ACCEPT;
+
+		if (unlikely(skb_headroom(skb) < (FOE_INFO_LEN + ETH_HLEN)) &&
+			 unlikely(skb_cow(skb, FOE_INFO_LEN + ETH_HLEN)))
+			return NF_ACCEPT;
+
+		skb_hnat_alg(skb) = 0;
+		skb_hnat_filled(skb) = 0;
+		skb_hnat_magic_tag(skb) = HNAT_MAGIC_TAG;
+	}
+
 	if (!is_magic_tag_valid(skb))
 		return NF_ACCEPT;
 
@@ -1371,6 +1488,25 @@ mtk_hnat_ipv4_nf_pre_routing(void *priv, struct sk_buff *skb,
 	if (!skb)
 		goto drop;
 
+	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in))) {
+		if (unlikely(!(g_rx_ppdev && g_rx_ppdev->flags & IFF_UP))) {
+			if (debug_level >= 7)
+				pr_debug("%s:from %s, but g_rx_ppdev not ready!", __func__, state->in->name);
+			return NF_ACCEPT;
+		}
+
+		if (unlikely(skb_shinfo(skb)->frag_list))
+			return NF_ACCEPT;
+
+		if (unlikely(skb_headroom(skb) < (FOE_INFO_LEN + ETH_HLEN)) &&
+			 unlikely(skb_cow(skb, FOE_INFO_LEN + ETH_HLEN)))
+			return NF_ACCEPT;
+
+		skb_hnat_alg(skb) = 0;
+		skb_hnat_filled(skb) = 0;
+		skb_hnat_magic_tag(skb) = HNAT_MAGIC_TAG;
+	}
+
 	if (!is_magic_tag_valid(skb))
 		return NF_ACCEPT;
 
@@ -1455,6 +1591,7 @@ static int hnat_bridge_flood_check(struct sk_buff *skb,
 				    const struct net_device *in)
 {
 	struct flow_offload_hw_path hw_path = {};
+	struct foe_entry *entry;
 	struct net_device *br_dev;
 	u16 vid = 0;
 
@@ -1462,6 +1599,18 @@ static int hnat_bridge_flood_check(struct sk_buff *skb,
 		return 0;
 
 	if (skb_hnat_alg(skb) || !skb_hnat_reason_ready_bind(skb))
+		return 0;
+
+	if (skb_hnat_entry(skb) >= hnat_priv->foe_etry_num ||
+	    skb_hnat_ppe(skb) >= CFG_PPE_NUM)
+		return 0;
+
+	entry = &hnat_priv->foe_table_cpu[skb_hnat_ppe(skb)][skb_hnat_entry(skb)];
+	/* only check for L2 Bridge type pkts.
+	 * here ususally Rx PPD -> GE triggers FDB error,
+	 * but they are L3 pkts and Ext HNAT needs the ping-pong path.
+	 */
+	if (entry->udib1.pkt_type != L2_BRIDGE)
 		return 0;
 
 	if (!is_unicast_ether_addr(eth_hdr(skb)->h_dest))
@@ -1504,6 +1653,25 @@ mtk_hnat_br_nf_local_in(void *priv, struct sk_buff *skb,
 
 	if (!skb)
 		goto drop;
+
+	if (unlikely(!IS_WHNAT(state->in) && IS_EXT(state->in))) {
+		if (unlikely(!(g_rx_ppdev && g_rx_ppdev->flags & IFF_UP))) {
+			if (debug_level >= 7)
+				pr_debug("%s:from %s, but g_rx_ppdev not ready!", __func__, state->in->name);
+			return NF_ACCEPT;
+		}
+
+		if (unlikely(skb_shinfo(skb)->frag_list))
+			return NF_ACCEPT;
+
+		if (unlikely(skb_headroom(skb) < (FOE_INFO_LEN + ETH_HLEN)) &&
+			 unlikely(skb_cow(skb, FOE_INFO_LEN + ETH_HLEN)))
+			return NF_ACCEPT;
+
+		skb_hnat_alg(skb) = 0;
+		skb_hnat_filled(skb) = 0;
+		skb_hnat_magic_tag(skb) = HNAT_MAGIC_TAG;
+	}
 
 	if (!is_magic_tag_valid(skb))
 		return NF_ACCEPT;
@@ -2256,10 +2424,10 @@ hnat_skip_fill_inner:
 		entry.ipv6_5t_route.pppoe_id = hw_path.pppoe_sid;
 	}
 
-	if (IS_HQOS_MODE || (skb->mark & MTK_QDMA_QUEUE_MASK) >= MAX_PPPQ_QUEUE_NUM)
-		qid = skb->mark & (MTK_QDMA_QUEUE_MASK);
+	if (IS_HQOS_MODE || (skb->mark & HNAT_QDMA_QUEUE_MASK) >= MAX_PPPQ_QUEUE_NUM)
+		qid = skb->mark & (HNAT_QDMA_QUEUE_MASK);
 	else if (IS_PPPQ_MODE && IS_PPPQ_PATH(dev, skb))
-		qid = ((port_id >= 0) ? MTK_GMAC_ID_MAX + port_id : mac->id) & MTK_QDMA_QUEUE_MASK;
+		qid = ((port_id >= 0) ? MTK_GMAC_ID_MAX + port_id : mac->id) & HNAT_QDMA_QUEUE_MASK;
 	else
 		qid = 0;
 
@@ -2861,7 +3029,7 @@ hnat_entry_bind:
 			entry.ipv4_hnapt.act_dp |= dev->ifindex & UDF_PINGPONG_IFIDX;
 		}
 	} else if (IS_EXT(dev) && (FROM_GE_PPD(skb) || FROM_GE_LAN_GRP(skb) ||
-		   FROM_GE_WAN(skb) || FROM_GE_VIRTUAL(skb) || FROM_WED(skb))) {
+		   FROM_GE_WAN(skb) || FROM_GE_VIRTUAL(skb) || FROM_WED(skb) || FROM_EXT(skb))) {
 		if (!hnat_priv->data->whnat && IS_GMAC1_MODE) {
 			entry.bfib1.vpm = 1;
 			entry.bfib1.vlan_layer = 1;
@@ -2898,14 +3066,79 @@ hnat_entry_bind:
 		return -1;
 	}
 
-	if (IS_HQOS_MODE || (skb->mark & MTK_QDMA_QUEUE_MASK) >= MAX_PPPQ_QUEUE_NUM)
-		qid = skb->mark & (MTK_QDMA_QUEUE_MASK);
+	if (IS_HQOS_MODE || (skb->mark & HNAT_QDMA_QUEUE_MASK) >= MAX_PPPQ_QUEUE_NUM)
+		qid = skb->mark & (HNAT_QDMA_QUEUE_MASK);
 	else if (IS_PPPQ_MODE && IS_PPPQ_PATH(dev, skb))
-		qid = ((port_id >= 0) ? MTK_GMAC_ID_MAX + port_id : mac->id) & MTK_QDMA_QUEUE_MASK;
+		qid = ((port_id >= 0) ? MTK_GMAC_ID_MAX + port_id : mac->id) & HNAT_QDMA_QUEUE_MASK;
 	else
 		qid = 0;
 
-	if (IS_PPPQ_MODE && IS_PPPQ_PATH(dev, skb) && port_id >= 0) {
+	/* Short-packet QoS: TCP ACKs and small UDP packets are dispatched to a
+	 * high-priority queue on any path (no PPPQ requirement), so games and
+	 * other latency-sensitive small flows get prioritized even on 2.5G
+	 * direct ports.
+	 */
+	/* Flows that already carry an explicit queue id via skb->mark (custom
+	 * priority rules / device rules) keep that queue; auto detection only
+	 * applies to otherwise unclassified traffic, i.e. to flows whose
+	 * mark is below MAX_PPPQ_QUEUE_NUM, exactly how the PPPQ/HQoS code
+	 * above classifies them.  Note that only genuine short packets are
+	 * redirected below - bulk packets of a classified flow keep the queue
+	 * their rule selected.
+	 *
+	 * Deliberately not gated on !IS_HQOS_MODE: HQoS mode is exactly what
+	 * turns the skb->mark -> QDMA queue mapping on, so luci-app-eqos-mtk
+	 * sets qos_toggle to 1 (HQoS) before enabling short_pkt_toggle.
+	 * Excluding HQoS here would make the feature a no-op for every user
+	 * who configures it from the UI.
+	 *
+	 * HNAT_QDMA_QUEUE_MASK covers only the queue bits, i.e. everything
+	 * below HNAT_EXCEPTION_BIT (netsys v2/v3 use bit 0..6, v1.x bit 0..3),
+	 * which is how the HQoS path reads the id back. Using MTK_QDMA_QUEUE_MASK
+	 * here instead is not an option: it is redefined per kernel series and
+	 * became GENMASK(15, 0) in this tree, covering bits that carry no queue
+	 * number at all, which makes this whole block silently never match.
+	 */
+	if (short_pkt_toggle &&
+	    (skb->mark & HNAT_QDMA_QUEUE_MASK) < MAX_PPPQ_QUEUE_NUM) {
+		if (h_proto == ETH_P_IP) {
+			iph = (struct iphdr *)(skb_network_header(skb) + h_offset);
+			if (iph->protocol == IPPROTO_TCP) {
+				tcph = (struct tcphdr *)((u8 *)iph + iph->ihl * 4);
+				payload_len = be16_to_cpu(iph->tot_len) -
+					      iph->ihl * 4 - __tcp_hdrlen(tcph);
+				if (payload_len == 0) {
+					qid = short_pkt_qid;
+					pr_info_once("hnat shortpkt: TCP ACK -> qid %d\n", qid);
+				}
+			} else if (iph->protocol == IPPROTO_UDP) {
+				payload_len = be16_to_cpu(iph->tot_len) -
+					      iph->ihl * 4 - sizeof(struct udphdr);
+				if (payload_len <= short_pkt_len) {
+					qid = short_pkt_qid;
+					pr_info_once("hnat shortpkt: UDP len=%u -> qid %d\n",
+						payload_len, qid);
+				}
+			}
+		} else if (h_proto == ETH_P_IPV6) {
+			ip6h = (struct ipv6hdr *)(skb_network_header(skb) + h_offset);
+			if (ip6h->nexthdr == NEXTHDR_TCP) {
+				tcph = (struct tcphdr *)((u8 *)ip6h + sizeof(struct ipv6hdr));
+				payload_len = be16_to_cpu(ip6h->payload_len) - __tcp_hdrlen(tcph);
+				if (payload_len == 0) {
+					qid = short_pkt_qid;
+					pr_info_once("hnat shortpkt: IPv6 TCP ACK -> qid %d\n", qid);
+				}
+			} else if (ip6h->nexthdr == NEXTHDR_UDP) {
+				payload_len = be16_to_cpu(ip6h->payload_len) - sizeof(struct udphdr);
+				if (payload_len <= short_pkt_len) {
+					qid = short_pkt_qid;
+					pr_info_once("hnat shortpkt: IPv6 UDP len=%u -> qid %d\n",
+						payload_len, qid);
+				}
+			}
+		}
+	} else if (IS_PPPQ_MODE && IS_PPPQ_PATH(dev, skb) && port_id >= 0) {
 		if (h_proto == ETH_P_IP) {
 			iph = (struct iphdr *)(skb_network_header(skb) + h_offset);
 			if (iph->protocol == IPPROTO_TCP) {
@@ -3310,6 +3543,7 @@ int mtk_sw_nat_hook_tx(struct sk_buff *skb, int gmac_no)
 			entry.ipv4_hnapt.winfo_pao.hf = skb_hnat_hf(skb);
 			entry.ipv4_hnapt.winfo_pao.amsdu = skb_hnat_amsdu(skb);
 #elif defined(CONFIG_MEDIATEK_NETSYS_V2)
+			entry.ipv4_hnapt.iblk2.fqos = IS_HQOS_DL_MODE ? 1 : 0;
 			entry.ipv4_hnapt.iblk2.rxid = skb_hnat_rx_id(skb);
 			entry.ipv4_hnapt.iblk2.winfoi = 1;
 #else
@@ -3431,6 +3665,7 @@ int mtk_sw_nat_hook_tx(struct sk_buff *skb, int gmac_no)
 				break;
 			}
 #elif defined(CONFIG_MEDIATEK_NETSYS_V2)
+			entry.ipv6_5t_route.iblk2.fqos = IS_HQOS_DL_MODE ? 1 : 0;
 			entry.ipv6_5t_route.winfo.bssid = skb_hnat_bss_id(skb);
 			entry.ipv6_5t_route.winfo.wcid = skb_hnat_wc_id(skb);
 			entry.ipv6_5t_route.iblk2.rxid = skb_hnat_rx_id(skb);

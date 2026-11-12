@@ -1,0 +1,101 @@
+From ed9adac35b8fac635f40e28461505e2e5b6c8fcc Mon Sep 17 00:00:00 2001
+From: Daniel Golle <daniel@makrotopia.org>
+Date: Tue, 28 Jul 2026 05:52:21 +0100
+Subject: net: dsa: mt7530: error out on failed reads in ATC/VTCR command
+ polling
+
+mt7530_fdb_cmd() and mt7530_vlan_cmd() poll the command register
+through a helper which returns 0 when the underlying read fails. A
+failed bus transaction thus clears ATC_BUSY/VTCR_BUSY and is treated
+as successful command completion, and the subsequent ATC_INVALID and
+VTCR_INVALID checks are defeated the same way.
+
+Poll using regmap_read_poll_timeout(), which stops on read errors and
+propagates them, and check the completion status read as well. Take
+the MDIO bus lock across the sequence as the switch regmap is set up
+with locking disabled.
+
+Fixes: b8f126a8d543 ("net-next: dsa: add dsa support for Mediatek MT7530 switch")
+Fixes: 83163f7dca56 ("net: dsa: mediatek: add VLAN support for MT7530")
+Signed-off-by: Daniel Golle <daniel@makrotopia.org>
+Reviewed-by: Andrew Lunn <andrew@lunn.ch>
+Link: https://patch.msgid.link/eea1d8f15c54375b3770c23e09fb3217df487169.1785213071.git.daniel@makrotopia.org
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+---
+ drivers/net/dsa/mt7530.c | 28 ++++++++++++++++++----------
+ 1 file changed, 18 insertions(+), 10 deletions(-)
+
+(limited to 'drivers/net/dsa')
+
+diff --git a/drivers/net/dsa/mt7530.c b/drivers/net/dsa/mt7530.c
+index 3c2a3029b10cf..292cde961f1af 100644
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -248,15 +248,20 @@ mt7530_fdb_cmd(struct mt7530_priv *priv, enum mt7530_fdb_cmd cmd, u32 *rsp)
+ {
+ 	u32 val;
+ 	int ret;
+-	struct mt7530_dummy_poll p;
+ 
+ 	/* Set the command operating upon the MAC address entries */
+ 	val = ATC_BUSY | ATC_MAT(0) | cmd;
+ 	mt7530_write(priv, MT7530_ATC, val);
+ 
+-	INIT_MT7530_DUMMY_POLL(&p, priv, MT7530_ATC);
+-	ret = readx_poll_timeout(_mt7530_read, &p, val,
+-				 !(val & ATC_BUSY), 20, 20000);
++	mt7530_mutex_lock(priv);
++
++	ret = regmap_read_poll_timeout(priv->regmap, MT7530_ATC, val,
++				       !(val & ATC_BUSY), 20, 20000);
++	if (!ret)
++		ret = regmap_read(priv->regmap, MT7530_ATC, &val);
++
++	mt7530_mutex_unlock(priv);
++
+ 	if (ret < 0) {
+ 		dev_err(priv->dev, "reset timeout\n");
+ 		return ret;
+@@ -265,7 +270,6 @@ mt7530_fdb_cmd(struct mt7530_priv *priv, enum mt7530_fdb_cmd cmd, u32 *rsp)
+ 	/* Additional sanity for read command if the specified
+ 	 * entry is invalid
+ 	 */
+-	val = mt7530_read(priv, MT7530_ATC);
+ 	if ((cmd == MT7530_FDB_READ) && (val & ATC_INVALID))
+ 		return -EINVAL;
+ 
+@@ -1626,22 +1630,26 @@ mt7530_port_bridge_join(struct dsa_switch *ds, int port,
+ static int
+ mt7530_vlan_cmd(struct mt7530_priv *priv, enum mt7530_vlan_cmd cmd, u16 vid)
+ {
+-	struct mt7530_dummy_poll p;
+ 	u32 val;
+ 	int ret;
+ 
+ 	val = VTCR_BUSY | VTCR_FUNC(cmd) | vid;
+ 	mt7530_write(priv, MT7530_VTCR, val);
+ 
+-	INIT_MT7530_DUMMY_POLL(&p, priv, MT7530_VTCR);
+-	ret = readx_poll_timeout(_mt7530_read, &p, val,
+-				 !(val & VTCR_BUSY), 20, 20000);
++	mt7530_mutex_lock(priv);
++
++	ret = regmap_read_poll_timeout(priv->regmap, MT7530_VTCR, val,
++				       !(val & VTCR_BUSY), 20, 20000);
++	if (!ret)
++		ret = regmap_read(priv->regmap, MT7530_VTCR, &val);
++
++	mt7530_mutex_unlock(priv);
++
+ 	if (ret < 0) {
+ 		dev_err(priv->dev, "poll timeout\n");
+ 		return ret;
+ 	}
+ 
+-	val = mt7530_read(priv, MT7530_VTCR);
+ 	if (val & VTCR_INVALID) {
+ 		dev_err(priv->dev, "read VTCR invalid\n");
+ 		return -EINVAL;
+-- 
+cgit 1.3.1-korg
+

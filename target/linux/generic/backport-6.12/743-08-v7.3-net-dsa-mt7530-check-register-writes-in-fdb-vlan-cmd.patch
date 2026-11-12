@@ -1,0 +1,74 @@
+From f67b0bae07fe7eddf919ee1f03fc66d351547a83 Mon Sep 17 00:00:00 2001
+From: Daniel Golle <daniel@makrotopia.org>
+Date: Tue, 4 Aug 2026 04:10:53 +0100
+Subject: net: dsa: mt7530: check command register writes in fdb and vlan cmd
+
+mt7530_fdb_cmd() and mt7530_vlan_cmd() start a command by writing the
+BUSY bit to MT7530_ATC / MT7530_VTCR, then poll for it to clear.
+mt7530_write() discards the write's return value, so a failed command
+write leaves BUSY unset and the poll succeeds on its first read,
+reporting a command that never ran as done -- returning stale FDB data
+or silently dropping a VLAN table update.
+
+Return mt7530_mii_write()'s error from mt7530_write() and check it in
+both command helpers.
+
+Signed-off-by: Daniel Golle <daniel@makrotopia.org>
+Link: https://patch.msgid.link/0e5d65a672313286e5a8ce28a9faba9c8972dbb6.1785811140.git.daniel@makrotopia.org
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+---
+ drivers/net/dsa/mt7530.c | 16 ++++++++++++----
+ 1 file changed, 12 insertions(+), 4 deletions(-)
+
+(limited to 'drivers/net/dsa')
+
+diff --git a/drivers/net/dsa/mt7530.c b/drivers/net/dsa/mt7530.c
+index c60e22ea270e1..d66d926a71e16 100644
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -185,14 +185,18 @@ mt7530_mii_read(struct mt7530_priv *priv, u32 reg)
+ 	return val;
+ }
+ 
+-static void
++static int
+ mt7530_write(struct mt7530_priv *priv, u32 reg, u32 val)
+ {
++	int ret;
++
+ 	mt7530_mutex_lock(priv);
+ 
+-	mt7530_mii_write(priv, reg, val);
++	ret = mt7530_mii_write(priv, reg, val);
+ 
+ 	mt7530_mutex_unlock(priv);
++
++	return ret;
+ }
+ 
+ static u32
+@@ -249,7 +253,9 @@ mt7530_fdb_cmd(struct mt7530_priv *priv, enum mt7530_fdb_cmd cmd, u32 *rsp)
+ 
+ 	/* Set the command operating upon the MAC address entries */
+ 	val = ATC_BUSY | ATC_MAT(0) | cmd;
+-	mt7530_write(priv, MT7530_ATC, val);
++	ret = mt7530_write(priv, MT7530_ATC, val);
++	if (ret)
++		return ret;
+ 
+ 	mt7530_mutex_lock(priv);
+ 
+@@ -1632,7 +1638,9 @@ mt7530_vlan_cmd(struct mt7530_priv *priv, enum mt7530_vlan_cmd cmd, u16 vid)
+ 	int ret;
+ 
+ 	val = VTCR_BUSY | VTCR_FUNC(cmd) | vid;
+-	mt7530_write(priv, MT7530_VTCR, val);
++	ret = mt7530_write(priv, MT7530_VTCR, val);
++	if (ret)
++		return ret;
+ 
+ 	mt7530_mutex_lock(priv);
+ 
+-- 
+cgit 1.3.1-korg
+

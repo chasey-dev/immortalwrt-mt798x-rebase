@@ -138,15 +138,19 @@ static struct ppe_mcast_group *hnat_mcast_find_group_by_ip(const struct hnat_mca
 static void hnat_mcast_foe_mc_enable(struct foe_entry *entry, bool *clr_cache, bool to_npu)
 {
 	if (IS_IPV4_GRP(entry)) {
+#if defined(CONFIG_MEDIATEK_NETSYS_V3)
 		entry->ipv4_hnapt.tport_id = 0;
 		if (to_npu)
 			entry->ipv4_hnapt.tops_entry = HNAT_NPU_ENTRY_MC;
+#endif
 		entry->ipv4_hnapt.iblk2.mcast = 1;
 		entry->ipv4_hnapt.iblk2.dp = 0;
 	} else if (IS_IPV6_GRP(entry)) {
+#if defined(CONFIG_MEDIATEK_NETSYS_V3)
 		entry->ipv6_5t_route.tport_id = 0;
 		if (to_npu)
 			entry->ipv6_5t_route.tops_entry = HNAT_NPU_ENTRY_MC;
+#endif
 		entry->ipv6_5t_route.iblk2.mcast = 1;
 		entry->ipv6_5t_route.iblk2.dp = 0;
 	}
@@ -192,19 +196,23 @@ static void hnat_mcast_foe_mc_disable(struct foe_entry *foe, u32 pse_bmp, bool *
 	if (IS_IPV4_GRP(foe)) {
 		foe->ipv4_hnapt.iblk2.dp = dp;
 		foe->ipv4_hnapt.iblk2.mcast = 0;
+#if defined(CONFIG_MEDIATEK_NETSYS_V3)
 		foe->ipv4_hnapt.tport_id = 0;
 		if (dp == NR_TDMA_PORT)
 			foe->ipv4_hnapt.tops_entry = 30;
 		else
 			foe->ipv4_hnapt.tops_entry = 0;
+#endif
 	} else if (IS_IPV6_GRP(foe)) {
 		foe->ipv6_5t_route.iblk2.dp = dp;
 		foe->ipv6_5t_route.iblk2.mcast = 0;
+#if defined(CONFIG_MEDIATEK_NETSYS_V3)
 		foe->ipv6_5t_route.tport_id = 0;
 		if (dp == NR_TDMA_PORT)
 			foe->ipv6_5t_route.tops_entry = 30;
 		else
 			foe->ipv6_5t_route.tops_entry = 0;
+#endif
 	}
 
 	foe->bfib1.vpm = 0;
@@ -1373,10 +1381,13 @@ int hnat_mcast_offload_handle(bool enable)
 	struct ppe_mcast_table *pmcast = hnat_priv->pmcast;
 	struct ppe_mcast_group *group, *tmp;
 
-	mcast_hook_toggle = enable ? 1 : 0;
+	if (!hnat_priv->data->mcast)
+		return -EOPNOTSUPP;
 
 	if (!pmcast)
 		return -1;
+
+	mcast_hook_toggle = enable ? 1 : 0;
 
 	write_lock_bh(&pmcast->mcast_lock);
 	list_for_each_entry_safe(group, tmp, &pmcast->groups, list) {
@@ -1440,6 +1451,9 @@ int hnat_mcast_ser_handle(void)
 int hnat_mcast_enable(u32 ppe_id)
 {
 	struct ppe_mcast_table *pmcast;
+
+	if (!hnat_priv->data->mcast)
+		return -EOPNOTSUPP;
 
 	if (ppe_id >= CFG_PPE_NUM)
 		return -EINVAL;

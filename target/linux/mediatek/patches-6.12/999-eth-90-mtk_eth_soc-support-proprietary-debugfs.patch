@@ -1,10 +1,11 @@
 ---
-[v16] net: ethernet: mtk_eth_soc: support proprietary debugfs
+[v17] net: ethernet: mtk_eth_soc: support proprietary debugfs
 
 Add comprehensive proprietary debugfs support for MTK Ethernet driver. This
 provides extensive debugging interfaces for register access, statistics,
 configuration inspection, and hardware state monitoring.
 ---
+v17: Change the qdma_queue array at 128 instead of MTK_QDMA_NUM_QUEUES.
 v16: Add a dump of reset events.
 v15: Add QDMA queue bytes count statistics by reading QTX_HEAD and QTX_TAIL
      registers.
@@ -3565,7 +3566,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
 +	struct mtk_hwlro_stats		hwlro_stats;
 +	struct mtk_mt7530_switch	mt7530;
 +	struct mtk_qdma_ctx		qdma_sched[4];
-+	struct mtk_qdma_ctx		qdma_queue[MTK_QDMA_NUM_QUEUES];
++	struct mtk_qdma_ctx		qdma_queue[128];
 +};
 +
 +typedef int (*mtk_hwlro_dbg_func) (struct mtk_eth *eth, int par);
@@ -3697,7 +3698,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  		}
  	}
  
-@@ -1452,6 +1463,7 @@ static int mtk_set_mac_address(struct ne
+@@ -1454,6 +1465,7 @@ static int mtk_set_mac_address(struct ne
  static void mtk_stats_update_gmac_ext(struct mtk_mac *mac)
  {
  	struct mtk_hw_stats *hw_stats = mac->hw_stats;
@@ -3705,7 +3706,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  
  	hw_stats->rx_unicast_packets +=
  		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x00);
-@@ -1478,6 +1490,8 @@ static void mtk_stats_update_gmac_ext(st
+@@ -1480,6 +1492,8 @@ static void mtk_stats_update_gmac_ext(st
  		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x50);
  	hw_stats->tx_broadcast_bytes +=
  		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x58);
@@ -3714,7 +3715,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  }
  
  static void mtk_stats_update_xgmac(struct mtk_mac *mac)
-@@ -1533,6 +1547,8 @@ static void mtk_stats_update_xgmac(struc
+@@ -1535,6 +1549,8 @@ static void mtk_stats_update_xgmac(struc
  	hw_stats->tx_broadcast_bytes +=
  		mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x178);
  
@@ -3723,7 +3724,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	mtk_m32(mac->hw, XMAC_GLB_CNTCLR, 0x1, MTK_XMAC_CNT_CTRL(mac->id));
  }
  
-@@ -2982,6 +2998,12 @@ static int mtk_poll_rx(struct napi_struc
+@@ -2984,6 +3000,12 @@ static int mtk_poll_rx(struct napi_struc
  		if (reason == MTK_PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED)
  			mtk_ppe_check_skb(eth->ppe[ppe_idx], skb, hash);
  
@@ -3736,7 +3737,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  		skb_record_rx_queue(skb, 0);
  		napi_gro_receive(napi, skb);
  
-@@ -4370,8 +4392,10 @@ static void mtk_tx_timeout(struct net_de
+@@ -4379,8 +4401,10 @@ static void mtk_tx_timeout(struct net_de
  	eth->netdev[mac->id]->stats.tx_errors++;
  	netif_err(eth, tx_err, dev, "transmit timed out\n");
  
@@ -3748,7 +3749,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  }
  
  static int mtk_get_irqs(struct platform_device *pdev, struct mtk_eth *eth)
-@@ -4494,6 +4518,7 @@ static irqreturn_t mtk_handle_irq_misc(i
+@@ -4515,6 +4539,7 @@ static irqreturn_t mtk_handle_irq_misc(i
  			mtk_reset_event_name[val]);
  		if (atomic_read(&eth->reset.force) &&
  		    !test_bit(MTK_RESETTING, &eth->state)) {
@@ -3756,7 +3757,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  			schedule_work(&eth->pending_work);
  			break;
  		}
-@@ -4724,9 +4749,7 @@ static int mtk_open(struct net_device *d
+@@ -4798,9 +4823,7 @@ static int mtk_open(struct net_device *d
  	struct mtk_mac *mac = netdev_priv(dev);
  	struct mtk_eth *eth = mac->hw;
  	struct mtk_mac *target_mac;
@@ -3767,7 +3768,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  
  	/* we run 2 netdevs on the same dma ring so we only bring it up once */
  	if (!refcount_read(&eth->dma_refcnt)) {
-@@ -4746,19 +4769,10 @@ static int mtk_open(struct net_device *d
+@@ -4820,19 +4843,10 @@ static int mtk_open(struct net_device *d
  				continue;
  
  			target_mac = netdev_priv(eth->netdev[i]);
@@ -3790,7 +3791,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  
  			if (eth->l4s_toggle)
  				gdm_config = MTK_GDMA_TO_TDMA;
-@@ -5187,6 +5201,8 @@ static void mtk_hw_reset(struct mtk_eth
+@@ -5261,6 +5275,8 @@ static void mtk_hw_reset(struct mtk_eth
  {
  	u32 val;
  
@@ -3799,7 +3800,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	if (mtk_is_netsys_v2_or_greater(eth))
  		regmap_write(eth->ethsys, ETHSYS_FE_RST_CHK_IDLE_EN, 0);
  
-@@ -5231,6 +5247,8 @@ static void mtk_hw_warm_reset(struct mtk
+@@ -5305,6 +5321,8 @@ static void mtk_hw_warm_reset(struct mtk
  {
  	u32 rst_mask, val;
  
@@ -3808,7 +3809,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	mtk_hw_dump_partial(eth);
  
  	regmap_update_bits(eth->ethsys, ETHSYS_RSTCTRL, RSTCTRL_FE,
-@@ -5516,8 +5534,10 @@ static void mtk_hw_reset_monitor_work(st
+@@ -5590,8 +5608,10 @@ static void mtk_hw_reset_monitor_work(st
  		goto out;
  
  	/* DMA stuck checks */
@@ -3820,7 +3821,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  
  out:
  	schedule_delayed_work(&eth->reset.monitor_work,
-@@ -5980,6 +6000,12 @@ static void mtk_restore_qdma_cfg(struct
+@@ -6054,6 +6074,12 @@ static void mtk_restore_qdma_cfg(struct
  			reg_map->qdma.tx_sch_rate + 0x4);
  }
  
@@ -3833,7 +3834,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  static void mtk_prepare_for_reset(struct mtk_eth *eth)
  {
  	struct mtk_mac *mac;
-@@ -6027,6 +6053,8 @@ static void mtk_pending_work(struct work
+@@ -6101,6 +6127,8 @@ static void mtk_pending_work(struct work
  	unsigned long restart = 0;
  	int i;
  
@@ -3842,7 +3843,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	rtnl_lock();
  	set_bit(MTK_RESETTING, &eth->state);
  
-@@ -6572,6 +6600,7 @@ static const struct net_device_ops mtk_n
+@@ -6671,6 +6699,7 @@ static const struct net_device_ops mtk_n
  	.ndo_set_mac_address	= mtk_set_mac_address,
  	.ndo_validate_addr	= eth_validate_addr,
  	.ndo_eth_ioctl		= mtk_do_ioctl,
@@ -3850,11 +3851,10 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	.ndo_change_mtu		= mtk_change_mtu,
  	.ndo_tx_timeout		= mtk_tx_timeout,
  	.ndo_get_stats64        = mtk_get_stats64,
-@@ -6850,6 +6879,17 @@ static int mtk_add_mac(struct mtk_eth *e
- 	mac->id = id;
- 	mac->hw = eth;
- 	mac->of_node = np;
-+
+@@ -6962,6 +6991,16 @@ static int mtk_add_mac(struct mtk_eth *e
+ 		mac->dsa_port_speed[i] = SPEED_UNKNOWN;
+ 	}
+ 
 +	/* Default GMAC->PPE mapping; overridable via gdm_ppe_cfg debugfs. */
 +	if (!eth->soc->offload_version)
 +		mac->ppe_idx = 0;
@@ -3868,7 +3868,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	pcs_np = of_parse_phandle(mac->of_node, "pcs-handle", 0);
  	if (pcs_np) {
  		mac->sgmii_pcs = mtk_pcs_lynxi_get(eth->dev, pcs_np);
-@@ -7443,6 +7483,8 @@ static int mtk_probe(struct platform_dev
+@@ -7555,6 +7594,8 @@ static int mtk_probe(struct platform_dev
  			goto err_deinit_ppe;
  	}
  
@@ -3879,7 +3879,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	 */
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
-@@ -349,6 +349,8 @@
+@@ -357,6 +357,8 @@
  #define MTK_LRO_RING_AGG_CNT_H_OFFSET	(0)
  
  /* QDMA TX Queue Configuration Registers */
@@ -3888,7 +3888,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  #define MTK_QTX_OFFSET		0x10
  #define QDMA_RES_THRES		4
  
-@@ -376,8 +378,16 @@
+@@ -384,8 +386,16 @@
  /* QDMA Page Configuration Register */
  #define MTK_QTX_PER_PAGE	(16)
  
@@ -3905,7 +3905,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  
  /* QDMA Global Configuration Register */
  #define MTK_RX_2B_OFFSET	BIT(31)
-@@ -875,6 +885,7 @@
+@@ -883,6 +893,7 @@
  #define MTK_FE_CDM4_FSM		0x298
  #define MTK_FE_CDM5_FSM		0x318
  #define MTK_FE_CDM6_FSM		0x328
@@ -3913,7 +3913,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  #define MTK_FE_GDM1_FSM		0x228
  #define MTK_FE_GDM2_FSM		0x22C
  #define MTK_FE_GDM3_FSM		0x23C
-@@ -1579,9 +1590,12 @@ struct mtk_reg_map {
+@@ -1587,9 +1598,12 @@ struct mtk_reg_map {
  		u32	delay_irq;	/* delay interrupt */
  		u32	fc_th;		/* flow control */
  		u32	int_grp;
@@ -3926,7 +3926,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  		u32	crx_ptr;	/* tx release cpu pointer */
  		u32	drx_ptr;	/* tx release dma pointer */
  		u32	fq_head;	/* fq head pointer */
-@@ -1750,6 +1764,7 @@ struct mtk_eth {
+@@ -1759,6 +1773,7 @@ struct mtk_eth {
  	struct mtk_qdma_shaper		qdma_shaper;
  	struct clk			*clks[MTK_CLK_MAX];
  
@@ -3934,7 +3934,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  	struct mii_bus			*mii_bus;
  	unsigned int			mdc_divider;
  	struct work_struct		pending_work;
-@@ -1792,6 +1807,7 @@ struct mtk_eth {
+@@ -1802,6 +1817,7 @@ struct mtk_eth {
  	struct {
  		struct delayed_work monitor_work;
  		atomic_t force;
@@ -3942,7 +3942,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: support proprietary debugfs
  		u32 wdidx[3];
  		u32 adidx[3];
  		u32 gdm_txgp_cnt[3];
-@@ -2020,6 +2036,11 @@ static inline void mtk_pse_gdm_enable(st
+@@ -2033,6 +2049,11 @@ static inline void mtk_pse_gdm_enable(st
  	mtk_w32(eth, val, MTK_FE_GLO_CFG(PSE_GDM_PORT(id)));
  }
  

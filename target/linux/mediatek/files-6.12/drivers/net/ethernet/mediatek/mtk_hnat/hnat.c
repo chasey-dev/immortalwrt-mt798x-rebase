@@ -1457,6 +1457,9 @@ static void hnat_release_netdev(void)
 
 	if (hnat_priv->g_wandev)
 		dev_put(hnat_priv->g_wandev);
+
+	if (g_rx_ppdev)
+		dev_put(g_rx_ppdev);
 }
 
 static struct notifier_block nf_hnat_netdevice_nb __read_mostly = {
@@ -1676,6 +1679,13 @@ static int hnat_probe(struct platform_device *pdev)
 		strncpy(hnat_priv->ppd, (char *)name, IFNAMSIZ - 1);
 	dev_info(&pdev->dev, "ppd = %s\n", hnat_priv->ppd);
 
+	err = of_property_read_string(np, "mtketh-rx-ppd", &name);
+	if (err < 0)
+		strscpy(hnat_priv->rx_ppd, "rxppd", IFNAMSIZ);
+	else
+		strscpy(hnat_priv->rx_ppd, name, IFNAMSIZ);
+	dev_info(&pdev->dev, "rx-ppd = %s\n", hnat_priv->rx_ppd);
+
 	/*get total gmac num in hnat*/
 	err = of_property_read_u32_index(np, "mtketh-max-gmac", 0, &val);
 
@@ -1763,6 +1773,18 @@ static int hnat_probe(struct platform_device *pdev)
 		ext_entry = hnat_priv->ext_if[i];
 		dev_info(&pdev->dev, "ext devices = %s\n", ext_entry->name);
 	}
+
+	prop = of_find_property(np, "ext-devices-prefix", NULL);
+	for (index = 0, name = of_prop_next_string(prop, NULL); name;
+	     name = of_prop_next_string(prop, name), index++) {
+		if (index < MAX_EXT_PREFIX_NUM)
+			hnat_priv->ext_if_prefix[index] = name;
+		else
+			break;
+	}
+
+	for (i = 0; i < MAX_EXT_PREFIX_NUM && hnat_priv->ext_if_prefix[i]; i++)
+		dev_info(&pdev->dev, "ext devices prefix = %s\n", hnat_priv->ext_if_prefix[i]);
 
 	hnat_priv->lvid = 1;
 	hnat_priv->wvid = 2;

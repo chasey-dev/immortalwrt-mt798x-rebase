@@ -419,11 +419,11 @@ static int hnat_entry_set_hqos(struct foe_entry *entry, void *data)
 	if (!d || !entry)
 		return HNAT_FAIL;
 
-	if (d->qid >= MTK_QDMA_NUM_QUEUES)
+	if (d->qid > HNAT_QDMA_QUEUE_MASK)
 		return HNAT_FAIL;
 
 	fqos = (d->fqos) ? 1 : 0;
-	qid = d->qid & MTK_QDMA_QUEUE_MASK;
+	qid = d->qid & HNAT_QDMA_QUEUE_MASK;
 
 	if (IS_IPV4_GRP(entry)) {
 		if (entry->ipv4_hnapt.iblk2.fqos == fqos &&

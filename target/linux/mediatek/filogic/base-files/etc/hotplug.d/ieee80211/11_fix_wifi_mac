@@ -61,6 +61,12 @@ case "$board" in
 		[ "$PHYNBR" = "0" ] && macaddr_setbit_la $(macaddr_add $addr 1) > /sys${DEVPATH}/macaddress
 		[ "$PHYNBR" = "1" ] && echo "$addr" > /sys${DEVPATH}/macaddress
 		;;
+	cmcc,rax3000m-emmc|\
+	cmcc,rax3000m-nand)
+		label_mac=$(mmc_get_mac_binary factory 0x2a)
+		[ "$PHYNBR" = "0" ] && macaddr_add $label_mac 1 > /sys${DEVPATH}/macaddress
+		[ "$PHYNBR" = "1" ] && macaddr_add $label_mac 2 > /sys${DEVPATH}/macaddress
+		;;
 	bananapi,bpi-r3|\
 	bananapi,bpi-r3-mini)
 		addr=$(cat /sys/class/net/eth0/address)

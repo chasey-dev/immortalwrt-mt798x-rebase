@@ -102,6 +102,13 @@ MT7990_whnat()
 	else
 		dbg "MT7990_whnat with $NUM_OF_WIFI Wi-Fi bands is not support"
 	fi
+
+	# Triple-core SoCs have no CPU3 to handle these IRQs.
+	if [ "$NUM_OF_CPU" = "3" ]; then
+		CPU1_AFFINITY="$CPU1_AFFINITY $eth_rx3"
+		[ "$num_of_wifi" = "3" ] && CPU2_AFFINITY="$CPU2_AFFINITY $eth_tx"
+		CPU3_AFFINITY=""
+	fi
 }
 
 MT7986_whnat()

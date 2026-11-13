@@ -3,6 +3,8 @@
 . /lib/functions.sh
 
 hqos_path="/sys/kernel/debug/hnat"
+HQOS_LOCK="/var/lock/eqos-hqos.lock"
+HQOS_OWNER="/var/run/eqos-hqos.owner"
 
 config_load mtkhqos
 config_get hnat global hnat 1
@@ -31,6 +33,26 @@ sch_mode2str() {
 		echo "wrr"
 	fi
 }
+
+# Use a private fd: 1000 belongs to procd_lock() and may be inherited here
+# when EQoS restores the baseline by running this script directly.
+mkdir -p /var/lock /var/run
+exec 900>"$HQOS_LOCK" || exit 1
+flock 900 || exit 1
+
+if [ -e "$HQOS_OWNER" ]; then
+	owner="$(cat "$HQOS_OWNER" 2>/dev/null)"
+	case "$owner" in
+		manual|smart)
+			dbg "skip: EQoS owns QDMA/HQoS ($owner)"
+			exit 0
+			;;
+		*)
+			dbg "invalid EQoS QDMA/HQoS owner state"
+			exit 1
+			;;
+	esac
+fi
 
 # disable bridge netfilter module to avoid high cpu usage
 echo 0 > /proc/sys/net/bridge/bridge-nf-call-arptables

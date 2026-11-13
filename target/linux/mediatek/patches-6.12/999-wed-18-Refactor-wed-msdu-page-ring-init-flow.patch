@@ -1,0 +1,126 @@
+---
+[v1] net: ethernet: mtk_wed: refactor MSDU page ring initialization flow
+
+Refactor MSDU (MAC Service Data Unit) page ring initialization for
+better memory management and improved reliability.
+---
+v1: Initial MSDU page ring init refactoring.
+---
+
+From 2d633646567f6ae0d14789a4fa6fc90f759ee5d1 Mon Sep 17 00:00:00 2001
+From: Rex Lu <rex.lu@mediatek.com>
+Date: Mon, 26 Jan 2026 14:30:08 +0800
+Subject: [PATCH] Refactor wed msdu page ring init flow
+
+Signed-off-by: Rex Lu <rex.lu@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_wed.c | 45 +++++++++++++++----------
+ include/linux/soc/mediatek/mtk_wed.h    |  2 ++
+ 2 files changed, 30 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_wed.c b/drivers/net/ethernet/mediatek/mtk_wed.c
+index a67270d..4ae5e7b 100644
+--- a/drivers/net/ethernet/mediatek/mtk_wed.c
++++ b/drivers/net/ethernet/mediatek/mtk_wed.c
+@@ -650,7 +650,7 @@ mtk_wed_amsdu_init(struct mtk_wed_device *dev)
+ 	}
+ 
+ 	/* Kite and Eagle E1 PCIE1 tx ring 22 flow control issue */
+-	if (dev->wlan.id == 0x7991 || dev->wlan.id == 0x7992)
++	if (dev->wlan.fc_disable)
+ 		wed_clr(dev, MTK_WED_AMSDU_FIFO, MTK_WED_AMSDU_IS_PRIOR0_RING);
+ 
+ 	wed_set(dev, MTK_WED_CTRL, MTK_WED_CTRL_TX_AMSDU_EN);
+@@ -1331,7 +1331,7 @@ mtk_wed_v3_1_set_wpdma(struct mtk_wed_device *dev)
+ 
+ 	if (dev->wlan.hw_rro == MTK_WED_HWRRO_V3) {
+ 		/* RRO MSDU page rings */
+-		for (i = 0; i < MTK_WED_RX_PAGE_QUEUES; i++) {
++		for (i = 0; i < dev->wlan.pg_ring_num; i++) {
+ 			wed_w32(dev, MTK_WED_RRO_MSDU_PG_RING_CFG_CIDX(i),
+ 				dev->wlan.wpdma_rx_pg + i * 0x10 + MTK_WED_RING_OFS_CPU_IDX);
+ 			wed_w32(dev, MTK_WED_RRO_MSDU_PG_RING_CFG_DIDX(i),
+@@ -1385,7 +1385,7 @@ mtk_wed_set_wpdma(struct mtk_wed_device *dev)
+ 
+ 	wed_w32(dev, MTK_WED_RRO_RX_D_CFG(0), dev->wlan.wpdma_rx_rro[0]);
+ 	wed_w32(dev, MTK_WED_RRO_RX_D_CFG(1), dev->wlan.wpdma_rx_rro[1]);
+-	for (i = 0; i < MTK_WED_RX_PAGE_QUEUES; i++)
++	for (i = 0; i < dev->wlan.pg_ring_num; i++)
+ 		wed_w32(dev, MTK_WED_RRO_MSDU_PG_RING_CFG(i),
+ 			dev->wlan.wpdma_rx_pg + i * 0x10);
+ }
+@@ -2519,6 +2519,7 @@ static void
+ mtk_wed_start_hw_rro(struct mtk_wed_device *dev, u32 irq_mask, bool reset)
+ {
+ 	int i;
++	u32 val = 0;
+ 
+ 	wed_w32(dev, MTK_WED_WPDMA_INT_MASK, irq_mask);
+ 	wed_w32(dev, MTK_WED_INT_MASK, irq_mask);
+@@ -2558,20 +2559,30 @@ mtk_wed_start_hw_rro(struct mtk_wed_device *dev, u32 irq_mask, bool reset)
+ 			FIELD_PREP(MTK_WED_WPDMA_INT_CTRL_RX_RRO_3_1_TRIG,
+ 				   dev->wlan.rro_3_1_rx_tbit));
+ 
+-	if (dev->wlan.hw_rro == MTK_WED_HWRRO_V3)
+-		wed_w32(dev, MTK_WED_WPDMA_INT_CTRL_RRO_MSDU_PG,
+-			MTK_WED_WPDMA_INT_CTRL_RRO_PG0_EN |
+-			MTK_WED_WPDMA_INT_CTRL_RRO_PG0_CLR |
+-			MTK_WED_WPDMA_INT_CTRL_RRO_PG1_EN |
+-			MTK_WED_WPDMA_INT_CTRL_RRO_PG1_CLR |
+-			MTK_WED_WPDMA_INT_CTRL_RRO_PG2_EN |
+-			MTK_WED_WPDMA_INT_CTRL_RRO_PG2_CLR |
+-			FIELD_PREP(MTK_WED_WPDMA_INT_CTRL_RRO_PG0_DONE_TRIG,
+-				   dev->wlan.rx_pg_tbit[0]) |
+-			FIELD_PREP(MTK_WED_WPDMA_INT_CTRL_RRO_PG1_DONE_TRIG,
+-				   dev->wlan.rx_pg_tbit[1]) |
+-			FIELD_PREP(MTK_WED_WPDMA_INT_CTRL_RRO_PG2_DONE_TRIG,
+-				   dev->wlan.rx_pg_tbit[2]));
++	switch (dev->wlan.pg_ring_num) {
++	case 3:
++		val |= MTK_WED_WPDMA_INT_CTRL_RRO_PG2_EN |
++		       MTK_WED_WPDMA_INT_CTRL_RRO_PG2_CLR |
++		       MTK_WED_WPDMA_INT_CTRL_RRO_PG1_EN |
++		       MTK_WED_WPDMA_INT_CTRL_RRO_PG1_CLR |
++		       FIELD_PREP(MTK_WED_WPDMA_INT_CTRL_RRO_PG2_DONE_TRIG,
++				  dev->wlan.rx_pg_tbit[2]) |
++		       FIELD_PREP(MTK_WED_WPDMA_INT_CTRL_RRO_PG1_DONE_TRIG,
++				  dev->wlan.rx_pg_tbit[1]);
++		fallthrough;
++	case 1:
++		val |= MTK_WED_WPDMA_INT_CTRL_RRO_PG0_EN |
++		       MTK_WED_WPDMA_INT_CTRL_RRO_PG0_CLR |
++		       FIELD_PREP(MTK_WED_WPDMA_INT_CTRL_RRO_PG0_DONE_TRIG,
++				  dev->wlan.rx_pg_tbit[0]);
++		wed_w32(dev, MTK_WED_WPDMA_INT_CTRL_RRO_MSDU_PG, val);
++		break;
++	default:
++		if (dev->wlan.hw_rro == MTK_WED_HWRRO_V3)
++			dev_err(dev->hw->dev, "rx_pg_ring num %u is not valid\n",
++				dev->wlan.pg_ring_num);
++		break;
++	}
+ 
+ 	/* RRO_MSDU_PG_RING2_CFG1_FLD_DRV_EN should be enabled after
+ 	 * WM FWDL completed, otherwise RRO_MSDU_PG ring may broken
+diff --git a/include/linux/soc/mediatek/mtk_wed.h b/include/linux/soc/mediatek/mtk_wed.h
+index 6079015..75da4dd 100644
+--- a/include/linux/soc/mediatek/mtk_wed.h
++++ b/include/linux/soc/mediatek/mtk_wed.h
+@@ -171,6 +171,7 @@ struct mtk_wed_device {
+ 		enum mtk_wed_hwrro_mode hw_rro;
+ 		bool msi;
+ 		bool hif2;
++		bool fc_disable;
+ 
+ 		u16 token_start;
+ 		unsigned int nbuf;
+@@ -186,6 +187,7 @@ struct mtk_wed_device {
+ 		u8 txfree_tbit;
+ 		u8 rro_3_1_rx_tbit;
+ 		u8 amsdu_max_subframes;
++		u8 pg_ring_num;
+ 
+ 		struct {
+ 			u8 se_group_nums;
+-- 
+2.45.2

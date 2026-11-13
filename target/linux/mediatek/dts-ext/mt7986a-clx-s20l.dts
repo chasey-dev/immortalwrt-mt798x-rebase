@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+/dts-v1/;
+#include "mt7986a-clx-s20-common.dtsi"
+
+/ {
+	model = "CLX S20L";
+	compatible = "clx,s20l", "mediatek,mt7986a";
+};
+
+&switch {
+	ports {
+		port@0 {
+			label = "wan";
+			nvmem-cells = <&macaddr_factory_24 0>;
+			nvmem-cell-names = "mac-address";
+		};
+
+		port@1 {
+			label = "lan4";
+		};
+
+		port@2 {
+			label = "lan3";
+		};
+
+		port@3 {
+			label = "lan2";
+		};
+
+		port@4 {
+			label = "lan1";
+		};
+	};
+};

@@ -1,0 +1,81 @@
+---
+[v1] kdb: fix ARM64 bp/ss stuck state
+
+Prevent an IRQ from re-entering KDB during an ARM64 KGDB single-step request
+by retaining the IRQ mask until the resulting debug exception is handled. This
+prevents the bp/ss command sequence from entering a stuck state.
+---
+v1: Mask IRQs across ARM64 KGDB single-step handling.
+---
+
+From 8b5c2fcd093b4a2c6d27ac75352a0058e2f1cd92 Mon Sep 17 00:00:00 2001
+From: Evan Zhang <evan.zhang@mediatek.com>
+Date: Mon, 10 Aug 2026 17:03:59 +0800
+Subject: [PATCH] arm64: kgdb: fix KDB bp/ss stuck state
+
+Mask IRQs from a KGDB single-step request until its resulting debug
+exception is handled, then restore the original PSTATE IRQ mask.
+
+Without this protection, an IRQ can interrupt the single-step window
+and re-enter KDB before the step completes.  This can leave the KDB
+bp/ss command flow stuck.
+
+Signed-off-by: Evan Zhang <Evan.Zhang@mediatek.com>
+---
+
+diff --git a/arch/arm64/kernel/kgdb.c b/arch/arm64/kernel/kgdb.c
+index f8eaf60..8a9105b 100644
+--- a/arch/arm64/kernel/kgdb.c
++++ b/arch/arm64/kernel/kgdb.c
+@@ -18,6 +18,7 @@
+ #include <asm/debug-monitors.h>
+ #include <asm/insn.h>
+ #include <asm/patching.h>
++#include <asm/ptrace.h>
+ #include <asm/traps.h>
+ 
+ struct dbg_reg_def_t dbg_reg_def[DBG_MAX_REG_NUM] = {
+@@ -177,6 +178,11 @@ int kgdb_arch_handle_exception(int exception_vector, int signo,
+ 			       struct pt_regs *linux_regs)
+ {
+ 	int err;
++	/*
++	 * Saved original PSTATE IRQ mask bit before single step.
++	 * Bit 0 = valid flag, Bit 1 = original PSR_I_BIT value.
++	 */
++	static unsigned int ss_saved_irq;
+ 
+ 	switch (remcom_in_buffer[0]) {
+ 	case 'D':
+@@ -204,6 +210,14 @@ int kgdb_arch_handle_exception(int exception_vector, int signo,
+ 		if (kernel_active_single_step())
+ 			kernel_disable_single_step();
+ 
++		/* Restore the IRQ mask state saved for a single step. */
++		if (ss_saved_irq & 1) {
++			linux_regs->pstate &= ~PSR_I_BIT;
++			if (ss_saved_irq & 2)
++				linux_regs->pstate |= PSR_I_BIT;
++			ss_saved_irq = 0;
++		}
++
+ 		err = 0;
+ 		break;
+ 	case 's':
+@@ -226,6 +240,14 @@ int kgdb_arch_handle_exception(int exception_vector, int signo,
+ 			kernel_enable_single_step(linux_regs);
+ 		else
+ 			kernel_rewind_single_step(linux_regs);
++
++		/*
++		 * Keep IRQs masked from the stepped instruction through the
++		 * single-step exception, so an IRQ cannot interrupt this window.
++		 */
++		ss_saved_irq = 1 |
++			((linux_regs->pstate & PSR_I_BIT) ? 2 : 0);
++		linux_regs->pstate |= PSR_I_BIT;
+ 		err = 0;
+ 		break;
+ 	default:
+-- 
+2.45.2

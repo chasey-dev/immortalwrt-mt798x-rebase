@@ -1,0 +1,714 @@
+---
+[v1] kdb: add MDIO diagnostic commands
+
+Add mii_mgr and mii_mgr_cl45 commands for Clause 22 and Clause 45 PHY
+register diagnostics from KDB. The commands support direct access through a
+named MDIO bus during a kernel debugging session.
+---
+v1: Add KDB MDIO diagnostic commands for Clause 22 and Clause 45 PHYs.
+---
+
+From c703f0a6cb8c52f8fde7c04dff93c19a0d118e70 Mon Sep 17 00:00:00 2001
+From: Evan Zhang <evan.zhang@mediatek.com>
+Date: Mon, 10 Aug 2026 17:04:36 +0800
+Subject: [PATCH] kdb: add MDIO diagnostic commands
+
+Add KDB commands for Clause 22 and Clause 45 MDIO diagnostics.
+
+Signed-off-by: Evan Zhang <Evan.Zhang@mediatek.com>
+---
+
+diff --git a/kernel/debug/kdb/Makefile b/kernel/debug/kdb/Makefile
+index 82547f6..846a279 100644
+--- a/kernel/debug/kdb/Makefile
++++ b/kernel/debug/kdb/Makefile
+@@ -6,7 +6,7 @@
+ # Copyright (c) 2009 Wind River Systems, Inc. All Rights Reserved.
+ #
+ 
+-obj-y := kdb_io.o kdb_main.o kdb_support.o kdb_bt.o gen-kdb_cmds.o kdb_bp.o kdb_debugger.o kdb_dis.o kdb_regs.o
++obj-y := kdb_io.o kdb_main.o kdb_support.o kdb_bt.o gen-kdb_cmds.o kdb_bp.o kdb_debugger.o kdb_dis.o kdb_regs.o kdb_mii.o
+ obj-$(CONFIG_KDB_KEYBOARD)    += kdb_keyboard.o
+ 
+ clean-files := gen-kdb_cmds.c
+diff --git a/kernel/debug/kdb/kdb_mii.c b/kernel/debug/kdb/kdb_mii.c
+new file mode 100644
+index 0000000..2b6b016
+--- /dev/null
++++ b/kernel/debug/kdb/kdb_mii.c
+@@ -0,0 +1,673 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ *   Copyright (C) 2026 MediaTek Inc.
++ */
++
++/*
++ * kdb_mii.c: KDB commands for MDIO/MII PHY register read/write
++ *
++ * KDB command notes:
++ *   - Command name is "mii_mgr".
++ *   - "-i <busname>" specifies the MDIO bus.  Default bus: "mdio-bus"
++ *     (MT7988 DT node name).
++ *   - "-u" is accepted but has no effect in KDB context.
++ *   - "-z" suppresses the "Get:"/"Set:" output line (silent mode).
++ *   - All numeric arguments are hexadecimal.
++ *   - Direct bus->read/write function pointer calls are used instead of
++ *     mdiobus_read/write() to avoid mutex deadlock in KDB context (all
++ *     CPUs are stopped; the mdio_lock mutex may already be held).
++ *
++ * This file is subject to the terms and conditions of the GNU General Public
++ * License.  See the file "COPYING" in the main directory of this archive
++ * for more details.
++ */
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/phy.h>
++#include <linux/mdio.h>
++#include <linux/kdb.h>
++#include "kdb_private.h"
++
++/*
++ * Default MDIO bus name for MT7988 (MediaTek Filogic).
++ *
++ * In mtk_eth_soc.c::mtk_mdio_init():
++ *   mii_np = of_get_child_by_name(eth->dev->of_node, "mdio-bus");
++ *   snprintf(eth->mii_bus->id, MII_BUS_ID_SIZE, "%pOFn", mii_np);
++ *
++ * %pOFn prints the DT node name only, so bus->id = "mdio-bus".
++ * mdio_find_bus() matches against bus->id, so we must use "mdio-bus".
++ *
++ * Override with: mii_mgr -i <busname> ...
++ */
++#define KDB_MII_DEFAULT_BUS	"mdio-bus"
++
++/* ------------------------------------------------------------------ */
++/* Helper: find MDIO bus by name, print error if not found             */
++/* ------------------------------------------------------------------ */
++static struct mii_bus *kdb_mii_find_bus(const char *name)
++{
++	struct mii_bus *bus;
++
++	bus = mdio_find_bus(name);
++	if (!bus)
++		kdb_printf("mii: MDIO bus '%s' not found.\n"
++			   "     Use -i <busname> to specify the bus name.\n"
++			   "     Check: ls /sys/bus/mdio_bus/devices/\n",
++			   name);
++	return bus;
++}
++
++/* ------------------------------------------------------------------ */
++/* show_usage: display KDB command usage                              */
++/* ------------------------------------------------------------------ */
++static void show_usage(void)
++{
++	kdb_printf("mii_mgr -g -i [busname] -p [phy number] -r [register number]\n");
++	kdb_printf("  Get: mii_mgr -g -p 3 -r 4\n");
++	kdb_printf("\n");
++	kdb_printf("mii_mgr -s -p [phy number] -r [register number] -v [0xvalue]\n");
++	kdb_printf("  Set: mii_mgr -s -p 4 -r 1 -v 0xff11\n");
++	kdb_printf("#NOTE: Without -i , default bus '" KDB_MII_DEFAULT_BUS "' is used!\n");
++	kdb_printf(" -z: silent mode\n");
++	kdb_printf("---------------------------------------------------------------------------\n");
++	kdb_printf("Get: mii_mgr_cl45 -g -p [port number] -d [dev number] -r [register number]\n");
++	kdb_printf("Example: mii_mgr_cl45 -g -p 3 -d 0x5 -r 0x4\n");
++	kdb_printf("\n");
++	kdb_printf("Set: mii_mgr_cl45 -s -p [port number] -d [dev number] -r ");
++	kdb_printf("[register number] -v [value]\n");
++	kdb_printf("Example: mii_mgr_cl45 -s -p 4 -d 0x6 -r 0x1 -v 0xff11\n");
++}
++
++/* ------------------------------------------------------------------ */
++/* CL22 read                                                            */
++/* ------------------------------------------------------------------ */
++static int kdb_mii_cl22_read(const char *busname, int port, int reg,
++			     bool silent)
++{
++	struct mii_bus *bus;
++	int val;
++
++	bus = kdb_mii_find_bus(busname);
++	if (!bus)
++		return KDB_BADADDR;
++
++	/*
++	 * Do NOT use mdiobus_read() — it calls mutex_lock() which can
++	 * deadlock in KDB context (all CPUs stopped, lock may be held).
++	 * Call the bus read function pointer directly instead.
++	 */
++	if (!bus->read) {
++		kdb_printf("mii: bus '%s' has no read op\n", busname);
++		put_device(&bus->dev);
++		return KDB_BADADDR;
++	}
++	val = bus->read(bus, port, reg);
++	put_device(&bus->dev);		/* mdio_find_bus() takes a reference */
++
++	if (val < 0) {
++		kdb_printf("mii: CL22 read failed: port=%d reg=0x%x err=%d\n",
++			   port, reg, val);
++		return KDB_BADADDR;
++	}
++
++	if (!silent)
++		kdb_printf("Get: phy[%x].reg[%x] = %04x\n", port, reg,
++			   (unsigned int)val & 0xffff);
++	return 0;
++}
++
++/* ------------------------------------------------------------------ */
++/* CL22 write                                                           */
++/* ------------------------------------------------------------------ */
++static int kdb_mii_cl22_write(const char *busname, int port, int reg,
++			      u16 val, bool silent)
++{
++	struct mii_bus *bus;
++	int err;
++
++	bus = kdb_mii_find_bus(busname);
++	if (!bus)
++		return KDB_BADADDR;
++
++	/*
++	 * Do NOT use mdiobus_write() — same mutex deadlock risk as above.
++	 */
++	if (!bus->write) {
++		kdb_printf("mii: bus '%s' has no write op\n", busname);
++		put_device(&bus->dev);
++		return KDB_BADADDR;
++	}
++	err = bus->write(bus, port, reg, val);
++	put_device(&bus->dev);
++
++	if (err) {
++		kdb_printf("mii: CL22 write failed: port=%d reg=0x%x val=0x%04x err=%d\n",
++			   port, reg, val, err);
++		return KDB_BADADDR;
++	}
++
++	if (!silent)
++		kdb_printf("Set: phy[%x].reg[%x] = %04x\n", port, reg,
++			   (unsigned int)val);
++	return 0;
++}
++
++/* ------------------------------------------------------------------ */
++/* CL45 read                                                            */
++/* ------------------------------------------------------------------ */
++static int kdb_mii_cl45_read(const char *busname, int port, int devad,
++			     int reg, bool silent)
++{
++	struct mii_bus *bus;
++	int val;
++
++	bus = kdb_mii_find_bus(busname);
++	if (!bus)
++		return KDB_BADADDR;
++
++	/*
++	 * Do NOT use mdiobus_c45_read() — same mutex deadlock risk.
++	 */
++	if (!bus->read_c45) {
++		kdb_printf("mii: bus '%s' has no read_c45 op\n", busname);
++		put_device(&bus->dev);
++		return KDB_BADADDR;
++	}
++	val = bus->read_c45(bus, port, devad, reg);
++	put_device(&bus->dev);
++
++	if (val < 0) {
++		kdb_printf("mii: CL45 read failed: port=%d dev=0x%x reg=0x%x err=%d\n",
++			   port, devad, reg, val);
++		return KDB_BADADDR;
++	}
++
++	if (!silent)
++		kdb_printf("Get: port%x dev%Xh_reg%Xh = 0x%04X\n",
++			   port, devad, reg, (unsigned int)val & 0xffff);
++	return 0;
++}
++
++/* ------------------------------------------------------------------ */
++/* CL45 write                                                           */
++/* ------------------------------------------------------------------ */
++static int kdb_mii_cl45_write(const char *busname, int port, int devad,
++			      int reg, u16 val, bool silent)
++{
++	struct mii_bus *bus;
++	int err;
++
++	bus = kdb_mii_find_bus(busname);
++	if (!bus)
++		return KDB_BADADDR;
++
++	/*
++	 * Do NOT use mdiobus_c45_write() — same mutex deadlock risk.
++	 */
++	if (!bus->write_c45) {
++		kdb_printf("mii: bus '%s' has no write_c45 op\n", busname);
++		put_device(&bus->dev);
++		return KDB_BADADDR;
++	}
++	err = bus->write_c45(bus, port, devad, reg, val);
++	put_device(&bus->dev);
++
++	if (err) {
++		kdb_printf("mii: CL45 write failed: port=%d dev=0x%x reg=0x%x val=0x%04x err=%d\n",
++			   port, devad, reg, val, err);
++		return KDB_BADADDR;
++	}
++
++	if (!silent)
++		kdb_printf("Set: port%x dev%Xh_reg%Xh = 0x%04X\n",
++			   port, devad, reg, (unsigned int)val);
++	return 0;
++}
++
++/* ------------------------------------------------------------------ */
++/* KDB command handler                                                  */
++/*                                                                      */
++/* KDB command syntax:                                                 */
++/*                                                                      */
++/*   mii_mgr -g -p <phy> -r <reg>                    CL22 read          */
++/*   mii_mgr -s -p <phy> -r <reg> -v <val>           CL22 write         */
++/*   mii_mgr -g -p <port> -d <dev> -r <reg>          CL45 read          */
++/*   mii_mgr -s -p <port> -d <dev> -r <reg> -v <val> CL45 write         */
++/*   mii_mgr -i <busname> ...                         specify MDIO bus   */
++/*   mii_mgr -u ...                                   compat flag (no-op)*/
++/*   mii_mgr -z ...                                   silent mode        */
++/*                                                                      */
++/* All numeric args are hex.  Flags may appear in any order.           */
++/* argc does NOT include argv[0] ("mii_mgr") per KDB convention.       */
++/* Minimum 5 arguments required.                                      */
++/* ------------------------------------------------------------------ */
++static int kdb_mii_cmd(int argc, const char **argv)
++{
++	unsigned long tmp;
++	int port = -1, reg = -1, devad = -1;
++	unsigned long val = 0;
++	int is_write = -1;	/* -1=unset, 0=read(-g), 1=write(-s) */
++	int has_dev = 0;	/* set when -d is seen → CL45 mode */
++	int has_val = 0;
++	bool silent = false;	/* -z: silent mode */
++	/* -u: compat flag, accepted but no-op in KDB context */
++	const char *busname = KDB_MII_DEFAULT_BUS;
++	int i, ret;
++
++	/* Requires at least 5 arguments. */
++	if (argc < 5) {
++		show_usage();
++		return 0;
++	}
++
++	/*
++	 * Parse flags in any order.
++	 * argv[0] = "mii_mgr", argv[1..argc] = flags/values.
++	 */
++	for (i = 1; i <= argc; i++) {
++		const char *flag = argv[i];
++
++		if (flag[0] != '-') {
++			kdb_printf("mii: unexpected argument '%s'\n", flag);
++			show_usage();
++			return 0;
++		}
++
++		switch (flag[1]) {
++		case 'g':
++			is_write = 0;
++			break;
++
++		case 's':
++			is_write = 1;
++			break;
++
++		case 'u':
++			/* Compatibility flag; it has no effect in KDB context. */
++			break;
++
++		case 'z':
++			/* silent mode: suppress Get:/Set: output */
++			silent = true;
++			break;
++
++		case 'i':
++			/* -i <busname>: select the MDIO bus. */
++			if (i + 1 > argc) {
++				kdb_printf("mii: -i requires a bus name\n");
++				show_usage();
++				return 0;
++			}
++			busname = argv[++i];
++			break;
++
++		case 'p':
++			/* -p <port/phy> */
++			if (i + 1 > argc) {
++				kdb_printf("mii: -p requires a value\n");
++				show_usage();
++				return 0;
++			}
++			ret = kdbgetularg(argv[++i], &tmp);
++			if (ret) {
++				kdb_printf("mii: invalid -p value '%s'\n",
++					   argv[i]);
++				return ret;
++			}
++			port = (int)tmp;
++			break;
++
++		case 'd':
++			/* -d <devad>  → also sets CL45 mode */
++			if (i + 1 > argc) {
++				kdb_printf("mii: -d requires a value\n");
++				show_usage();
++				return 0;
++			}
++			ret = kdbgetularg(argv[++i], &tmp);
++			if (ret) {
++				kdb_printf("mii: invalid -d value '%s'\n",
++					   argv[i]);
++				return ret;
++			}
++			devad = (int)tmp;
++			has_dev = 1;
++			break;
++
++		case 'r':
++			/* -r <reg> */
++			if (i + 1 > argc) {
++				kdb_printf("mii: -r requires a value\n");
++				show_usage();
++				return 0;
++			}
++			ret = kdbgetularg(argv[++i], &tmp);
++			if (ret) {
++				kdb_printf("mii: invalid -r value '%s'\n",
++					   argv[i]);
++				return ret;
++			}
++			reg = (int)tmp;
++			break;
++
++		case 'v':
++			/* -v <value> */
++			if (i + 1 > argc) {
++				kdb_printf("mii: -v requires a value\n");
++				show_usage();
++				return 0;
++			}
++			ret = kdbgetularg(argv[++i], &tmp);
++			if (ret) {
++				kdb_printf("mii: invalid -v value '%s'\n",
++					   argv[i]);
++				return ret;
++			}
++			val = tmp;
++			has_val = 1;
++			break;
++
++		default:
++			kdb_printf("mii: unknown flag '%s'\n", flag);
++			show_usage();
++			return 0;
++		}
++	}
++
++	/* Validate mandatory fields */
++	if (is_write < 0) {
++		kdb_printf("mii: must specify -g (read) or -s (write)\n");
++		show_usage();
++		return 0;
++	}
++	if (port < 0) {
++		kdb_printf("mii: must specify -p <phy/port>\n");
++		show_usage();
++		return 0;
++	}
++	if (reg < 0) {
++		kdb_printf("mii: must specify -r <reg>\n");
++		show_usage();
++		return 0;
++	}
++	if (is_write && !has_val) {
++		kdb_printf("mii: -s (write) requires -v <value>\n");
++		show_usage();
++		return 0;
++	}
++
++	/* Dispatch */
++	if (has_dev) {
++		/* CL45 */
++		if (is_write)
++			return kdb_mii_cl45_write(busname, port, devad, reg,
++						  (u16)val, silent);
++		else
++			return kdb_mii_cl45_read(busname, port, devad, reg,
++						 silent);
++	} else {
++		/* CL22 */
++		if (is_write)
++			return kdb_mii_cl22_write(busname, port, reg, (u16)val,
++						  silent);
++		else
++			return kdb_mii_cl22_read(busname, port, reg, silent);
++	}
++}
++
++static kdbtab_t mii_cmds[] = {
++	{
++		.name	= "mii_mgr",
++		.func	= kdb_mii_cmd,
++		.usage	= "[-i bus] [-u] [-z] -g|-s -p <phy> [-d <dev>] -r <reg> [-v <val>]",
++		.help	= "Read/Write MDIO/MII PHY registers (CL22/CL45)",
++		.minlen	= 7,
++		.flags	= KDB_ENABLE_MEM_READ | KDB_ENABLE_MEM_WRITE,
++	},
++};
++
++/* ================================================================== */
++/* mii_mgr_cl45: KDB command for Clause 45 MDIO register read/write     */
++/*                                                                      */
++/* KDB command notes:                                                   */
++/*   - "-i <busname>" selects the MDIO bus (default: "mdio-bus").      */
++/*   - "-z" suppresses the "Get:"/"Set:" output line (silent mode).    */
++/*   - All numeric arguments are hexadecimal.                           */
++/*   - bus->read_c45 / bus->write_c45 are called directly to avoid     */
++/*     mutex deadlock in KDB context (all CPUs stopped; mdio_lock may  */
++/*     already be held by a CPU that was interrupted mid-transfer).     */
++/*   - "-d" is MANDATORY for mii_mgr_cl45 (unlike mii_mgr where it is   */
++/*     optional and selects CL45 mode).                                 */
++/* ================================================================== */
++
++/* ------------------------------------------------------------------ */
++/* show_usage_45: display KDB command usage                             */
++/* ------------------------------------------------------------------ */
++static void show_usage_45(void)
++{
++	kdb_printf("mii_mgr_cl45 -g -p [port number] -d [dev number] -r [register number]\n");
++	kdb_printf("  Get: mii_mgr_cl45 -g -p 3 -d 0x5 -r 0x4\n");
++	kdb_printf("\n");
++	kdb_printf("mii_mgr_cl45 -s -p [port number] -d [dev number] -r ");
++	kdb_printf("[register number] -v [value]\n");
++	kdb_printf("  Set: mii_mgr_cl45 -s -p 4 -d 0x6 -r 0x1 -v 0xff11\n");
++	kdb_printf("\n");
++	kdb_printf("Options:\n");
++	kdb_printf("  -i <busname>  MDIO bus name (default: '" KDB_MII_DEFAULT_BUS "')\n");
++	kdb_printf("  -z            silent mode (suppress Get:/Set: output)\n");
++	kdb_printf("#NOTE: -p, -d, -r are all mandatory for mii_mgr_cl45\n");
++}
++
++/* ------------------------------------------------------------------ */
++/* KDB command handler for mii_mgr_cl45                                  */
++/*                                                                      */
++/* KDB command syntax:                                                  */
++/*                                                                      */
++/*   mii_mgr_cl45 -g -p <port> -d <dev> -r <reg>          CL45 read     */
++/*   mii_mgr_cl45 -s -p <port> -d <dev> -r <reg> -v <val> CL45 write    */
++/*   mii_mgr_cl45 -i <busname> ...                          specify bus  */
++/*   mii_mgr_cl45 -z ...                                    silent mode  */
++/*                                                                      */
++/* All numeric args are hex.  Flags may appear in any order.           */
++/* argc does NOT include argv[0] ("mii_mgr_cl45") per KDB convention.   */
++/* Minimum 6 args required: -g/-s, -p <v>, -d <v>, -r <v>.           */
++/* ------------------------------------------------------------------ */
++static int kdb_mii45_cmd(int argc, const char **argv)
++{
++	unsigned long tmp;
++	int port = -1, reg = -1, devad = -1;
++	unsigned long val = 0;
++	int is_write = -1;	/* -1=unset, 0=read(-g), 1=write(-s) */
++	int has_val = 0;
++	bool silent = false;	/* -z: silent mode */
++	const char *busname = KDB_MII_DEFAULT_BUS;
++	int i, ret;
++
++	/*
++	 * Minimum required args for a valid CL45 read:
++	 *   -g -p <port> -d <dev> -r <reg>  → 6 tokens → argc >= 6
++	 * For write add -v <val> → argc >= 8.
++	 * Mirror original mii_mgr_cl45: argc < 6 → show usage.
++	 */
++	if (argc < 6) {
++		show_usage_45();
++		return 0;
++	}
++
++	/*
++	 * Parse flags in any order.
++	 * argv[0] = "mii_mgr_cl45", argv[1..argc] = flags/values.
++	 */
++	for (i = 1; i <= argc; i++) {
++		const char *flag = argv[i];
++
++		if (flag[0] != '-') {
++			kdb_printf("mii_mgr_cl45: unexpected argument '%s'\n",
++				   flag);
++			show_usage_45();
++			return 0;
++		}
++
++		switch (flag[1]) {
++		case 'g':
++			/* -g: read operation */
++			is_write = 0;
++			break;
++
++		case 's':
++			/* -s: write operation */
++			is_write = 1;
++			break;
++
++		case 'z':
++			/* -z: silent mode — suppress Get:/Set: output */
++			silent = true;
++			break;
++
++		case 'i':
++			/* -i <busname>: select MDIO bus by name */
++			if (i + 1 > argc) {
++				kdb_printf("mii_mgr_cl45: -i requires a bus name\n");
++				show_usage_45();
++				return 0;
++			}
++			busname = argv[++i];
++			break;
++
++		case 'p':
++			/* -p <port>: PHY/port address */
++			if (i + 1 > argc) {
++				kdb_printf("mii_mgr_cl45: -p requires a value\n");
++				show_usage_45();
++				return 0;
++			}
++			ret = kdbgetularg(argv[++i], &tmp);
++			if (ret) {
++				kdb_printf("mii_mgr_cl45: invalid -p value '%s'\n",
++					   argv[i]);
++				return ret;
++			}
++			port = (int)tmp;
++			break;
++
++		case 'd':
++			/*
++			 * -d <devad>: MDIO MMD device address (mandatory for
++			 * CL45; this is what distinguishes mii_mgr_cl45 from
++			 * mii_mgr where -d is optional).
++			 */
++			if (i + 1 > argc) {
++				kdb_printf("mii_mgr_cl45: -d requires a value\n");
++				show_usage_45();
++				return 0;
++			}
++			ret = kdbgetularg(argv[++i], &tmp);
++			if (ret) {
++				kdb_printf("mii_mgr_cl45: invalid -d value '%s'\n",
++					   argv[i]);
++				return ret;
++			}
++			devad = (int)tmp;
++			break;
++
++		case 'r':
++			/* -r <reg>: register address */
++			if (i + 1 > argc) {
++				kdb_printf("mii_mgr_cl45: -r requires a value\n");
++				show_usage_45();
++				return 0;
++			}
++			ret = kdbgetularg(argv[++i], &tmp);
++			if (ret) {
++				kdb_printf("mii_mgr_cl45: invalid -r value '%s'\n",
++					   argv[i]);
++				return ret;
++			}
++			reg = (int)tmp;
++			break;
++
++		case 'v':
++			/* -v <value>: value to write (required for -s) */
++			if (i + 1 > argc) {
++				kdb_printf("mii_mgr_cl45: -v requires a value\n");
++				show_usage_45();
++				return 0;
++			}
++			ret = kdbgetularg(argv[++i], &tmp);
++			if (ret) {
++				kdb_printf("mii_mgr_cl45: invalid -v value '%s'\n",
++					   argv[i]);
++				return ret;
++			}
++			val = tmp;
++			has_val = 1;
++			break;
++
++		default:
++			kdb_printf("mii_mgr_cl45: unknown flag '%s'\n", flag);
++			show_usage_45();
++			return 0;
++		}
++	}
++
++	/* ---- Validate mandatory fields ---- */
++	if (is_write < 0) {
++		kdb_printf("mii_mgr_cl45: must specify -g (read) or -s (write)\n");
++		show_usage_45();
++		return 0;
++	}
++	if (port < 0) {
++		kdb_printf("mii_mgr_cl45: must specify -p <port>\n");
++		show_usage_45();
++		return 0;
++	}
++	/*
++	 * -d is mandatory for mii_mgr_cl45 (unlike mii_mgr where it is
++	 * optional).  Without a device address we cannot form a valid
++	 * Clause 45 transaction.
++	 */
++	if (devad < 0) {
++		kdb_printf("mii_mgr_cl45: must specify -d <dev> (MMD device address)\n");
++		show_usage_45();
++		return 0;
++	}
++	if (reg < 0) {
++		kdb_printf("mii_mgr_cl45: must specify -r <reg>\n");
++		show_usage_45();
++		return 0;
++	}
++	if (is_write && !has_val) {
++		kdb_printf("mii_mgr_cl45: -s (write) requires -v <value>\n");
++		show_usage_45();
++		return 0;
++	}
++
++	/* ---- Dispatch to CL45 read or write ---- */
++	if (is_write)
++		return kdb_mii_cl45_write(busname, port, devad, reg,
++					  (u16)val, silent);
++	else
++		return kdb_mii_cl45_read(busname, port, devad, reg, silent);
++}
++
++static kdbtab_t mii45_cmds[] = {
++	{
++		.name	= "mii_mgr_cl45",
++		.func	= kdb_mii45_cmd,
++		.usage	= "[-i bus] [-z] -g|-s -p <port> -d <dev> -r <reg> [-v <val>]",
++		.help	= "Read/Write Clause 45 MDIO registers",
++		.minlen	= 9,
++		.flags	= KDB_ENABLE_MEM_READ | KDB_ENABLE_MEM_WRITE,
++	},
++};
++
++static int __init kdb_mii_init(void)
++{
++	kdb_register_table(mii_cmds, ARRAY_SIZE(mii_cmds));
++	kdb_register_table(mii45_cmds, ARRAY_SIZE(mii45_cmds));
++	return 0;
++}
++
++early_initcall(kdb_mii_init);
+-- 
+2.45.2

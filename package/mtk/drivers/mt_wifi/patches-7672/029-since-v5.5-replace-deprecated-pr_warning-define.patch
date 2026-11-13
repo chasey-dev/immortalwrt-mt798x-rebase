@@ -1,0 +1,14 @@
+--- a/mt_wifi/include/os/rt_linux.h
++++ b/mt_wifi/include/os/rt_linux.h
+@@ -736,7 +736,11 @@ typedef struct os_cookie	*POS_COOKIE;
+ /* Mapping Wi-Fi driver log to syslog level */
+ #define MTWF_PRINT_DBG_LVL_OFF		pr_crit
+ #define MTWF_PRINT_DBG_LVL_ERROR	pr_err
++#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 4, 0))
+ #define MTWF_PRINT_DBG_LVL_WARN		pr_warning
++#else /* pr_warning is deprecated since version 5.5 */
++#define MTWF_PRINT_DBG_LVL_WARN		pr_warn
++#endif /* LINUX_VERSION_CODE <= 5.4.0 */
+ #define MTWF_PRINT_DBG_LVL_NOTICE	pr_notice
+ #define MTWF_PRINT_DBG_LVL_INFO		pr_info
+ #define MTWF_PRINT_DBG_LVL_DEBUG	pr_info

@@ -1,0 +1,32 @@
+--- a/mt_wifi/include/os/rt_os.h
++++ b/mt_wifi/include/os/rt_os.h
+@@ -44,6 +44,8 @@
+ #endif
+ #endif /* LINUX */
+ 
++#else /* just check version and decide whether we should define SIOCDEVPRIVATE and SIOCIWFIRSTPRIV */
++
+ #ifdef CONFIG_STA_SUPPORT
+ #define RT_PRIV_IOCTL							(SIOCIWFIRSTPRIV + 0x01) /* Sync. with AP for wsc upnp daemon */
+ #define RTPRIV_IOCTL_SET							(SIOCIWFIRSTPRIV + 0x02)
+@@ -143,9 +145,9 @@
+ #define RTPRIV_IOCTL_SET_FT_PARAM                                       (SIOCIWFIRSTPRIV + 0x18)
+ #endif
+ 
+-#else /*for kernel version >= kernel 5.6.0*/
+-
+ 
++// remove this, since it is still incomplete enum
++/*
+ enum {
+ 	RTPRIV_IOCTL_SET = SIOCDEVPRIVATE,
+ 	RTPRIV_IOCTL_SHOW,
+@@ -169,7 +171,7 @@ enum {
+ 	RTPRIV_IOCTL_STA_SHOW,
+ 	RTPRIV_IOCTL_SUBCMD_SHOW,
+ };
+-
++*/
+ #endif
+ 
+ #endif /* _RT_OS_H_ */

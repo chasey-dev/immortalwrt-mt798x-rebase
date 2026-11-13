@@ -1,0 +1,10 @@
+--- a/warp_main.c
++++ b/warp_main.c
+@@ -1508,5 +1508,6 @@ module_exit(warp_module_exit);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION(DRIVER_DESC);
+-MODULE_SUPPORTED_DEVICE("mt7615 within mt7622");
++/* MODULE_SUPPORTED_DEVICE is obsolete since kernel 5.12 */
++// MODULE_SUPPORTED_DEVICE("mt7615 within mt7622");
+ 

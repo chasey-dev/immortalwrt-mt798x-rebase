@@ -1,0 +1,10 @@
+--- a/warp_bm_v2.c
++++ b/warp_bm_v2.c
+@@ -4,6 +4,7 @@
+ #include "wdma.h"
+ #include <linux/version.h>
+ #include <linux/pci.h>
++#include <linux/vmalloc.h>
+ 
+ #define DYBM_RX_EXT_POLLING_CNT	(0)//(50) /*50 times of polling approximately cost 5us */
+ #define TX_BM_HTH_DELAY_INT_INTERVAL	2000	/* 2 seconds */

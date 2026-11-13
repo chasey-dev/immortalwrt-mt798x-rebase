@@ -1,0 +1,13 @@
+--- a/mt_wifi/os/linux/rt_linux.c
++++ b/mt_wifi/os/linux/rt_linux.c
+@@ -5751,8 +5751,8 @@ void os_system_tx_queue_dump(PNET_DEV de
+ 			if (skb->head) {
+ 				p = virt_to_head_page(skb->head);
+ 				page_size = PAGE_SIZE << compound_order(p);
+-				printk("%s(): index:%d, page:%p ,rfcnt:%d, page size:%zu, order:%u, dtor:%u\n", __func__, k++, p,
+-					OS_PAGE_REF(p), page_size, (unsigned int) compound_order(p), (unsigned int) p->compound_dtor);
++				printk("%s(): index:%d, page:%p ,rfcnt:%d, page size:%zu, order:%u\n", __func__, k++, p,
++					OS_PAGE_REF(p), page_size, (unsigned int) compound_order(p));
+ 			}
+ 			skb = skb->next;
+ 		}

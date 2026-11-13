@@ -1,0 +1,39 @@
+From d8194f5755013d6714eeb5454c522c72c0260536 Mon Sep 17 00:00:00 2001
+From: Rex Lu <rex.lu@mediatek.com>
+Date: Fri, 27 Sep 2024 14:17:12 +0800
+Subject: [PATCH] refactor mtk_wed_attach for support wed2
+
+for mt7988d, pcie will bootup with pcie0 and pcie2.
+pcie0 => wed0
+pcie2 => wed2
+---
+ drivers/net/ethernet/mediatek/mtk_wed.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_wed.c b/drivers/net/ethernet/mediatek/mtk_wed.c
+index 8774c99..bac4a95 100644
+--- a/drivers/net/ethernet/mediatek/mtk_wed.c
++++ b/drivers/net/ethernet/mediatek/mtk_wed.c
+@@ -618,7 +618,7 @@ mtk_wed_amsdu_init(struct mtk_wed_device *dev)
+ 
+ 	/* init partial amsdu offload txd src */
+ 	wed_set(dev, MTK_WED_AMSDU_HIFTXD_CFG,
+-		FIELD_PREP(MTK_WED_AMSDU_HIFTXD_SRC, dev->hw->index));
++		FIELD_PREP(MTK_WED_AMSDU_HIFTXD_SRC, (dev->hw->index ? 1: 0)));
+ 
+ 	/* init qmem */
+ 	wed_set(dev, MTK_WED_AMSDU_PSE, MTK_WED_AMSDU_PSE_RESET);
+@@ -2424,9 +2424,7 @@ mtk_wed_attach(struct mtk_wed_device *dev)
+ 	RCU_LOCKDEP_WARN(!rcu_read_lock_held(),
+ 			 "mtk_wed_attach without holding the RCU read lock");
+ 
+-	if ((dev->wlan.bus_type == MTK_WED_BUS_PCIE &&
+-	     pci_domain_nr(dev->wlan.pci_dev->bus) > 1) ||
+-	    !try_module_get(THIS_MODULE))
++	if (!try_module_get(THIS_MODULE))
+ 		ret = -ENODEV;
+ 
+ 	rcu_read_unlock();
+-- 
+2.45.2
+

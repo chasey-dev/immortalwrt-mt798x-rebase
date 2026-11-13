@@ -1,0 +1,141 @@
+---
+[v1] net: ethernet: mtk_wed: add interrupt trigger mode support
+
+Add configurable interrupt trigger mode support to WED for better
+interrupt handling performance tuning.
+---
+v1: Initial interrupt trigger mode support.
+---
+
+From e7a3b555bbbcecadf2dcfb6ce43f8feb754879e0 Mon Sep 17 00:00:00 2001
+From: Rex Lu <rex.lu@mediatek.com>
+Date: Fri, 24 Apr 2026 17:15:40 +0800
+Subject: [PATCH] add wed support intr trigger mode
+
+---
+ drivers/net/ethernet/mediatek/mtk_wed.c | 43 +++++++++++++++++++++++--
+ include/linux/soc/mediatek/mtk_wed.h    |  6 +++-
+ 2 files changed, 46 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_wed.c b/drivers/net/ethernet/mediatek/mtk_wed.c
+index e4fc718..8b9243f 100644
+--- a/drivers/net/ethernet/mediatek/mtk_wed.c
++++ b/drivers/net/ethernet/mediatek/mtk_wed.c
+@@ -1145,6 +1145,41 @@ mtk_wed_dma_disable(struct mtk_wed_device *dev)
+ 	mtk_wed_set_512_support(dev, false);
+ }
+ 
++static void
++mtk_wed_set_pcie_mask(struct mtk_wed_device *dev, bool enable)
++{
++#define IRQ_MASK_APMCU		0x1000301c
++	unsigned long addr;
++	u32 value;
++
++	if (!dev->wlan.intr_mode)
++		return;
++
++	/* set mask apmcu*/
++	addr = (unsigned long)ioremap(IRQ_MASK_APMCU, 4);
++	value = readl((void *)addr);
++	if (enable)
++		value |= BIT(dev->hw->index);
++	else
++		value &= ~BIT(dev->hw->index);
++
++	writel(value, (void *)addr);
++	iounmap((void *)addr);
++
++	/* set pcie auto clear */
++	addr = (unsigned long)ioremap((dev->hw->pcie_base + 0x1ac), 4);
++	value = readl((void *)addr);
++	if (enable)
++		value |= BIT(3);
++	else
++		value &= ~BIT(3);
++
++	writel(value, (void *)addr);
++	iounmap((void *)addr);
++
++	return;
++}
++
+ static void
+ mtk_wed_stop(struct mtk_wed_device *dev)
+ {
+@@ -1156,6 +1191,7 @@ mtk_wed_stop(struct mtk_wed_device *dev)
+ 	wdma_w32(dev, MTK_WDMA_INT_MASK, 0);
+ 	wdma_w32(dev, MTK_WDMA_INT_GRP2, 0);
+ 
++	mtk_wed_set_pcie_mask(dev, false);
+ 	if (!mtk_wed_get_rx_capa(dev))
+ 		return;
+ 
+@@ -1273,8 +1309,9 @@ mtk_wed_bus_init(struct mtk_wed_device *dev)
+ 				wed_w32(dev, MTK_WED_PCIE_INT_CLR, BIT(24));
+ 		}
+ 
+-		wed_w32(dev, MTK_WED_PCIE_INT_CTRL,
+-			FIELD_PREP(MTK_WED_PCIE_INT_CTRL_POLL_EN, 2));
++		if (!dev->wlan.intr_mode)
++			wed_w32(dev, MTK_WED_PCIE_INT_CTRL,
++				FIELD_PREP(MTK_WED_PCIE_INT_CTRL_POLL_EN, 2));
+ 
+ 		/* pcie interrupt control: pola/source selection */
+ 		wed_set(dev, MTK_WED_PCIE_INT_CTRL,
+@@ -2788,6 +2825,7 @@ mtk_wed_start(struct mtk_wed_device *dev, u32 irq_mask)
+ 
+ 	mtk_wed_set_512_support(dev, dev->wlan.wcid_512);
+ 	mtk_wed_amsdu_init(dev);
++	mtk_wed_set_pcie_mask(dev, true);
+ 
+ 	mtk_wed_dma_enable(dev);
+ 	mtk_pse_wdma_enable(dev->hw->eth, dev->wdma_idx, true);
+@@ -3223,6 +3261,7 @@ void mtk_wed_add_hw(struct device_node *np, struct mtk_eth *eth,
+ 		.msdu_pg_rx_ring_setup = mtk_wed_msdu_pg_rx_ring_setup,
+ 		.ind_rx_ring_setup = mtk_wed_ind_rx_ring_setup,
+ 		.rro_3_1_rx_ring_setup = mtk_wed_rro_3_1_rx_ring_setup,
++		.set_pcie_mask = mtk_wed_set_pcie_mask,
+ 	};
+ 	struct device_node *eth_np = eth->dev->of_node;
+ 	struct platform_device *pdev;
+diff --git a/include/linux/soc/mediatek/mtk_wed.h b/include/linux/soc/mediatek/mtk_wed.h
+index 75da4dd..0721ca5 100644
+--- a/include/linux/soc/mediatek/mtk_wed.h
++++ b/include/linux/soc/mediatek/mtk_wed.h
+@@ -172,6 +172,7 @@ struct mtk_wed_device {
+ 		bool msi;
+ 		bool hif2;
+ 		bool fc_disable;
++		bool intr_mode;
+ 
+ 		u16 token_start;
+ 		unsigned int nbuf;
+@@ -248,6 +249,7 @@ struct mtk_wed_ops {
+ 				 void __iomem *regs);
+ 	void (*rro_3_1_rx_ring_setup)(struct mtk_wed_device *dev,
+ 				      void __iomem *regs);
++	void (*set_pcie_mask)(struct mtk_wed_device *dev, bool enable);
+ };
+ 
+ extern const struct mtk_wed_ops __rcu *mtk_soc_wed_ops;
+@@ -355,7 +357,8 @@ static inline bool mtk_wed_is_amsdu_supported(struct mtk_wed_device *dev)
+ 	(_dev)->ops->ind_rx_ring_setup(_dev, _regs)
+ #define mtk_wed_device_rro_3_1_rx_ring_setup(_dev, _regs) \
+ 	(_dev)->ops->rro_3_1_rx_ring_setup(_dev, _regs)
+-
++#define mtk_wed_device_set_pcie_mask(_dev, _enable) \
++	(_dev)->ops->set_pcie_mask(_dev, _enable)
+ #else
+ static inline bool mtk_wed_device_active(struct mtk_wed_device *dev)
+ {
+@@ -381,6 +384,7 @@ static inline bool mtk_wed_device_active(struct mtk_wed_device *dev)
+ #define mtk_wed_device_msdu_pg_rx_ring_setup(_dev, _ring, _regs) -ENODEV
+ #define mtk_wed_device_ind_rx_ring_setup(_dev, _regs) -ENODEV
+ #define mtk_wed_device_rro_3_1_rx_ring_setup(_dev, _regs) -ENODEV
++#define mtk_wed_device_set_pcie_mask(_dev, _enable)  do {} while (0)
+ #endif
+ 
+ #endif
+-- 
+2.45.2

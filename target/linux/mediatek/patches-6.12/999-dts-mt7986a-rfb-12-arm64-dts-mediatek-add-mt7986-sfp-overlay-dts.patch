@@ -1,0 +1,71 @@
+---
+[v1] arm64: dts: mediatek: add mt7986 sfp overlay dts
+
+Add an SFP (Small Form-factor Pluggable) overlay device tree for the MT7986A RFB to
+enable phylink support for SFP modules.
+---
+v1: Add a SFP DTSO for our MT7986A RFB.
+---
+
+From ff6491d56da0f7d6b12e425a66b533fea8b25740 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Tue, 10 Mar 2026 17:04:35 +0800
+Subject: [PATCH] arm64: dts: mediatek: add mt7986-sfp-eth1 overlay dts
+
+---
+ .../boot/dts/mediatek/mt7986-sfp-eth1.dtso    | 39 +++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/mediatek/mt7986-sfp-eth1.dtso
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt7986-sfp-eth1.dtso b/arch/arm64/boot/dts/mediatek/mt7986-sfp-eth1.dtso
+new file mode 100644
+index 0000000..9a8d504
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7986-sfp-eth1.dtso
+@@ -0,0 +1,43 @@
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	fragment@0 {
++		target-path = "/";
++		__overlay__ {
++			sfp_cage1: sfp@1 {
++				compatible = "sff,sfp";
++				i2c-bus = <&i2c0>;
++				mod-def0-gpios = <&pio 29 GPIO_ACTIVE_LOW>;
++				los-gpios = <&pio 30 GPIO_ACTIVE_HIGH>;
++				tx-disable-gpios = <&pio 31 GPIO_ACTIVE_HIGH>;
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gmac1>;
++		__overlay__ {
++			phy-mode = "2500base-x";
++			managed = "in-band-status";
++			sfp = <&sfp_cage1>;
++			status = "okay";
++		};
++	};
++
++	fragment@2 {
++		target-path = "/soc/i2c@11008000";
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&i2c_pins>;
++			status = "okay";
++		};
++	};
++};
+-- 
+2.45.2
+

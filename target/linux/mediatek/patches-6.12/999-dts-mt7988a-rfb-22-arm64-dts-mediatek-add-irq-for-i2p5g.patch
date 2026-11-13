@@ -1,0 +1,30 @@
+---
+[v1] arm64: dts: mt7988: add irq for i2p5g
+
+Add IRQ support for the built-in 2.5G Ethernet PHY (i2p5g) of the MT7988. This
+enables interrupt-driven handling of PHY events, resulting in reduced MAC link-up
+latency.
+---
+v1: Initial IRQ support for MT7988 internal 2.5G Ethernet PHY.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-i2p5g-phy.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-i2p5g-phy.dtso
+@@ -7,6 +7,8 @@
+ /dts-v1/;
+ /plugin/;
+
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++
+ / {
+ 	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
+
+@@ -25,6 +27,8 @@
+ 		__overlay__ {
+ 			pinctrl-names = "i2p5gbe-led";
+ 			pinctrl-0 = <&i2p5gbe_led0_pins>;
++			interrupts = <GIC_SPI 286 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-parent = <&gic>;
+ 		};
+ 	};
+ };

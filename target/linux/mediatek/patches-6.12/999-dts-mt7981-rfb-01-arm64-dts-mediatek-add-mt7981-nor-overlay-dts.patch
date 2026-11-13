@@ -1,0 +1,75 @@
+---
+[v1] arm64: dts: mediatek: add mt7981 SPI NOR flash overlay
+
+Add DTS overlay for MT7981 SPI NOR flash storage configuration. This overlay
+is part of the MT7981 DTS overlay architecture enabling runtime device tree
+composition for different storage types. Root filesystem reference is added
+to chosen node. Combining base MT7981 DTS with this overlay enables NOR boot
+configuration.
+
+---
+v1: Initial release for the openwrt-25.12 branch.
+---
+
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb-spim-nor.dtso
+@@ -0,0 +1,59 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "mediatek,mt7981-rfb", "mediatek,mt7981";
++
++	fragment@0 {
++		target = <&spi2>;
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&spi2_flash_pins>;
++			status = "okay";
++
++			flash@0 {
++				#address-cells = <1>;
++				#size-cells = <1>;
++				compatible = "jedec,spi-nor";
++				reg = <0>;
++				spi-max-frequency = <52000000>;
++				spi-tx-bus-width = <4>;
++				spi-rx-bus-width = <4>;
++
++				partition@00000 {
++					label = "BL2";
++					reg = <0x00000 0x0040000>;
++				};
++				partition@40000 {
++					label = "u-boot-env";
++					reg = <0x40000 0x0010000>;
++				};
++				partition@50000 {
++					label = "Factory";
++					reg = <0x50000 0x00b0000>;
++				};
++				partition@100000 {
++					label = "FIP";
++					reg = <0x100000 0x0080000>;
++				};
++				nor_rootfs: partition@180000 {
++					label = "firmware";
++					reg = <0x180000 0x1e80000>;
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target-path = "/chosen";
++		__overlay__ {
++			rootdisk-nor = <&nor_rootfs>;
++		};
++	};
++};

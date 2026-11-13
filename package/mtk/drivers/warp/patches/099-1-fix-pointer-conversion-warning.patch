@@ -1,0 +1,33 @@
+--- a/wed.c
++++ b/wed.c
+@@ -908,7 +908,7 @@ wed_proc_handle(struct wed_entry *wed, c
+ 
+ 	case WED_PROC_TX_DYNAMIC_FREE: {
+ 		if(IS_WED_HW_CAP(wed, WED_HW_CAP_DYN_TXBM))
+-			buf_free_task((unsigned long)wed);
++			buf_free_task(wed);
+ 		else
+ 			warp_dbg(WARP_DBG_ERR, "DYBM is not enabled!\n");
+ 	}
+--- a/mcu/warp_ccif.c
++++ b/mcu/warp_ccif.c
+@@ -81,7 +81,7 @@ static int ccif_init(struct woif_bus *bu
+ 		goto err;
+ 	}
+ 
+-	ccif->base_addr = (unsigned long)of_iomap(node, idx);
++	ccif->base_addr = of_iomap(node, idx);
+ 	ccif->irq = irq_of_parse_and_map(node, idx);
+ 
+ 	warp_dbg(WARP_DBG_INF, "%s(): ccif: %p, addr: %lx, irq:%d!\n",
+--- a/mcu/warp_ccif.h
++++ b/mcu/warp_ccif.h
+@@ -28,7 +28,7 @@ struct ccif_ring_ctrl {
+ };
+ 
+ struct ccif_entry {
+-	unsigned long base_addr;
++	void __iomem * base_addr;
+ 	u8 irq;
+ 	struct ccif_ring_ctrl *tx_ring;
+ 	struct ccif_ring_ctrl *rx_ring;

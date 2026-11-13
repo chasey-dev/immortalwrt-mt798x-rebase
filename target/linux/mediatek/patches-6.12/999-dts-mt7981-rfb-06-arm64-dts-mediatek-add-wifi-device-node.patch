@@ -1,0 +1,20 @@
+---
+[v1] arm64: dts: mediatek: mt7981: add wifi device node
+
+Enable WiFi device node configuration for MT7981 RFB.
+---
+v1: Initial release for the openwrt-25.12 branch.
+---
+
+Index: linux-6.12.65/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+===================================================================
+--- linux-6.12.65.orig/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
++++ linux-6.12.65/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+@@ -263,3 +263,7 @@
+ &watchdog {
+ 	status = "okay";
+ };
++
++&wifi {
++	status = "okay";
++};

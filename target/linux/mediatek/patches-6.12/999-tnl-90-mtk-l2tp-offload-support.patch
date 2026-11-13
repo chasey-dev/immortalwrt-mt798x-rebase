@@ -1,0 +1,69 @@
+--- a/net/l2tp/l2tp_ppp.c
++++ b/net/l2tp/l2tp_ppp.c
+@@ -89,6 +89,7 @@
+ #include <linux/nsproxy.h>
+ #include <net/net_namespace.h>
+ #include <net/netns/generic.h>
++#include <net/netfilter/nf_flow_table.h>
+ #include <net/ip.h>
+ #include <net/udp.h>
+ #include <net/inet_common.h>
+@@ -127,10 +128,15 @@ static int pppol2tp_xmit(struct ppp_chan
+ static int pppol2tp_fill_forward_path(struct net_device_path_ctx *ctx,
+ 				      struct net_device_path *path,
+ 				      const struct ppp_channel *chan);
++static int l2tp_ppp_flow_offload_check(struct ppp_channel *chan,
++				       struct flow_offload_hw_path *path);
+ 
+ static const struct ppp_channel_ops pppol2tp_chan_ops = {
+ 	.start_xmit =  pppol2tp_xmit,
+ 	.fill_forward_path = pppol2tp_fill_forward_path,
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++	.flow_offload_check = l2tp_ppp_flow_offload_check,
++#endif /* IS_ENABLED(CONFIG_NF_FLOW_TABLE) */
+ };
+ 
+ static const struct proto_ops pppol2tp_ops;
+@@ -318,6 +324,29 @@ error:
+ 	return error;
+ }
+ 
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++static int l2tp_ppp_flow_offload_check(struct ppp_channel *chan,
++				       struct flow_offload_hw_path *path)
++{
++	struct sock *sk = (struct sock *)chan->private;
++	struct l2tp_session *session;
++
++	if (path->flags & BIT(DEV_PATH_TNL))
++		return -EEXIST;
++
++	session = pppol2tp_sock_to_session(sk);
++	if (!session)
++		return -EINVAL;
++
++	path->flags |= BIT(DEV_PATH_TNL);
++	path->tnl_type = FLOW_OFFLOAD_TNL_L2TP_V2;
++
++	l2tp_session_put(session);
++
++	return 0;
++}
++#endif /* IS_ENABLED(CONFIG_NF_FLOW_TABLE) */
++
+ /* Transmit function called by generic PPP driver.  Sends PPP frame
+  * over PPPoL2TP socket.
+  *
+--- a/net/l2tp/l2tp_core.c
++++ b/net/l2tp/l2tp_core.c
+@@ -1231,6 +1231,10 @@ static int l2tp_xmit_core(struct l2tp_se
+ 	struct inet_sock *inet;
+ 	struct udphdr *uh;
+ 
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++	skb_reset_inner_headers(skb);
++#endif
++
+ 	/* Check that there's enough headroom in the skb to insert IP,
+ 	 * UDP and L2TP headers. If not enough, expand it to
+ 	 * make room. Adjust truesize.

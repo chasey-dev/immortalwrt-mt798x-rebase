@@ -1,0 +1,74 @@
+From 89b764ec054d81f13e432412a2a5a30f8efbc51a Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Mon, 14 Sep 2026 17:52:10 +0800
+Subject: [PATCH 5/5] net: phylink: provide fixed state for 1000base-X and
+ 2500base-X
+
+When decoding clause 22 state, if in-band is disabled and using either
+1000base-X or 2500base-X, rather than reporting link-down, we know the
+speed, and we only support full duplex. Pause modes taken from XPCS.
+
+This fixes a problem reported by Eric Woudstra.
+
+Signed-off-by: Russell King (Oracle) <rmk+kernel@armlinux.org.uk>
+Reviewed-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
+Tested-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
+Link: https://patch.msgid.link/E1tXGei-000EtL-Fn@rmk-PC.armlinux.org.uk
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+---
+ drivers/net/phy/phylink.c | 28 ++++++++++++++++++----------
+ 1 file changed, 18 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/net/phy/phylink.c b/drivers/net/phy/phylink.c
+index 80aec3f..6059fe6 100644
+--- a/drivers/net/phy/phylink.c
++++ b/drivers/net/phy/phylink.c
+@@ -3943,27 +3943,35 @@ void phylink_mii_c22_pcs_decode_state(struct phylink_link_state *state,
+ 	if (!state->link)
+ 		return;
+ 
+-	/* If in-band is disabled, then the advertisement data is not
+-	 * meaningful.
+-	 */
+-	if (neg_mode != PHYLINK_PCS_NEG_INBAND_ENABLED)
+-		return;
+-
+ 	switch (state->interface) {
+ 	case PHY_INTERFACE_MODE_1000BASEX:
+-		phylink_decode_c37_word(state, lpa, SPEED_1000);
++		if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED) {
++			phylink_decode_c37_word(state, lpa, SPEED_1000);
++		} else {
++			state->speed = SPEED_1000;
++			state->duplex = DUPLEX_FULL;
++			state->pause |= MLO_PAUSE_TX | MLO_PAUSE_RX;
++		}
+ 		break;
+ 
+ 	case PHY_INTERFACE_MODE_2500BASEX:
+-		phylink_decode_c37_word(state, lpa, SPEED_2500);
++		if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED) {
++			phylink_decode_c37_word(state, lpa, SPEED_2500);
++		} else {
++			state->speed = SPEED_2500;
++			state->duplex = DUPLEX_FULL;
++			state->pause |= MLO_PAUSE_TX | MLO_PAUSE_RX;
++		}
+ 		break;
+ 
+ 	case PHY_INTERFACE_MODE_SGMII:
+ 	case PHY_INTERFACE_MODE_QSGMII:
+-		phylink_decode_sgmii_word(state, lpa);
++		if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED)
++			phylink_decode_sgmii_word(state, lpa);
+ 		break;
+ 	case PHY_INTERFACE_MODE_QUSGMII:
+-		phylink_decode_usgmii_word(state, lpa);
++		if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED)
++			phylink_decode_usgmii_word(state, lpa);
+ 		break;
+ 
+ 	default:
+-- 
+2.45.2
+

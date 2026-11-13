@@ -1,0 +1,881 @@
+---
+[v1] kdb: add ARM64 disassembly command
+
+Add the dis command to decode and display ARM64 instructions from the KDB
+console. This allows instruction inspection during a kernel debugging session.
+---
+v1: Add the ARM64 KDB disassembly command.
+---
+
+From 9cfd9c0fd7172818215ab05f14f5b344f26808aa Mon Sep 17 00:00:00 2001
+From: Evan Zhang <evan.zhang@mediatek.com>
+Date: Mon, 10 Aug 2026 17:04:20 +0800
+Subject: [PATCH] kdb: add ARM64 disassembly command
+
+Add the dis command for inspecting ARM64 instructions from KDB.
+
+Signed-off-by: Evan Zhang <Evan.Zhang@mediatek.com>
+---
+
+diff --git a/kernel/debug/kdb/Makefile b/kernel/debug/kdb/Makefile
+index efac857..02e395f 100644
+--- a/kernel/debug/kdb/Makefile
++++ b/kernel/debug/kdb/Makefile
+@@ -6,7 +6,7 @@
+ # Copyright (c) 2009 Wind River Systems, Inc. All Rights Reserved.
+ #
+ 
+-obj-y := kdb_io.o kdb_main.o kdb_support.o kdb_bt.o gen-kdb_cmds.o kdb_bp.o kdb_debugger.o
++obj-y := kdb_io.o kdb_main.o kdb_support.o kdb_bt.o gen-kdb_cmds.o kdb_bp.o kdb_debugger.o kdb_dis.o
+ obj-$(CONFIG_KDB_KEYBOARD)    += kdb_keyboard.o
+ 
+ clean-files := gen-kdb_cmds.c
+diff --git a/kernel/debug/kdb/kdb_dis.c b/kernel/debug/kdb/kdb_dis.c
+new file mode 100644
+index 0000000..d9e06ef
+--- /dev/null
++++ b/kernel/debug/kdb/kdb_dis.c
+@@ -0,0 +1,841 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ *   Copyright (C) 2026 MediaTek Inc.
++ */
++
++/*
++ * Kernel Debugger ARM64 Disassembler
++ *
++ * This file is subject to the terms and conditions of the GNU General Public
++ * License.  See the file "COPYING" in the main directory of this archive
++ * for more details.
++ *
++ * Implements the 'dis' command for KDB on ARM64 platforms.
++ * Usage: dis <addr> [<count>]
++ *
++ * This disassembler decodes ARM64 (AArch64) instructions and prints
++ * human-readable mnemonics. It covers the most common instruction classes:
++ *   - Branches (B, BL, BR, BLR, RET, CBZ, CBNZ, TBZ, TBNZ, B.cond)
++ *   - Load/Store (LDR, STR, LDP, STP and variants)
++ *   - Data processing immediate (ADD, SUB, MOV, MOVZ, MOVN, MOVK)
++ *   - Data processing register (ADD, SUB, AND, ORR, EOR, LSL, LSR, etc.)
++ *   - System instructions (MRS, MSR, NOP, BRK, SVC, etc.)
++ *   - Arithmetic (MUL, MADD, MSUB, UDIV, SDIV)
++ *
++ * Unknown instructions are displayed as ".word 0xXXXXXXXX".
++ */
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/kdb.h>
++#include <asm/insn.h>
++#include "kdb_private.h"
++
++/* Default number of instructions to disassemble */
++#define KDB_DIS_DEFAULT_COUNT	16
++
++/* Register name helpers */
++static const char *reg_name(u32 reg, bool is64)
++{
++	static const char * const xregs[32] = {
++		"x0",  "x1",  "x2",  "x3",  "x4",  "x5",  "x6",  "x7",
++		"x8",  "x9",  "x10", "x11", "x12", "x13", "x14", "x15",
++		"x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
++		"x24", "x25", "x26", "x27", "x28", "x29", "x30", "xzr",
++	};
++	static const char * const wregs[32] = {
++		"w0",  "w1",  "w2",  "w3",  "w4",  "w5",  "w6",  "w7",
++		"w8",  "w9",  "w10", "w11", "w12", "w13", "w14", "w15",
++		"w16", "w17", "w18", "w19", "w20", "w21", "w22", "w23",
++		"w24", "w25", "w26", "w27", "w28", "w29", "w30", "wzr",
++	};
++
++	if (reg > 31)
++		return "??";
++	return is64 ? xregs[reg] : wregs[reg];
++}
++
++/* SP alias: reg 31 in some contexts is SP, not XZR */
++static const char *reg_name_sp(u32 reg, bool is64)
++{
++	if (reg == 31)
++		return is64 ? "sp" : "wsp";
++	return reg_name(reg, is64);
++}
++
++/* Condition code names */
++static const char *cond_name(u32 cond)
++{
++	static const char * const conds[16] = {
++		"eq", "ne", "cs", "cc", "mi", "pl", "vs", "vc",
++		"hi", "ls", "ge", "lt", "gt", "le", "al", "nv",
++	};
++	return conds[cond & 0xf];
++}
++
++/* Shift type names */
++static const char *shift_name(u32 shift)
++{
++	static const char * const shifts[4] = { "lsl", "lsr", "asr", "ror" };
++	return shifts[shift & 3];
++}
++
++/*
++ * Sign-extend a value from bit position 'bits-1' down to bit 0.
++ */
++/*
++ * Decode and print a single ARM64 instruction.
++ */
++static void kdb_dis_one(unsigned long addr, u32 insn)
++{
++	bool is64 = (insn >> 31) & 1;
++	u32 rd, rn, rm, ra, rt;
++	s64 imm;
++	u32 shift, amount;
++
++	/* ---- Branches, Exception Generation, System Instructions ---- */
++
++	/* B <imm26> */
++	if (aarch64_insn_is_b(insn)) {
++		imm = sign_extend64((insn & 0x3FFFFFF) << 2, 27);
++		kdb_printf("b\t0x%lx", addr + (unsigned long)imm);
++		return;
++	}
++
++	/* BL <imm26> */
++	if (aarch64_insn_is_bl(insn)) {
++		imm = sign_extend64((insn & 0x3FFFFFF) << 2, 27);
++		kdb_printf("bl\t0x%lx", addr + (unsigned long)imm);
++		return;
++	}
++
++	/* BR Xn */
++	if (aarch64_insn_is_br(insn)) {
++		rn = (insn >> 5) & 0x1f;
++		kdb_printf("br\t%s", reg_name(rn, true));
++		return;
++	}
++
++	/* BLR Xn */
++	if (aarch64_insn_is_blr(insn)) {
++		rn = (insn >> 5) & 0x1f;
++		kdb_printf("blr\t%s", reg_name(rn, true));
++		return;
++	}
++
++	/* RET {Xn} */
++	if (aarch64_insn_is_ret(insn)) {
++		rn = (insn >> 5) & 0x1f;
++		if (rn == 30)
++			kdb_printf("ret");
++		else
++			kdb_printf("ret\t%s", reg_name(rn, true));
++		return;
++	}
++
++	/* ERET */
++	if (aarch64_insn_is_eret(insn)) {
++		kdb_printf("eret");
++		return;
++	}
++
++	/* CBZ / CBNZ */
++	if (aarch64_insn_is_cbz(insn) || aarch64_insn_is_cbnz(insn)) {
++		bool is_nz = aarch64_insn_is_cbnz(insn);
++
++		rt = insn & 0x1f;
++		imm = sign_extend64(((insn >> 5) & 0x7FFFF) << 2, 20);
++		kdb_printf("%s\t%s, 0x%lx",
++			   is_nz ? "cbnz" : "cbz",
++			   reg_name(rt, is64),
++			   addr + (unsigned long)imm);
++		return;
++	}
++
++	/* TBZ / TBNZ */
++	if (aarch64_insn_is_tbz(insn) || aarch64_insn_is_tbnz(insn)) {
++		bool is_nz = aarch64_insn_is_tbnz(insn);
++		u32 bit = ((insn >> 31) & 1) << 5 | ((insn >> 19) & 0x1f);
++
++		rt = insn & 0x1f;
++		imm = sign_extend64(((insn >> 5) & 0x3FFF) << 2, 15);
++		kdb_printf("%s\t%s, #%u, 0x%lx",
++			   is_nz ? "tbnz" : "tbz",
++			   reg_name(rt, true),
++			   bit,
++			   addr + (unsigned long)imm);
++		return;
++	}
++
++	/* B.cond */
++	if (aarch64_insn_is_bcond(insn)) {
++		u32 cond = insn & 0xf;
++
++		imm = sign_extend64(((insn >> 5) & 0x7FFFF) << 2, 20);
++		kdb_printf("b.%s\t0x%lx",
++			   cond_name(cond),
++			   addr + (unsigned long)imm);
++		return;
++	}
++
++	/* NOP (hint #0) */
++	if (insn == 0xD503201F) {
++		kdb_printf("nop");
++		return;
++	}
++
++	/* BRK #imm16 */
++	if (aarch64_insn_is_brk(insn)) {
++		u32 imm16 = (insn >> 5) & 0xFFFF;
++
++		kdb_printf("brk\t#0x%x", imm16);
++		return;
++	}
++
++	/* SVC #imm16 */
++	if (aarch64_insn_is_svc(insn)) {
++		u32 imm16 = (insn >> 5) & 0xFFFF;
++
++		kdb_printf("svc\t#0x%x", imm16);
++		return;
++	}
++
++	/* HVC #imm16 */
++	if (aarch64_insn_is_hvc(insn)) {
++		u32 imm16 = (insn >> 5) & 0xFFFF;
++
++		kdb_printf("hvc\t#0x%x", imm16);
++		return;
++	}
++
++	/* SMC #imm16 */
++	if (aarch64_insn_is_smc(insn)) {
++		u32 imm16 = (insn >> 5) & 0xFFFF;
++
++		kdb_printf("smc\t#0x%x", imm16);
++		return;
++	}
++
++	/* MRS Xt, sysreg */
++	if (aarch64_insn_is_mrs(insn)) {
++		u32 sysreg = (insn >> 5) & 0xFFFF;
++
++		rd = insn & 0x1f;
++		kdb_printf("mrs\t%s, s%u_%u_c%u_c%u_%u",
++			   reg_name(rd, true),
++			   1 + ((sysreg >> 14) & 1),  /* op0: 2 or 3 */
++			   (sysreg >> 11) & 7,         /* op1 */
++			   (sysreg >> 7) & 0xf,        /* CRn */
++			   (sysreg >> 3) & 0xf,        /* CRm */
++			   sysreg & 7);                /* op2 */
++		return;
++	}
++
++	/* MSR sysreg, Xt */
++	if (aarch64_insn_is_msr_reg(insn)) {
++		u32 sysreg = (insn >> 5) & 0xFFFF;
++
++		rt = insn & 0x1f;
++		kdb_printf("msr\ts%u_%u_c%u_c%u_%u, %s",
++			   1 + ((sysreg >> 14) & 1),
++			   (sysreg >> 11) & 7,
++			   (sysreg >> 7) & 0xf,
++			   (sysreg >> 3) & 0xf,
++			   sysreg & 7,
++			   reg_name(rt, true));
++		return;
++	}
++
++	/* DMB / DSB / ISB */
++	if (aarch64_insn_is_dmb(insn)) {
++		u32 crm = (insn >> 8) & 0xf;
++
++		kdb_printf("dmb\t#0x%x", crm);
++		return;
++	}
++	if (aarch64_insn_is_dsb_base(insn)) {
++		u32 crm = (insn >> 8) & 0xf;
++
++		kdb_printf("dsb\t#0x%x", crm);
++		return;
++	}
++	if (aarch64_insn_is_isb(insn)) {
++		kdb_printf("isb");
++		return;
++	}
++
++	/* ---- Data Processing - Immediate ---- */
++
++	/* MOVZ */
++	if (aarch64_insn_is_movz(insn)) {
++		u32 hw = (insn >> 21) & 3;
++		u32 imm16 = (insn >> 5) & 0xFFFF;
++
++		rd = insn & 0x1f;
++		if (hw)
++			kdb_printf("movz\t%s, #0x%x, lsl #%u",
++				   reg_name(rd, is64), imm16, hw * 16);
++		else
++			kdb_printf("movz\t%s, #0x%x",
++				   reg_name(rd, is64), imm16);
++		return;
++	}
++
++	/* MOVN */
++	if (aarch64_insn_is_movn(insn)) {
++		u32 hw = (insn >> 21) & 3;
++		u32 imm16 = (insn >> 5) & 0xFFFF;
++
++		rd = insn & 0x1f;
++		if (hw)
++			kdb_printf("movn\t%s, #0x%x, lsl #%u",
++				   reg_name(rd, is64), imm16, hw * 16);
++		else
++			kdb_printf("movn\t%s, #0x%x",
++				   reg_name(rd, is64), imm16);
++		return;
++	}
++
++	/* MOVK */
++	if (aarch64_insn_is_movk(insn)) {
++		u32 hw = (insn >> 21) & 3;
++		u32 imm16 = (insn >> 5) & 0xFFFF;
++
++		rd = insn & 0x1f;
++		if (hw)
++			kdb_printf("movk\t%s, #0x%x, lsl #%u",
++				   reg_name(rd, is64), imm16, hw * 16);
++		else
++			kdb_printf("movk\t%s, #0x%x",
++				   reg_name(rd, is64), imm16);
++		return;
++	}
++
++	/* ADD/ADDS/SUB/SUBS immediate */
++	if (aarch64_insn_is_add_imm(insn) || aarch64_insn_is_adds_imm(insn) ||
++	    aarch64_insn_is_sub_imm(insn) || aarch64_insn_is_subs_imm(insn)) {
++		bool is_sub = (insn >> 30) & 1;
++		bool set_flags = (insn >> 29) & 1;
++		u32 shift12 = (insn >> 22) & 1;
++		u32 imm12 = (insn >> 10) & 0xFFF;
++		const char *mnem;
++
++		rd = insn & 0x1f;
++		rn = (insn >> 5) & 0x1f;
++
++		/* MOV alias: ADD Rd, Rn, #0 with Rd or Rn == SP */
++		if (!is_sub && !set_flags && imm12 == 0 &&
++		    (rd == 31 || rn == 31)) {
++			kdb_printf("mov\t%s, %s",
++				   reg_name_sp(rd, is64),
++				   reg_name_sp(rn, is64));
++			return;
++		}
++
++		if (is_sub)
++			mnem = set_flags ? "subs" : "sub";
++		else
++			mnem = set_flags ? "adds" : "add";
++
++		if (shift12)
++			kdb_printf("%s\t%s, %s, #0x%x, lsl #12",
++				   mnem,
++				   reg_name_sp(rd, is64),
++				   reg_name_sp(rn, is64),
++				   imm12);
++		else
++			kdb_printf("%s\t%s, %s, #0x%x",
++				   mnem,
++				   reg_name_sp(rd, is64),
++				   reg_name_sp(rn, is64),
++				   imm12);
++		return;
++	}
++
++	/* ADR / ADRP */
++	if (aarch64_insn_is_adr(insn) || aarch64_insn_is_adrp(insn)) {
++		bool is_adrp = aarch64_insn_is_adrp(insn);
++		u32 immlo = (insn >> 29) & 3;
++		u32 immhi = (insn >> 5) & 0x7FFFF;
++		u64 raw_imm = ((u64)immhi << 2) | immlo;
++
++		rd = insn & 0x1f;
++		if (is_adrp) {
++			imm = sign_extend64(raw_imm << 12, 32);
++			kdb_printf("adrp\t%s, 0x%lx",
++				   reg_name(rd, true),
++				   (addr & ~0xFFFUL) + (unsigned long)imm);
++		} else {
++			imm = sign_extend64(raw_imm, 20);
++			kdb_printf("adr\t%s, 0x%lx",
++				   reg_name(rd, true),
++				   addr + (unsigned long)imm);
++		}
++		return;
++	}
++
++	/* ---- Data Processing - Register ---- */
++
++	/* MOV (register): ORR Rd, XZR, Rm */
++	if (aarch64_insn_is_mov_reg(insn)) {
++		rd = insn & 0x1f;
++		rm = (insn >> 16) & 0x1f;
++		kdb_printf("mov\t%s, %s", reg_name(rd, is64), reg_name(rm, is64));
++		return;
++	}
++
++	/* ADD/ADDS/SUB/SUBS (shifted register) */
++	if (aarch64_insn_is_add(insn) || aarch64_insn_is_adds(insn) ||
++	    aarch64_insn_is_sub(insn) || aarch64_insn_is_subs(insn)) {
++		bool is_sub = (insn >> 30) & 1;
++		bool set_flags = (insn >> 29) & 1;
++		const char *mnem;
++
++		rd = insn & 0x1f;
++		rn = (insn >> 5) & 0x1f;
++		rm = (insn >> 16) & 0x1f;
++		shift = (insn >> 22) & 3;
++		amount = (insn >> 10) & 0x3f;
++
++		/* NEG alias: SUB Rd, XZR, Rm */
++		if (is_sub && !set_flags && rn == 31) {
++			if (amount)
++				kdb_printf("neg\t%s, %s, %s #%u",
++					   reg_name(rd, is64),
++					   reg_name(rm, is64),
++					   shift_name(shift), amount);
++			else
++				kdb_printf("neg\t%s, %s",
++					   reg_name(rd, is64),
++					   reg_name(rm, is64));
++			return;
++		}
++
++		/* CMP alias: SUBS XZR, Rn, Rm */
++		if (is_sub && set_flags && rd == 31) {
++			if (amount)
++				kdb_printf("cmp\t%s, %s, %s #%u",
++					   reg_name(rn, is64),
++					   reg_name(rm, is64),
++					   shift_name(shift), amount);
++			else
++				kdb_printf("cmp\t%s, %s",
++					   reg_name(rn, is64),
++					   reg_name(rm, is64));
++			return;
++		}
++
++		if (is_sub)
++			mnem = set_flags ? "subs" : "sub";
++		else
++			mnem = set_flags ? "adds" : "add";
++
++		if (amount)
++			kdb_printf("%s\t%s, %s, %s, %s #%u",
++				   mnem,
++				   reg_name(rd, is64), reg_name(rn, is64),
++				   reg_name(rm, is64),
++				   shift_name(shift), amount);
++		else
++			kdb_printf("%s\t%s, %s, %s",
++				   mnem,
++				   reg_name(rd, is64), reg_name(rn, is64),
++				   reg_name(rm, is64));
++		return;
++	}
++
++	/* AND/BIC/ORR/ORN/EOR/EON/ANDS/BICS (shifted register) */
++	if (aarch64_insn_is_and(insn) || aarch64_insn_is_orr(insn) ||
++	    aarch64_insn_is_eor(insn) || aarch64_insn_is_bic(insn) ||
++	    aarch64_insn_is_orn(insn) || aarch64_insn_is_eon(insn) ||
++	    aarch64_insn_is_ands(insn) || aarch64_insn_is_bics(insn)) {
++		static const char * const logic_mnems[8] = {
++			"and", "bic", "orr", "orn", "eor", "eon", "ands", "bics"
++		};
++		u32 opc = ((insn >> 29) & 3) << 1 | ((insn >> 21) & 1);
++
++		rd = insn & 0x1f;
++		rn = (insn >> 5) & 0x1f;
++		rm = (insn >> 16) & 0x1f;
++		shift = (insn >> 22) & 3;
++		amount = (insn >> 10) & 0x3f;
++
++		/* TST alias: ANDS XZR, Rn, Rm */
++		if (opc == 6 && rd == 31) {
++			if (amount)
++				kdb_printf("tst\t%s, %s, %s #%u",
++					   reg_name(rn, is64),
++					   reg_name(rm, is64),
++					   shift_name(shift), amount);
++			else
++				kdb_printf("tst\t%s, %s",
++					   reg_name(rn, is64),
++					   reg_name(rm, is64));
++			return;
++		}
++
++		/* MVN alias: ORN Rd, XZR, Rm */
++		if (opc == 3 && rn == 31) {
++			if (amount)
++				kdb_printf("mvn\t%s, %s, %s #%u",
++					   reg_name(rd, is64),
++					   reg_name(rm, is64),
++					   shift_name(shift), amount);
++			else
++				kdb_printf("mvn\t%s, %s",
++					   reg_name(rd, is64),
++					   reg_name(rm, is64));
++			return;
++		}
++
++		if (amount)
++			kdb_printf("%s\t%s, %s, %s, %s #%u",
++				   logic_mnems[opc],
++				   reg_name(rd, is64), reg_name(rn, is64),
++				   reg_name(rm, is64),
++				   shift_name(shift), amount);
++		else
++			kdb_printf("%s\t%s, %s, %s",
++				   logic_mnems[opc],
++				   reg_name(rd, is64), reg_name(rn, is64),
++				   reg_name(rm, is64));
++		return;
++	}
++
++	/* LSL/LSR/ASR/ROR (variable shift) */
++	if (aarch64_insn_is_lslv(insn) || aarch64_insn_is_lsrv(insn) ||
++	    aarch64_insn_is_asrv(insn) || aarch64_insn_is_rorv(insn)) {
++		static const char * const shv_mnems[4] = {
++			"lsl", "lsr", "asr", "ror"
++		};
++		u32 opc = (insn >> 10) & 3;
++
++		rd = insn & 0x1f;
++		rn = (insn >> 5) & 0x1f;
++		rm = (insn >> 16) & 0x1f;
++		kdb_printf("%s\t%s, %s, %s",
++			   shv_mnems[opc],
++			   reg_name(rd, is64), reg_name(rn, is64),
++			   reg_name(rm, is64));
++		return;
++	}
++
++	/* UDIV / SDIV */
++	if (aarch64_insn_is_udiv(insn) || aarch64_insn_is_sdiv(insn)) {
++		bool is_signed = aarch64_insn_is_sdiv(insn);
++
++		rd = insn & 0x1f;
++		rn = (insn >> 5) & 0x1f;
++		rm = (insn >> 16) & 0x1f;
++		kdb_printf("%s\t%s, %s, %s",
++			   is_signed ? "sdiv" : "udiv",
++			   reg_name(rd, is64), reg_name(rn, is64),
++			   reg_name(rm, is64));
++		return;
++	}
++
++	/* MADD / MSUB (MUL / MNEG aliases) */
++	if (aarch64_insn_is_madd(insn) || aarch64_insn_is_msub(insn)) {
++		bool is_sub = aarch64_insn_is_msub(insn);
++
++		rd = insn & 0x1f;
++		rn = (insn >> 5) & 0x1f;
++		ra = (insn >> 10) & 0x1f;
++		rm = (insn >> 16) & 0x1f;
++
++		/* MUL alias: MADD Rd, Rn, Rm, XZR */
++		if (!is_sub && ra == 31) {
++			kdb_printf("mul\t%s, %s, %s",
++				   reg_name(rd, is64), reg_name(rn, is64),
++				   reg_name(rm, is64));
++			return;
++		}
++		/* MNEG alias: MSUB Rd, Rn, Rm, XZR */
++		if (is_sub && ra == 31) {
++			kdb_printf("mneg\t%s, %s, %s",
++				   reg_name(rd, is64), reg_name(rn, is64),
++				   reg_name(rm, is64));
++			return;
++		}
++
++		kdb_printf("%s\t%s, %s, %s, %s",
++			   is_sub ? "msub" : "madd",
++			   reg_name(rd, is64), reg_name(rn, is64),
++			   reg_name(rm, is64), reg_name(ra, is64));
++		return;
++	}
++
++	/* ---- Load / Store ---- */
++
++	/* LDP / STP (signed offset, pre-index, post-index) */
++	if (aarch64_insn_is_ldp(insn) || aarch64_insn_is_stp(insn) ||
++	    aarch64_insn_is_ldp_pre(insn) || aarch64_insn_is_stp_pre(insn) ||
++	    aarch64_insn_is_ldp_post(insn) || aarch64_insn_is_stp_post(insn)) {
++		bool is_load = (insn >> 22) & 1;
++		u32 mode = (insn >> 23) & 3;  /* 01=post, 10=offset, 11=pre */
++		u32 opc = (insn >> 30) & 3;
++		u32 scale = 2 + (opc >> 1);
++		u32 rt2 = (insn >> 10) & 0x1f;
++		s32 imm7 = (s32)sign_extend64((insn >> 15) & 0x7f, 6) << scale;
++
++		rt = insn & 0x1f;
++		rn = (insn >> 5) & 0x1f;
++		is64 = (opc & 2) != 0;
++
++		if (mode == 3)  /* pre-index */
++			kdb_printf("%s\t%s, %s, [%s, #%d]!",
++				   is_load ? "ldp" : "stp",
++				   reg_name(rt, is64), reg_name(rt2, is64),
++				   reg_name_sp(rn, true), imm7);
++		else if (mode == 1)  /* post-index */
++			kdb_printf("%s\t%s, %s, [%s], #%d",
++				   is_load ? "ldp" : "stp",
++				   reg_name(rt, is64), reg_name(rt2, is64),
++				   reg_name_sp(rn, true), imm7);
++		else if (imm7)  /* signed offset */
++			kdb_printf("%s\t%s, %s, [%s, #%d]",
++				   is_load ? "ldp" : "stp",
++				   reg_name(rt, is64), reg_name(rt2, is64),
++				   reg_name_sp(rn, true), imm7);
++		else
++			kdb_printf("%s\t%s, %s, [%s]",
++				   is_load ? "ldp" : "stp",
++				   reg_name(rt, is64), reg_name(rt2, is64),
++				   reg_name_sp(rn, true));
++		return;
++	}
++
++	/* LDR/STR (immediate unsigned offset) */
++	if (aarch64_insn_is_ldr_imm(insn) || aarch64_insn_is_str_imm(insn)) {
++		bool is_load = aarch64_insn_is_ldr_imm(insn);
++		u32 size = (insn >> 30) & 3;
++		u32 imm12 = (insn >> 10) & 0xFFF;
++		u32 scale = size;
++		u32 offset = imm12 << scale;
++		static const char * const sz_sfx[4] = { "b", "h", "", "" };
++		static const char * const ldr_mnems[4] = {
++			"ldrb", "ldrh", "ldr", "ldr"
++		};
++		static const char * const str_mnems[4] = {
++			"strb", "strh", "str", "str"
++		};
++
++		rt = insn & 0x1f;
++		rn = (insn >> 5) & 0x1f;
++		is64 = (size == 3);
++		(void)sz_sfx;
++
++		if (offset)
++			kdb_printf("%s\t%s, [%s, #%u]",
++				   is_load ? ldr_mnems[size] : str_mnems[size],
++				   reg_name(rt, is64),
++				   reg_name_sp(rn, true),
++				   offset);
++		else
++			kdb_printf("%s\t%s, [%s]",
++				   is_load ? ldr_mnems[size] : str_mnems[size],
++				   reg_name(rt, is64),
++				   reg_name_sp(rn, true));
++		return;
++	}
++
++	/* LDR/STR (register offset) */
++	if (aarch64_insn_is_ldr_reg(insn) || aarch64_insn_is_str_reg(insn)) {
++		bool is_load = aarch64_insn_is_ldr_reg(insn);
++		u32 size = (insn >> 30) & 3;
++		u32 option = (insn >> 13) & 7;
++		u32 s_bit = (insn >> 12) & 1;
++		static const char * const ext_opts[8] = {
++			"uxtb", "uxth", "uxtw", "lsl",
++			"sxtb", "sxth", "sxtw", "sxtx"
++		};
++		static const char * const ldr_mnems[4] = {
++			"ldrb", "ldrh", "ldr", "ldr"
++		};
++		static const char * const str_mnems[4] = {
++			"strb", "strh", "str", "str"
++		};
++
++		rt = insn & 0x1f;
++		rn = (insn >> 5) & 0x1f;
++		rm = (insn >> 16) & 0x1f;
++		is64 = (size == 3);
++
++		if (s_bit && size > 1)
++			kdb_printf("%s\t%s, [%s, %s, %s #%u]",
++				   is_load ? ldr_mnems[size] : str_mnems[size],
++				   reg_name(rt, is64),
++				   reg_name_sp(rn, true),
++				   reg_name(rm, option == 3 || option == 7),
++				   ext_opts[option],
++				   size);
++		else if (s_bit)
++			kdb_printf("%s\t%s, [%s, %s, %s #%u]",
++				   is_load ? ldr_mnems[size] : str_mnems[size],
++				   reg_name(rt, is64),
++				   reg_name_sp(rn, true),
++				   reg_name(rm, option == 3 || option == 7),
++				   ext_opts[option], 0u);
++		else
++			kdb_printf("%s\t%s, [%s, %s]",
++				   is_load ? ldr_mnems[size] : str_mnems[size],
++				   reg_name(rt, is64),
++				   reg_name_sp(rn, true),
++				   reg_name(rm, option == 3 || option == 7));
++		return;
++	}
++
++	/* LDR (literal) */
++	if (aarch64_insn_is_ldr_lit(insn)) {
++		u32 opc = (insn >> 30) & 3;
++		s64 lit_imm = sign_extend64(((insn >> 5) & 0x7FFFF) << 2, 20);
++
++		rt = insn & 0x1f;
++		is64 = (opc == 1);
++		kdb_printf("ldr\t%s, 0x%lx",
++			   reg_name(rt, is64),
++			   addr + (unsigned long)lit_imm);
++		return;
++	}
++
++	/* LDR/STR with pre/post-index (unscaled immediate) */
++	if (aarch64_insn_is_load_pre(insn) || aarch64_insn_is_store_pre(insn) ||
++	    aarch64_insn_is_load_post(insn) || aarch64_insn_is_store_post(insn)) {
++		bool is_load = (insn >> 22) & 1;
++		bool is_pre = (insn >> 11) & 1;
++		u32 size = (insn >> 30) & 3;
++		s32 simm9 = (s32)sign_extend64((insn >> 12) & 0x1FF, 8);
++		static const char * const ldr_mnems[4] = {
++			"ldrb", "ldrh", "ldr", "ldr"
++		};
++		static const char * const str_mnems[4] = {
++			"strb", "strh", "str", "str"
++		};
++
++		rt = insn & 0x1f;
++		rn = (insn >> 5) & 0x1f;
++		is64 = (size == 3);
++
++		if (is_pre)
++			kdb_printf("%s\t%s, [%s, #%d]!",
++				   is_load ? ldr_mnems[size] : str_mnems[size],
++				   reg_name(rt, is64),
++				   reg_name_sp(rn, true),
++				   simm9);
++		else
++			kdb_printf("%s\t%s, [%s], #%d",
++				   is_load ? ldr_mnems[size] : str_mnems[size],
++				   reg_name(rt, is64),
++				   reg_name_sp(rn, true),
++				   simm9);
++		return;
++	}
++
++	/* ---- Fallback: unknown instruction ---- */
++	kdb_printf(".word\t0x%08x", insn);
++}
++
++/*
++ * kdb_dis - KDB 'dis' command: disassemble ARM64 instructions
++ *
++ * Usage: dis <addr> [<count>]
++ *   addr  - start address (hex or symbol name)
++ *   count - number of instructions (default: KDB_DIS_DEFAULT_COUNT)
++ */
++static int kdb_dis(int argc, const char **argv)
++{
++	unsigned long addr;
++	long offset = 0;
++	int nextarg = 1;
++	int count = KDB_DIS_DEFAULT_COUNT;
++	int diag;
++	int i;
++
++	if (argc < 1 || argc > 2) {
++		kdb_printf("Usage: dis <vaddr> [count]\n");
++		kdb_printf("  vaddr - start virtual address or symbol\n");
++		kdb_printf("  count - instruction count (default: %d)\n",
++			   KDB_DIS_DEFAULT_COUNT);
++		return KDB_ARGCOUNT;
++	}
++
++	diag = kdbgetaddrarg(argc, argv, &nextarg, &addr, &offset, NULL);
++	if (diag)
++		return diag;
++
++	if (argc == 2) {
++		unsigned long cnt;
++
++		diag = kdbgetularg(argv[2], &cnt);
++		if (diag)
++			return diag;
++		count = (int)cnt;
++		if (count <= 0)
++			count = KDB_DIS_DEFAULT_COUNT;
++	}
++
++	/* Align to 4-byte boundary */
++	addr &= ~3UL;
++
++	for (i = 0; i < count; i++, addr += 4) {
++		unsigned long insn_val;
++		kdb_symtab_t symtab;
++		char sym_buf[64];
++
++		/* Check for Ctrl-C interrupt */
++		if (KDB_FLAG(CMD_INTERRUPT))
++			return 0;
++
++		/* Read 4 bytes from kernel memory safely */
++		diag = kdb_getword(&insn_val, addr, 4);
++		if (diag) {
++			kdb_printf("0x%lx: cannot read memory\n", addr);
++			return diag;
++		}
++
++		/* Build symbol annotation string for fixed-width formatting */
++		kdbnearsym(addr, &symtab);
++		if (symtab.sym_name) {
++			if (addr != symtab.sym_start)
++				snprintf(sym_buf, sizeof(sym_buf),
++					 "%s+0x%lx",
++					 symtab.sym_name,
++					 addr - symtab.sym_start);
++			else
++				snprintf(sym_buf, sizeof(sym_buf),
++					 "%s", symtab.sym_name);
++		} else {
++			sym_buf[0] = '\0';
++		}
++
++		/*
++		 * Print: "0xADDR sym_field  INSN_HEX  mnemonic"
++		 * sym_field is left-justified in a 20-char field so the
++		 * hex opcode column stays aligned across all lines.
++		 */
++		kdb_printf("0x%lx %-20s  %08x  ", addr, sym_buf, (u32)insn_val);
++
++		/* Decode and print the instruction mnemonic */
++		kdb_dis_one(addr, (u32)insn_val);
++		kdb_printf("\n");
++	}
++	return 0;
++}
++
++static kdbtab_t distab[] = {
++	{
++		.name   = "dis",
++		.func   = kdb_dis,
++		.usage  = "<vaddr> [<count>]",
++		.help   = "Disassemble ARM64 instructions",
++		.minlen = 2,
++		.flags  = KDB_ENABLE_MEM_READ | KDB_REPEAT_NO_ARGS,
++	},
++};
++
++static int __init kdb_dis_init(void)
++{
++	kdb_register_table(distab, ARRAY_SIZE(distab));
++	return 0;
++}
++early_initcall(kdb_dis_init);
+-- 
+2.45.2

@@ -1,0 +1,26 @@
+---
+[v1] arm64: dts: mt7987: add i2c device ZTS8032
+
+Add the ZTS8032 barometric pressure sensor device node under the
+MT7987A RFB i2c0 controller.
+
+---
+v1: Add ZTS8032 I2C device node for MT7987A RFB.
+---
+--- a/arch/arm64/boot/dts/mediatek/mt7987a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7987a-rfb.dts
+@@ -88,6 +88,14 @@
+ 	status = "disabled";
+ };
+ 
++&i2c0 {
++	zts8032: zts8032@77 {
++		compatible = "zilltek,zts8032";
++		reg = <0x77>;
++		status = "okay";
++	};
++};
++
+ &pcie0 {
+ 	wifi-reset-gpios = <&pio 38 GPIO_ACTIVE_LOW>;
+ 	wifi-reset-msleep = <100>;

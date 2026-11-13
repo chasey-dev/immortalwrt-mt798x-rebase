@@ -1,0 +1,39 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: LuCi Chinese Translation\n"
+"Report-Msgid-Bugs-To: \n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Device rules"
+msgstr "设备规则"
+
+msgid "EQoS"
+msgstr "网速控制"
+
+msgid "Grant UCI access for luci-app-eqos"
+msgstr "授予 luci-app-eqos 访问 UCI 配置的权限"
+
+msgid "Maximum rate in Mbit/s. Use 0 for no limit."
+msgstr "最大速率，单位为 Mbit/s；填 0 表示不限制该方向。"
+
+msgid "Network speed control service for MediaTek HNAT."
+msgstr "面向 MediaTek HNAT 的网速控制服务。"
+
+msgid "Queue ID"
+msgstr "队列编号"
+
+msgid "This value is already in use."
+msgstr "该值已被使用。"
+
+msgid "Total download bandwidth."
+msgstr "总下载带宽。"
+
+msgid "Total upload bandwidth."
+msgstr "总上传带宽。"
+
+msgid "Values 1-31 use HNAT HQoS. Values 32 and above use software shaping."
+msgstr "编号 1-31 使用 HNAT HQoS；编号 32 及以上使用软件限速。"

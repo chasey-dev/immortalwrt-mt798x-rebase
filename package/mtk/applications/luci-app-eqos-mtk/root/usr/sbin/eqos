@@ -8,7 +8,8 @@ NFT="/usr/sbin/nft"
 TABLE_FAMILY="inet"
 TABLE_NAME="eqos"
 CHAIN_NAME="forward"
-MARK_CLEAR_MASK="0xffff0000"
+# The 64-queue layout uses mark bits 0-5 for the QDMA QID.
+MARK_CLEAR_MASK="0xffffffc0"
 # HNAT tests bit 7 rather than an exact mark value.
 HNAT_EXCEPTION_BIT="0x80"
 HNAT_BIND_THRESHOLD=5
@@ -376,13 +377,13 @@ nft_mark_rule() {
 			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
 				ip "$addr" "$value" \
 				meta mark '&' "$HNAT_EXCEPTION_BIT" == 0 \
-				meta mark set "$qid"
+				meta mark set '(' meta mark '&' "$MARK_CLEAR_MASK" ')' '|' "$qid"
 			;;
 		ip6)
 			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
 				ip6 "$addr" "$value" \
 				meta mark '&' "$HNAT_EXCEPTION_BIT" == 0 \
-				meta mark set "$qid"
+				meta mark set '(' meta mark '&' "$MARK_CLEAR_MASK" ')' '|' "$qid"
 			;;
 		*)
 			return 1
@@ -406,16 +407,19 @@ nft_exception_rule() {
 			;;
 	esac
 
+	# Clear the QID so software TX falls back to port-based queue selection.
 	case "$family" in
 		ip)
 			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
 				ip "$addr" "$value" \
-				meta mark set "$HNAT_EXCEPTION_BIT"
+				meta mark set '(' meta mark '&' "$MARK_CLEAR_MASK" ')' \
+				'|' "$HNAT_EXCEPTION_BIT"
 			;;
 		ip6)
 			"$NFT" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" \
 				ip6 "$addr" "$value" \
-				meta mark set "$HNAT_EXCEPTION_BIT"
+				meta mark set '(' meta mark '&' "$MARK_CLEAR_MASK" ')' \
+				'|' "$HNAT_EXCEPTION_BIT"
 			;;
 		*)
 			return 1

@@ -55,7 +55,7 @@ Signed-off-by: Rex Lu <rex.lu@mediatek.com>
  int mtk_foe_entry_commit(struct mtk_ppe *ppe, struct mtk_flow_entry *entry);
 --- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
 +++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
-@@ -101,31 +101,31 @@ mtk_flow_offload_mangle_eth(const struct
+@@ -103,31 +103,31 @@ mtk_flow_offload_mangle_eth(const struct
  static int
  mtk_flow_get_wdma_info(struct net_device *dev, const u8 *addr, struct mtk_wdma_info *info)
  {
@@ -102,9 +102,9 @@ Signed-off-by: Rex Lu <rex.lu@mediatek.com>
  
  	return 0;
  }
-@@ -306,9 +306,10 @@ mtk_flow_set_output_device(struct mtk_et
- 	u32 ct_mark = 0;
- 	int pse_port, dsa_port, dsa_proto, queue;
+@@ -344,9 +344,10 @@ mtk_flow_set_output_device(struct mtk_et
+ 	u16 push_vid = 0;
+ 	u8 dsa_queue_count = READ_ONCE(eth->dsa_queue_count);
  
 +	info.tid = dscp;
  	if (mtk_flow_get_wdma_info(odev, dest_mac, &info) == 0) {

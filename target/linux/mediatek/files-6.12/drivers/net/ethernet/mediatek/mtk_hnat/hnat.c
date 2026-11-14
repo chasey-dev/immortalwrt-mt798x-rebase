@@ -13,6 +13,7 @@
 
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
+#include <linux/etherdevice.h>
 #include <linux/if.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -21,15 +22,14 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/reset.h>
-#include <linux/rtnetlink.h>
-#include <net/netlink.h>
+#include <net/switchdev.h>
 
 #include "nf_hnat_mtk.h"
 #include "hnat.h"
+#include "hnat_api.h"
 
 struct mtk_hnat *hnat_priv;
-static struct socket *_hnat_roam_sock;
-static struct work_struct _hnat_roam_work;
+static struct workqueue_struct *_hnat_roam_wq;
 static struct delayed_work _hnat_flow_entry_teardown_work;
 
 int (*ra_sw_nat_hook_rx)(struct sk_buff *skb) = NULL;
@@ -403,7 +403,7 @@ int entry_delete_by_mac(u8 *mac)
 	for (i = 0; i < CFG_PPE_NUM; i++) {
 		entry = hnat_priv->foe_table_cpu[i];
 		cnt = 0;
-		for (index = 0; index < DEF_ETRY_NUM; entry++, index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num; entry++, index++) {
 			if (entry->bfib1.state == BIND &&
 			    entry_mac_cmp(entry, mac, ENTRY_CMP_ANY)) {
 				spin_lock_bh(&hnat_priv->entry_lock);
@@ -442,7 +442,7 @@ int entry_delete_by_ip(bool is_ipv4, void *addr)
 	for (i = 0; i < CFG_PPE_NUM; i++) {
 		entry = hnat_priv->foe_table_cpu[i];
 		cnt = 0;
-		for (index = 0; index < DEF_ETRY_NUM; entry++, index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num; entry++, index++) {
 			if (entry->bfib1.state == BIND &&
 			    entry_ip_cmp(entry, is_ipv4, addr, ENTRY_CMP_ANY)) {
 				spin_lock_bh(&hnat_priv->entry_lock);
@@ -466,6 +466,153 @@ int entry_delete_by_ip(bool is_ipv4, void *addr)
 	return ret;
 }
 
+/* NULL rule matches every PPPoE entry, routed ones included. */
+static bool pppoe_br_entry_match(struct foe_entry *entry,
+				 const struct pppoe_br_rule *rule)
+{
+	int pppoe_id;
+
+	if (!entry_hnat_is_bound(entry) || !entry->bfib1.psn)
+		return false;
+
+	if (IS_IPV4_GRP(entry))
+		pppoe_id = entry->ipv4_hnapt.pppoe_id;
+	else if (IS_IPV6_GRP(entry))
+		pppoe_id = entry->ipv6_5t_route.pppoe_id;
+	else
+		return false;
+
+	if (!rule)
+		return true;
+
+	return pppoe_id == rule->sid &&
+	       entry_mac_cmp(entry, (u8 *)rule->smac, ENTRY_CMP_SRC) &&
+	       entry_mac_cmp(entry, (u8 *)rule->dmac, ENTRY_CMP_DST);
+}
+
+void pppoe_br_entry_invalidate(const struct pppoe_br_rule *rule)
+{
+	struct foe_entry *entry;
+	int index, i, cnt;
+
+	for (i = 0; i < CFG_PPE_NUM; i++) {
+		entry = hnat_priv->foe_table_cpu[i];
+		cnt = 0;
+		for (index = 0; index < hnat_priv->foe_etry_num; entry++, index++) {
+			if (!pppoe_br_entry_match(entry, rule))
+				continue;
+
+			spin_lock_bh(&hnat_priv->entry_lock);
+			__entry_delete(entry);
+			spin_unlock_bh(&hnat_priv->entry_lock);
+			if (debug_level >= 2)
+				pr_info("[%s]: delete entry idx = %d_%d\n",
+					__func__, i, index);
+			cnt++;
+		}
+
+		/* clear HWNAT cache */
+		if (cnt > 0)
+			hnat_cache_clr(i);
+	}
+}
+
+static bool pppoe_br_rule_eq(const struct pppoe_br_rule *a,
+			     const struct pppoe_br_rule *b)
+{
+	return ether_addr_equal(a->smac, b->smac) &&
+	       ether_addr_equal(a->dmac, b->dmac) &&
+	       !strcmp(a->rx_dev, b->rx_dev) &&
+	       a->type == b->type && a->sid == b->sid;
+}
+
+/* Caller must hold pppoe_br_lock. */
+static struct pppoe_br_rule *pppoe_br_rule_find(const struct pppoe_br_rule *rule)
+{
+	struct pppoe_br_rule *tmp;
+
+	list_for_each_entry(tmp, &hnat_priv->pppoe_br_list, list)
+		if (pppoe_br_rule_eq(tmp, rule))
+			return tmp;
+
+	return NULL;
+}
+
+bool pppoe_br_rule_exist(const struct pppoe_br_rule *rule)
+{
+	bool found;
+
+	spin_lock_bh(&hnat_priv->pppoe_br_lock);
+	found = !!pppoe_br_rule_find(rule);
+	spin_unlock_bh(&hnat_priv->pppoe_br_lock);
+
+	return found;
+}
+
+int pppoe_br_rule_add(const struct pppoe_br_rule *rule)
+{
+	struct pppoe_br_rule *new_rule;
+	int ret = 0;
+
+	new_rule = kmemdup(rule, sizeof(*new_rule), GFP_KERNEL);
+	if (!new_rule)
+		return -ENOMEM;
+
+	spin_lock_bh(&hnat_priv->pppoe_br_lock);
+	if (pppoe_br_rule_find(rule))
+		ret = -EEXIST;
+	else
+		list_add_tail(&new_rule->list, &hnat_priv->pppoe_br_list);
+	spin_unlock_bh(&hnat_priv->pppoe_br_lock);
+
+	if (ret)
+		kfree(new_rule);
+
+	return ret;
+}
+
+int pppoe_br_rule_del(const struct pppoe_br_rule *rule)
+{
+	struct pppoe_br_rule *tmp;
+
+	spin_lock_bh(&hnat_priv->pppoe_br_lock);
+	tmp = pppoe_br_rule_find(rule);
+	if (tmp)
+		list_del(&tmp->list);
+	spin_unlock_bh(&hnat_priv->pppoe_br_lock);
+
+	if (!tmp)
+		return -ENOENT;
+
+	kfree(tmp);
+	pppoe_br_entry_invalidate(rule);
+
+	return 0;
+}
+
+void pppoe_br_rule_flush(void)
+{
+	struct pppoe_br_rule *tmp, *next;
+
+	spin_lock_bh(&hnat_priv->pppoe_br_lock);
+	list_for_each_entry_safe(tmp, next, &hnat_priv->pppoe_br_list, list) {
+		list_del(&tmp->list);
+		kfree(tmp);
+	}
+	spin_unlock_bh(&hnat_priv->pppoe_br_lock);
+}
+
+void pppoe_br_rule_dump(void)
+{
+	struct pppoe_br_rule *tmp;
+
+	spin_lock_bh(&hnat_priv->pppoe_br_lock);
+	list_for_each_entry(tmp, &hnat_priv->pppoe_br_list, list)
+		pr_info("SMAC=%pM => DMAC=%pM | rx_dev:%s | type:0x%04x | SID=0x%04x\n",
+			tmp->smac, tmp->dmac, tmp->rx_dev, tmp->type, tmp->sid);
+	spin_unlock_bh(&hnat_priv->pppoe_br_lock);
+}
+
 static int entry_delete_by_bssid_wcid(u32 wdma_idx, u16 bssid, u16 wcid)
 {
 	struct foe_entry *entry = NULL;
@@ -482,7 +629,7 @@ static int entry_delete_by_bssid_wcid(u32 wdma_idx, u16 bssid, u16 wcid)
 	for (i = 0; i < CFG_PPE_NUM; i++) {
 		entry = hnat_priv->foe_table_cpu[i];
 		cnt = 0;
-		for (index = 0; index < DEF_ETRY_NUM; entry++, index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num; entry++, index++) {
 			if (entry->bfib1.state != BIND)
 				continue;
 
@@ -528,87 +675,85 @@ static int entry_delete_by_bssid_wcid(u32 wdma_idx, u16 bssid, u16 wcid)
 	return ret;
 }
 
-static void hnat_roam_handler(struct work_struct *work)
+static void hnat_roam_work_handler(struct work_struct *work)
 {
-	struct kvec iov;
-	struct msghdr msg;
-	struct nlmsghdr *nlh;
-	struct ndmsg *ndm;
-	struct nlattr *nla;
-	u8 rcv_buf[512];
-	int len;
+	struct hnat_roam_work *roam = container_of(work, struct hnat_roam_work, work);
 
-	if (!_hnat_roam_sock)
-		return;
-
-	iov.iov_base = rcv_buf;
-	iov.iov_len = sizeof(rcv_buf);
-	memset(&msg, 0, sizeof(msg));
-	msg.msg_namelen = sizeof(struct sockaddr_nl);
-
-	len = kernel_recvmsg(_hnat_roam_sock, &msg, &iov, 1, iov.iov_len, 0);
-	if (len <= 0)
-		goto out;
-
-	nlh = (struct nlmsghdr *)rcv_buf;
-	if (!NLMSG_OK(nlh, len) || nlh->nlmsg_type != RTM_NEWNEIGH)
-		goto out;
-
-	len = nlh->nlmsg_len - NLMSG_HDRLEN;
-	ndm = (struct ndmsg *)NLMSG_DATA(nlh);
-	if (ndm->ndm_family != PF_BRIDGE)
-		goto out;
-
-	nla = (struct nlattr *)((u8 *)ndm + sizeof(struct ndmsg));
-	len -= NLMSG_LENGTH(sizeof(struct ndmsg));
-	while (nla_ok(nla, len)) {
-		if (nla_type(nla) == NDA_LLADDR)
-			entry_delete_by_mac(nla_data(nla));
-		nla = nla_next(nla, &len);
-	}
-
-out:
-	schedule_work(&_hnat_roam_work);
+	entry_delete_by_mac(roam->mac);
+	kfree(roam);
 }
+
+/* br_fdb_update() emits SWITCHDEV_FDB_DEL_TO_DEVICE with the stale port before
+ * it repoints fdb->dst, so this fires on every bridge FDB roam. Called in
+ * atomic context: the work item does the table walk.
+ */
+static int hnat_roam_switchdev_event(struct notifier_block *nb,
+				     unsigned long event, void *ptr)
+{
+	struct switchdev_notifier_fdb_info *fdb_info = ptr;
+	struct hnat_roam_work *roam;
+	struct net_device *dev;
+
+	if (event != SWITCHDEV_FDB_DEL_TO_DEVICE)
+		return NOTIFY_DONE;
+
+	dev = switchdev_notifier_info_to_dev(ptr);
+	if (!dev || !net_eq(dev_net(dev), &init_net) ||
+	    netif_is_bridge_master(dev))
+		return NOTIFY_DONE;
+
+	if (fdb_info->is_local || !is_valid_ether_addr(fdb_info->addr))
+		return NOTIFY_DONE;
+
+	if (debug_level >= 2)
+		pr_info("[%s]: fdb del mac=%pM port=%s\n",
+			__func__, fdb_info->addr, dev->name);
+
+	roam = kmalloc(sizeof(*roam), GFP_ATOMIC);
+	if (!roam)
+		return NOTIFY_DONE;
+
+	ether_addr_copy(roam->mac, fdb_info->addr);
+	INIT_WORK(&roam->work, hnat_roam_work_handler);
+	queue_work(_hnat_roam_wq, &roam->work);
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block hnat_roam_switchdev_nb = {
+	.notifier_call = hnat_roam_switchdev_event,
+};
 
 static int hnat_roaming_enable(void)
 {
-	struct socket *sock = NULL;
-	struct sockaddr_nl addr;
 	int ret;
 
-	INIT_WORK(&_hnat_roam_work, hnat_roam_handler);
+	/* serialize the roaming work */
+	_hnat_roam_wq = alloc_ordered_workqueue("hnat_roam", 0);
+	if (!_hnat_roam_wq)
+		return -ENOMEM;
 
-	ret = sock_create_kern(&init_net, AF_NETLINK, SOCK_RAW, NETLINK_ROUTE, &sock);
-	if (ret < 0)
-		goto out;
+	ret = register_switchdev_notifier(&hnat_roam_switchdev_nb);
+	if (ret) {
+		destroy_workqueue(_hnat_roam_wq);
+		_hnat_roam_wq = NULL;
+		return ret;
+	}
 
-	_hnat_roam_sock = sock;
-
-	addr.nl_family = AF_NETLINK;
-	addr.nl_pad = 0;
-	addr.nl_pid = 65534;
-	addr.nl_groups = 1 << (RTNLGRP_NEIGH - 1);
-	ret = kernel_bind(sock, (struct sockaddr *)&addr, sizeof(addr));
-	if (ret < 0)
-		goto out;
-
-	schedule_work(&_hnat_roam_work);
 	pr_info("hnat roaming work enable\n");
 
 	return 0;
-out:
-	if (sock)
-		sock_release(sock);
-
-	return ret;
 }
 
 static void hnat_roaming_disable(void)
 {
-	if (_hnat_roam_sock)
-		sock_release(_hnat_roam_sock);
-	_hnat_roam_sock = NULL;
+	if (!_hnat_roam_wq)
+		return;
+
+	unregister_switchdev_notifier(&hnat_roam_switchdev_nb);
+	/* flushes any work still queued */
+	destroy_workqueue(_hnat_roam_wq);
+	_hnat_roam_wq = NULL;
 	pr_info("hnat roaming work disable\n");
 }
 
@@ -620,7 +765,7 @@ static void hnat_flow_entry_teardown_all(u32 ppe_id)
 	int index;
 
 	spin_lock_bh(&hnat_priv->flow_entry_lock);
-	for (index = 0; index < DEF_ETRY_NUM / 4; index++) {
+	for (index = 0; index < hnat_priv->foe_etry_num / 4; index++) {
 		head = &hnat_priv->foe_flow[ppe_id][index];
 		hlist_for_each_entry_safe(flow_entry, n, head, list) {
 			hnat_flow_entry_delete(flow_entry);
@@ -639,7 +784,7 @@ static void hnat_flow_entry_teardown_handler(struct work_struct *work)
 
 	spin_lock_bh(&hnat_priv->flow_entry_lock);
 	for (i = 0; i < CFG_PPE_NUM; i++) {
-		for (index = 0; index < DEF_ETRY_NUM / 4; index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num / 4; index++) {
 			head = &hnat_priv->foe_flow[i][index];
 			hlist_for_each_entry_safe(flow_entry, n, head, list) {
 				/* If the entry has not been used for 30 seconds, teardown it. */
@@ -1743,6 +1888,10 @@ static int hnat_probe(struct platform_device *pdev)
 		}
 	}
 
+	/* used by the pppoe_bridge debugfs node */
+	spin_lock_init(&hnat_priv->pppoe_br_lock);
+	INIT_LIST_HEAD(&hnat_priv->pppoe_br_list);
+
 	err = hnat_init_debugfs(hnat_priv);
 	if (err)
 		goto err_out2;
@@ -1825,6 +1974,8 @@ static int hnat_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&hnat_priv->xlat.map_list);
 	INIT_LIST_HEAD(&hnat_priv->mcast_blist_list);
 
+	hnat_api_init();
+
 	return 0;
 
 err_out:
@@ -1847,6 +1998,7 @@ static void hnat_remove(struct platform_device *pdev)
 {
 	int i;
 
+	hnat_api_deinit();
 	hnat_roaming_disable();
 	hnat_flow_entry_teardown_disable();
 	unregister_netdevice_notifier(&nf_hnat_netdevice_nb);

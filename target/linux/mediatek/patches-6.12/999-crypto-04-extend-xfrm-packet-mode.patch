@@ -1,18 +1,18 @@
 ---
-[v1] xfrm: Extend packet mode offload for hardware crypto acceleration
+[v2] xfrm: Extend packet mode offload for hardware crypto acceleration
 
 Extend XFRM packet mode to support hardware offload by preserving HW_ESP
 feature in VLAN devices, modifying output path to bypass normal XFRM
-processing for packet offload, and allowing inbound hardware offloaded
-packets to pass policy checks directly. This enables full hardware
-acceleration for IPsec packet processing in both tunnel and transport modes.
+processing for packet offload. This enables full hardware acceleration
+for IPsec packet processing in both tunnel and transport modes.
 ---
+v2: Remove bypass policy check with sec_path
 v1: Extend XFRM packet mode for hardware offload support
 ---
 
 --- a/net/8021q/vlan_dev.c
 +++ b/net/8021q/vlan_dev.c
-@@ -617,6 +617,9 @@ static netdev_features_t vlan_dev_fix_fe
+@@ -622,6 +622,9 @@ static netdev_features_t vlan_dev_fix_fe
  	features = netdev_intersect_features(features, lower_features);
  	features |= old_features & (NETIF_F_SOFT_FEATURES | NETIF_F_GSO_SOFTWARE_ALL);
  
@@ -24,7 +24,7 @@ v1: Extend XFRM packet mode for hardware offload support
  
 --- a/net/xfrm/xfrm_output.c
 +++ b/net/xfrm/xfrm_output.c
-@@ -610,38 +610,6 @@ out:
+@@ -621,38 +621,6 @@ out:
  }
  EXPORT_SYMBOL_GPL(xfrm_output_resume);
  
@@ -63,7 +63,7 @@ v1: Extend XFRM packet mode for hardware offload support
  static int xfrm_output2(struct net *net, struct sock *sk, struct sk_buff *skb)
  {
  	return xfrm_output_resume(sk, skb, 1);
-@@ -761,18 +729,16 @@ int xfrm_output(struct sock *sk, struct
+@@ -772,18 +740,16 @@ int xfrm_output(struct sock *sk, struct
  			return -EHOSTUNREACH;
  		}
  
@@ -90,36 +90,3 @@ v1: Extend XFRM packet mode for hardware offload support
  	}
  
  	secpath_reset(skb);
---- a/net/xfrm/xfrm_policy.c
-+++ b/net/xfrm/xfrm_policy.c
-@@ -3784,6 +3784,13 @@ int __xfrm_policy_check(struct sock *sk,
- 	}
- #endif
- 
-+	/* Inbound HW offload packets, pass the check directly */
-+	if (pol->xdo.type == XFRM_DEV_OFFLOAD_PACKET &&
-+	    (pol->xdo.dir == XFRM_DEV_OFFLOAD_IN || pol->xdo.dir == XFRM_DEV_OFFLOAD_FWD)) {
-+		xfrm_pols_put(pols, npols);
-+		return 1;
-+	}
-+
- 	if (pol->action == XFRM_POLICY_ALLOW) {
- 		static struct sec_path dummy;
- 		struct xfrm_tmpl *tp[XFRM_MAX_DEPTH];
-@@ -3792,6 +3799,16 @@ int __xfrm_policy_check(struct sock *sk,
- 		int i, k = 0;
- 		int ti = 0;
- 
-+		/* Strongswan install FWD policy for inbound HW offload
-+		* packets. But cannot find corresponding packet offload
-+		* state here and will be drop. So, we bypass following
-+		* check for FWD policy with acction allow.
-+		*/
-+		if (dir == XFRM_POLICY_FWD) {
-+			xfrm_pols_put(pols, npols);
-+			return 1;
-+		}
-+
- 		sp = skb_sec_path(skb);
- 		if (!sp)
- 			sp = &dummy;

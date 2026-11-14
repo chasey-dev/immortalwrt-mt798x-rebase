@@ -36,9 +36,9 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
-@@ -1775,6 +1775,7 @@ struct mtk_eth {
- 
+@@ -1810,6 +1810,7 @@ struct mtk_eth {
  	struct metadata_dst		*dsa_meta[MTK_MAX_DSA_PORTS];
+ 	u8				dsa_queue_count;
  
 +	u8				dscp_toggle;
  	u8				qos_toggle;

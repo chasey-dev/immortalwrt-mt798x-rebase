@@ -1,0 +1,111 @@
+---
+[v1] net: ethernet: mtk_eth_soc: split mtk_ppe_start/stop handling
+ from mtk_open/stop
+
+In a WiFi extender scenario, all Ethernet ports may be brought down,
+which previously caused the PPEs to be stopped as well. When a WiFi
+STA tries to ping the DUT in this state, the PPE is unable to respond
+with a feedback, preventing WED from forwarding packets to the CPU and
+resulting in ping failures.
+
+To address this, decouple the PPE lifecycle from the Ethernet port
+open/close operations. After this change, the PPEs are kept active as
+long as the Ethernet driver is loaded, ensuring that:
+  - WiFi STA-to-DUT traffic can reach the CPU via the software path
+  - WiFi-to-WiFi traffic can still benefit from PPE HNAT acceleration
+even when all Ethernet ports are administratively down.
+---
+v1: Split mtk_ppe_start/stop handling from mtk_open/stop
+---
+
+From ef21367d6268aafdf9e8ed5c13e55cf1fe92811c Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Thu, 29 Oct 2026 14:39:18 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: split mtk_ppe_start/stop handling
+ from mtk_open/stop
+
+In a WiFi extender scenario, all Ethernet ports may be brought down,
+which previously caused the PPEs to be stopped as well. When a WiFi
+STA tries to ping the DUT in this state, the PPE is unable to respond
+with a feedback, preventing WED from forwarding packets to the CPU and
+resulting in ping failures.
+
+To address this, decouple the PPE lifecycle from the Ethernet port
+open/close operations. After this change, the PPEs are kept active as
+long as the Ethernet driver is loaded, ensuring that:
+  - WiFi STA-to-DUT traffic can reach the CPU via the software path
+  - WiFi-to-WiFi traffic can still benefit from PPE HNAT acceleration
+even when all Ethernet ports are administratively down.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 18 ++++++++++++------
+ 1 file changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index a82bfab..95cfe45 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -4810,9 +4810,6 @@ static int mtk_open(struct net_device *dev)
+ 		if (err)
+ 			return err;
+ 
+-		for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+-			mtk_ppe_start(eth->ppe[i]);
+-
+ 		for (i = 0; i < MTK_MAX_DEVS; i++) {
+ 			if (!eth->netdev[i])
+ 				continue;
+@@ -4994,9 +4991,6 @@ static int mtk_stop(struct net_device *dev)
+ 
+ 	mtk_dma_free(eth);
+ 
+-	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+-		mtk_ppe_stop(eth->ppe[i]);
+-
+ 	return 0;
+ }
+ 
+@@ -6124,6 +6118,9 @@ static void mtk_pending_work(struct work_struct *work)
+ 		__set_bit(i, &restart);
+ 	}
+ 
++	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
++		mtk_ppe_stop(eth->ppe[i]);
++
+ 	usleep_range(15000, 16000);
+ 
+ 	if (eth->dev->pins)
+@@ -6131,6 +6128,9 @@ static void mtk_pending_work(struct work_struct *work)
+ 				     eth->dev->pins->default_state);
+ 	mtk_hw_init(eth, true);
+ 
++	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
++		mtk_ppe_start(eth->ppe[i]);
++
+ 	/* restart DMA and enable IRQs */
+ 	for (i = 0; i < MTK_MAX_DEVS; i++) {
+ 		if (!eth->netdev[i] || !test_bit(i, &restart))
+@@ -7562,6 +7562,9 @@ static int mtk_probe(struct platform_device *pdev)
+ 		err = mtk_ppe_internal_debugfs_init(eth);
+ 		if (err)
+ 			goto err_deinit_ppe;
++
++		for (i = 0; i < ppe_num; i++)
++			mtk_ppe_start(eth->ppe[i]);
+ 	}
+ 
+ 	/* we run 2 devices on the same DMA ring so we need a dummy device
+@@ -7662,6 +7665,9 @@ static void mtk_remove(struct platform_device *pdev)
+ 			mtk_usxgmii_pcs_put(mac->usxgmii_pcs);
+ 	}
+ 
++	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
++		mtk_ppe_stop(eth->ppe[i]);
++
+ 	mtk_wed_exit();
+ 	mtk_hw_deinit(eth);
+ 
+-- 
+2.45.2
+

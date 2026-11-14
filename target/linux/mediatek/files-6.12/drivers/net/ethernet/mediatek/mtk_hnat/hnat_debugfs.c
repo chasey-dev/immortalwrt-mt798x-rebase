@@ -44,8 +44,14 @@ int tnl_toggle;
 int xlat_toggle;
 int l2br_toggle;
 int l4s_toggle;
+bool pppoe_br_rule_mode;
 struct hnat_desc headroom[DEF_ETRY_NUM];
 unsigned int dbg_cpu_reason_cnt[MAX_CRSN_NUM];
+
+/* Per-PPE: serializes the PPE_MIB_SER_* read sequence and the acct accumulation */
+static spinlock_t hnat_mib_lock[MAX_PPE_NUM] = {
+	[0 ... MAX_PPE_NUM - 1] = __SPIN_LOCK_UNLOCKED(hnat_mib_lock),
+};
 
 static const char * const entry_state[] = { "INVALID", "UNBIND", "BIND", "FIN" };
 
@@ -334,7 +340,35 @@ static int entry_set_usage(int level)
 	pr_info("              8   <mac>        Delete all PPEs foe entry of assinged smac and dmac\n");
 	pr_info("              9   <ip>         Delete all PPEs foe entry of assinged IP(DL and UL)\n");
 	pr_info("              10  <ipV6>       Delete all PPEs foe entry of assinged IPv6(DL and UL)\n");
+	pr_info("              11      0~2      Hash collision packet counter (0:disable; 1:enable; 2:clear), current=%d\n",
+		hnat_priv->hash_collision_en);
 
+	return 0;
+}
+
+/* op: 0 = disable (keep counts), 1 = clear counts and enable,
+ *     2 = clear counts only (keep current enable state)
+ */
+static int entry_set_hash_collision(int op)
+{
+	int i;
+
+	if (op < 0 || op > 2) {
+		pr_info("hash collision: invalid option %d\n", op);
+		return -EINVAL;
+	}
+
+	/* reset all hash collision counters */
+	if (op == 1 || op == 2)
+		for (i = 0; i < MAX_PPE_NUM; i++)
+			atomic64_set(&hnat_priv->hash_collision_cnt[i], 0);
+
+	/* update enable state */
+	if (op == 0 || op == 1)
+		hnat_priv->hash_collision_en = op;
+
+	pr_info("hash collision packet counter %s\n",
+		hnat_priv->hash_collision_en ? "enabled" : "disabled");
 	return 0;
 }
 
@@ -620,9 +654,10 @@ int entry_detail(u32 ppe_id, int index)
 		pr_info("SP_TAG = 0x%x, Vid1 = 0x%x, Vid2 = 0x%x\n",
 			entry->ipv4_hnapt.sp_tag, entry->ipv4_hnapt.vlan1,
 			entry->ipv4_hnapt.vlan2);
-		pr_info("multicast = %d, pppoe = %d, proto = %s\n",
+		pr_info("multicast = %d, pppoe = %d, sid = 0x%04x, proto = %s\n",
 			entry->ipv4_hnapt.iblk2.mcast,
 			entry->bfib1.psn,
+			entry->ipv4_hnapt.pppoe_id,
 			entry->bfib1.udp == 0 ?
 			"TCP" :	entry->bfib1.udp == 1 ?
 			"UDP" : "Unknown");
@@ -684,9 +719,10 @@ int entry_detail(u32 ppe_id, int index)
 		pr_info("SP_TAG = 0x%x, Vid1 = 0x%x, Vid2 = 0x%x\n",
 			entry->ipv6_5t_route.sp_tag, entry->ipv6_5t_route.vlan1,
 			entry->ipv6_5t_route.vlan2);
-		pr_info("multicast = %d, pppoe = %d, proto = %s\n",
+		pr_info("multicast = %d, pppoe = %d, sid = 0x%04x, proto = %s\n",
 			entry->ipv6_5t_route.iblk2.mcast,
 			entry->bfib1.psn,
+			entry->ipv6_5t_route.pppoe_id,
 			entry->bfib1.udp == 0 ?
 			"TCP" :	entry->bfib1.udp == 1 ?
 			"UDP" :	"Unknown");
@@ -1089,6 +1125,7 @@ static const debugfs_write_func entry_set_func[] = {
 	[5] = wrapped_ppe1_entry_delete,
 	[6] = wrapped_ppe2_entry_detail,
 	[7] = wrapped_ppe2_entry_delete,
+	[11] = entry_set_hash_collision,
 };
 
 static const debugfs_write_func cr_set_func[] = {
@@ -1263,11 +1300,15 @@ struct hnat_accounting *hnat_get_count(struct mtk_hnat *h, u32 ppe_id,
 	if (!hnat_priv->data->per_flow_accounting)
 		return NULL;
 
-	if (read_mib(h, ppe_id, index, &bytes, &packets))
+	spin_lock_bh(&hnat_mib_lock[ppe_id]);
+	if (read_mib(h, ppe_id, index, &bytes, &packets)) {
+		spin_unlock_bh(&hnat_mib_lock[ppe_id]);
 		return NULL;
+	}
 
 	h->acct[ppe_id][index].bytes += bytes;
 	h->acct[ppe_id][index].packets += packets;
+	spin_unlock_bh(&hnat_mib_lock[ppe_id]);
 
 	if (diff) {
 		diff->bytes = bytes;
@@ -2156,6 +2197,10 @@ static int __hnat_entry_read(struct seq_file *m, void *private, u32 ppe_id)
 		   "BIND" : dbg_entry_state == 3 ?
 		   "FIN" : "Unknown", cnt);
 
+	if (h->hash_collision_en)
+		seq_printf(m, "Hash collision packet cnt = %lld\n",
+			   atomic64_read(&h->hash_collision_cnt[ppe_id]));
+
 	return 0;
 }
 
@@ -2207,6 +2252,7 @@ static ssize_t hnat_entry_write(struct file *file, const char __user *buffer,
 	case 5:
 	case 6:
 	case 7:
+	case 11:
 		p_token = strsep(&p_buf, p_delimiter);
 		if (!p_token)
 			arg1 = 0;
@@ -3936,6 +3982,121 @@ static const struct file_operations hnat_proto_3tuple_fops = {
 	.release = single_release,
 };
 
+static void hnat_pppoe_bridge_usage(void)
+{
+	pr_info("-------------------- Usage --------------------\n");
+	pr_info("echo $0 [$1 $2 $3 $4 $5] > /sys/kernel/debug/hnat/pppoe_bridge\n\n");
+	pr_info("-------------------- Parameters --------------------\n");
+	pr_info("$0:	Action		INT (-2: rule mode, -1: auto learning, 0: Add, 1: Remove, 2: List)\n");
+	pr_info("--------- Enter below parameters if $Action is Add or Remove ---------\n");
+	pr_info("$1:	DMAC		STR (00:11:22:33:44:55)\n");
+	pr_info("$2:	SMAC		STR (00:11:22:33:44:55)\n");
+	pr_info("$3:	Rx I/F		STR (lan%%d|eth%%d)\n");
+	pr_info("$4:	Type		HEX (8864)\n");
+	pr_info("$5:	Session ID	HEX (0e00)\n");
+	pr_info("-------------------- Details ------------------\n");
+	pr_info("Rule mode     : bind only bridged PPPoE sessions matching a rule\n");
+	pr_info("Auto learning : bind every bridged PPPoE session\n");
+}
+
+static int hnat_pppoe_bridge_read(struct seq_file *m, void *private)
+{
+	pr_info("PPPoE bridge mode: %s\n",
+		READ_ONCE(pppoe_br_rule_mode) ? "rule" : "auto learning");
+	hnat_pppoe_bridge_usage();
+
+	return 0;
+}
+
+static int hnat_pppoe_bridge_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, hnat_pppoe_bridge_read, file->private_data);
+}
+
+static ssize_t hnat_pppoe_bridge_write(struct file *file,
+				       const char __user *buffer,
+				       size_t count, loff_t *data)
+{
+	struct pppoe_br_rule rule = {0};
+	char buf[128], dmac_str[18], smac_str[18];
+	char *p_buf, *token;
+	int action, ret;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, buffer, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+	p_buf = buf;
+
+	token = strsep(&p_buf, " \t\n");
+	if (!token || kstrtoint(token, 10, &action))
+		goto err_out;
+
+	switch (action) {
+	case -2:
+		WRITE_ONCE(pppoe_br_rule_mode, true);
+		pr_info("PPPoE bridge rule mode is enabled, all rules are cleared\n");
+		pppoe_br_rule_flush();
+		pppoe_br_entry_invalidate(NULL);
+		break;
+	case -1:
+		WRITE_ONCE(pppoe_br_rule_mode, false);
+		pr_info("PPPoE bridge auto learning mode is enabled\n");
+		break;
+	case 0:
+	case 1:
+		if (!p_buf)
+			goto err_out;
+
+		if (sscanf(p_buf, "%17s %17s %15s %hx %hx", dmac_str, smac_str,
+			   rule.rx_dev, &rule.type, &rule.sid) != 5)
+			goto err_out;
+
+		if (!mac_pton(dmac_str, rule.dmac) ||
+		    !mac_pton(smac_str, rule.smac)) {
+			pr_err("MAC format error\n");
+			goto err_out;
+		}
+
+		if (rule.type != ETH_P_PPP_SES) {
+			pr_err("Type must be %04x\n", ETH_P_PPP_SES);
+			goto err_out;
+		}
+
+		ret = (action == 0) ? pppoe_br_rule_add(&rule) :
+				      pppoe_br_rule_del(&rule);
+		if (ret) {
+			pr_err("Failed to %s rule: %d\n",
+			       (action == 0) ? "add" : "remove", ret);
+			return ret;
+		}
+		break;
+	case 2:
+		pppoe_br_rule_dump();
+		break;
+	default:
+		goto err_out;
+	}
+
+	return count;
+
+err_out:
+	pr_err("Invalid input\n");
+	hnat_pppoe_bridge_usage();
+	return -EINVAL;
+}
+
+static const struct file_operations hnat_pppoe_bridge_fops = {
+	.open = hnat_pppoe_bridge_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.write = hnat_pppoe_bridge_write,
+	.release = single_release,
+};
+
 int get_ppe_mib(u32 ppe_id, int index, u64 *pkt_cnt, u64 *byte_cnt)
 {
 	struct mtk_hnat *h = hnat_priv;
@@ -4101,6 +4262,8 @@ int hnat_init_debugfs(struct mtk_hnat *h)
 			    &hnat_l4s_toggle_fops);
 	debugfs_create_file("proto_3tuple", 0644, root, h,
 			    &hnat_proto_3tuple_fops);
+	debugfs_create_file("pppoe_bridge", 0644, root, h,
+			    &hnat_pppoe_bridge_fops);
 
 	/* init manual_api debugfs node */
 	hnat_api_init_debugfs(root);
@@ -4120,7 +4283,7 @@ int hnat_init_debugfs(struct mtk_hnat *h)
 		debugfs_create_symlink(name, root, name_symlink);
 	}
 
-	for (i = 0; i < MTK_QDMA_NUM_QUEUES; i++) {
+	for (i = 0; i < HNAT_QDMA_NUM_QUEUES; i++) {
 		ret = snprintf(name, sizeof(name), "qdma_txq%ld", i);
 		if (ret != strlen(name)) {
 			ret = -ENOMEM;
@@ -4152,4 +4315,6 @@ void hnat_deinit_debugfs(struct mtk_hnat *h)
 
 	for (i = 0; i < CFG_PPE_NUM; i++)
 		kfree(h->regset[i]);
+
+	pppoe_br_rule_flush();
 }

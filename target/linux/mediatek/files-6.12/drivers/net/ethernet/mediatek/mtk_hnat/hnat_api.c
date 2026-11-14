@@ -5,10 +5,12 @@
  */
 
 #include <linux/debugfs.h>
+#include <linux/module.h>
 
 #include "hnat.h"
 #include "hnat_api.h"
 #include "nf_hnat_mtk.h"
+#include "../mtk_eth_soc.h"
 
 void (*hnat_bind_callback)(struct hnat_tuple *opt) = NULL;
 void (*hnat_fin_callback)(struct hnat_tuple *opt) = NULL;
@@ -191,15 +193,20 @@ int mtk_hnat_get_ppe_entry_by_index(struct hnat_tuple *opt)
 	if (!entry_hnat_is_bound(entry))
 		return HNAT_ENTRY_NOT_FOUND;
 
+	if (!IS_HNAT_API_SUPPORTED(entry))
+		return HNAT_FAIL;
+
 	return mtk_hnat_foe_to_hnat_tuple(entry, opt);
 }
 EXPORT_SYMBOL(mtk_hnat_get_ppe_entry_by_index);
 
 int mtk_hnat_calc_ppe_hash_index_by_tuple(struct hnat_tuple *opt)
 {
-	struct foe_entry entry = { 0 };
-	struct net_device *dev = NULL;
+	struct foe_entry entry = { 0 }, *foe;
+	struct net_device *dev = NULL, *master_dev;
 	struct mtk_mac *mac;
+	u32 hash, key_len;
+	int i;
 
 	if (opt)
 		dev = dev_get_by_name(&init_net, opt->ing_dev);
@@ -209,14 +216,23 @@ int mtk_hnat_calc_ppe_hash_index_by_tuple(struct hnat_tuple *opt)
 		return HNAT_FAIL;
 	}
 
-	mac = netdev_priv(dev);
+	/* Resolve DSA user port to its conduit, then check if it is a GMAC */
+	master_dev = dev;
+	hnat_dsa_get_port(&master_dev);
+	for (i = 0; i < MTK_MAX_DEVS; i++) {
+		if (hnat_priv->eth->netdev[i] == master_dev)
+			break;
+	}
 
-	if (mac->id == MTK_GMAC3_ID && CFG_PPE_NUM >= 3)
-		opt->ppe_index = 2;
-	else if (mac->id == MTK_GMAC2_ID && CFG_PPE_NUM >= 2)
-		opt->ppe_index = 1;
-	else
-		opt->ppe_index = 0;
+	/* GMAC->PPE follows mac->ppe_idx (overridable via gdm_ppe_cfg),
+	 * non-GMAC ingress (e.g. Wi-Fi) goes to PPE0.
+	 */
+	opt->ppe_index = 0;
+	if (i < MTK_MAX_DEVS) {
+		mac = netdev_priv(master_dev);
+		if (mac->ppe_idx < CFG_PPE_NUM)
+			opt->ppe_index = mac->ppe_idx;
+	}
 
 	dev_put(dev);
 
@@ -228,6 +244,7 @@ int mtk_hnat_calc_ppe_hash_index_by_tuple(struct hnat_tuple *opt)
 		entry.ipv4_hnapt.dip = opt->ing_dipv4;
 		entry.ipv4_hnapt.sport = opt->ing_sp;
 		entry.ipv4_hnapt.dport = opt->ing_dp;
+		key_len = offsetof(struct hnat_ipv4_hnapt, iblk2);
 		break;
 	case IPV6_5T_ROUTE:
 		/* copy IPv6 source and destination address */
@@ -241,12 +258,27 @@ int mtk_hnat_calc_ppe_hash_index_by_tuple(struct hnat_tuple *opt)
 		entry.ipv6_5t_route.ipv6_dip3 = opt->ing_dipv6_3;
 		entry.ipv6_5t_route.sport = opt->ing_sp;
 		entry.ipv6_5t_route.dport = opt->ing_dp;
+		key_len = offsetof(struct hnat_ipv6_5t_route, resv1);
 		break;
 	default:
 		return HNAT_FAIL;
 	}
 
-	opt->hash_index = hnat_get_ppe_hash(&entry);
+	/* The hash points at a 4-entry bucket and a colliding flow may sit in
+	 * any slot of it. Return the slot holding this flow (the key fields
+	 * lead both layouts), or the bucket base if it is not in the table.
+	 */
+	hash = hnat_get_ppe_hash(&entry);
+	opt->hash_index = hash;
+	for (i = 0; i < 4; i++) {
+		foe = &hnat_priv->foe_table_cpu[opt->ppe_index][hash + i];
+		if (foe->bfib1.state != INVALID &&
+		    foe->bfib1.pkt_type == entry.bfib1.pkt_type &&
+		    !memcmp(foe->data, entry.data, key_len)) {
+			opt->hash_index = hash + i;
+			break;
+		}
+	}
 
 	return HNAT_SUCCESS;
 }
@@ -263,9 +295,9 @@ int mtk_hnat_delete_entry_by_index(unsigned short ppe_index,
 
 	entry = h->foe_table_cpu[ppe_index] + hash_index;
 
-	spin_lock(&hnat_priv->entry_lock);
+	spin_lock_bh(&hnat_priv->entry_lock);
 	__entry_delete(entry);
-	spin_unlock(&hnat_priv->entry_lock);
+	spin_unlock_bh(&hnat_priv->entry_lock);
 
 	hnat_cache_clr(ppe_index);
 
@@ -298,7 +330,8 @@ int mtk_hnat_get_mib_count_by_index(unsigned short ppe_index,
 	if (!entry_hnat_is_bound(entry))
 		return HNAT_ENTRY_NOT_FOUND;
 
-	hnat_get_count(h, ppe_index, hash_index, &diff);
+	if (!hnat_get_count(h, ppe_index, hash_index, &diff))
+		return HNAT_FAIL;
 
 	*pkt_cnt = diff.packets;
 	*byte_cnt = diff.bytes;
@@ -385,6 +418,12 @@ static int hnat_update_entry_generic(unsigned short ppe_index,
 		return HNAT_ENTRY_NOT_FOUND;
 	}
 
+	/* Setters only know the IPV4_HNAPT/IPV6_5T_ROUTE layouts */
+	if (!IS_HNAT_API_SUPPORTED(hw_entry)) {
+		spin_unlock_bh(&h->entry_lock);
+		return HNAT_FAIL;
+	}
+
 	memcpy(&entry, hw_entry, sizeof(entry));
 
 	/* Execute specific field modification logic */
@@ -415,33 +454,57 @@ static int hnat_entry_set_hqos(struct foe_entry *entry, void *data)
 {
 	struct hqos_data *d = (struct hqos_data *)data;
 	unsigned short fqos, qid;
+#if defined(CONFIG_MEDIATEK_NETSYS_V3)
+	u32 tport_id;
+#endif
 
 	if (!d || !entry)
 		return HNAT_FAIL;
 
-	if (d->qid >= MTK_QDMA_NUM_QUEUES)
+	if (d->qid >= HNAT_QDMA_NUM_QUEUES)
 		return HNAT_FAIL;
 
 	fqos = (d->fqos) ? 1 : 0;
-	qid = d->qid & MTK_QDMA_QUEUE_MASK;
+	qid = d->qid & HNAT_QDMA_QUEUE_MASK;
 
+	/* V3 takes fqos from tport_id, a port number: only switch between
+	 * none (0) and QDMA, reject TDMA/EIP197 entries to keep their path.
+	 */
 	if (IS_IPV4_GRP(entry)) {
-		if (entry->ipv4_hnapt.iblk2.fqos == fqos &&
+#if defined(CONFIG_MEDIATEK_NETSYS_V3)
+		if (entry->ipv4_hnapt.tport_id &&
+		    entry->ipv4_hnapt.tport_id != NR_QDMA_TPORT)
+			return HNAT_FAIL;
+
+		tport_id = fqos ? NR_QDMA_TPORT : 0;
+		if (entry->ipv4_hnapt.tport_id == tport_id &&
 		    entry->ipv4_hnapt.iblk2.qid == qid)
 			return HNAT_ALREADY_SET;
 
-#if defined(CONFIG_MEDIATEK_NETSYS_V3)
-		entry->ipv4_hnapt.tport_id = (fqos) ? NR_QDMA_TPORT : 0;
+		entry->ipv4_hnapt.tport_id = tport_id;
+#else
+		if (entry->ipv4_hnapt.iblk2.fqos == fqos &&
+		    entry->ipv4_hnapt.iblk2.qid == qid)
+			return HNAT_ALREADY_SET;
 #endif
 		entry->ipv4_hnapt.iblk2.fqos = fqos;
 		entry->ipv4_hnapt.iblk2.qid = qid;
 	} else if (IS_IPV6_GRP(entry)) {
-		if (entry->ipv6_5t_route.iblk2.fqos == fqos &&
+#if defined(CONFIG_MEDIATEK_NETSYS_V3)
+		if (entry->ipv6_5t_route.tport_id &&
+		    entry->ipv6_5t_route.tport_id != NR_QDMA_TPORT)
+			return HNAT_FAIL;
+
+		tport_id = fqos ? NR_QDMA_TPORT : 0;
+		if (entry->ipv6_5t_route.tport_id == tport_id &&
 		    entry->ipv6_5t_route.iblk2.qid == qid)
 			return HNAT_ALREADY_SET;
 
-#if defined(CONFIG_MEDIATEK_NETSYS_V3)
-		entry->ipv6_5t_route.tport_id = (fqos) ? NR_QDMA_TPORT : 0;
+		entry->ipv6_5t_route.tport_id = tport_id;
+#else
+		if (entry->ipv6_5t_route.iblk2.fqos == fqos &&
+		    entry->ipv6_5t_route.iblk2.qid == qid)
+			return HNAT_ALREADY_SET;
 #endif
 		entry->ipv6_5t_route.iblk2.fqos = fqos;
 		entry->ipv6_5t_route.iblk2.qid = qid;
@@ -531,10 +594,13 @@ static int hnat_entry_set_vlan(struct foe_entry *entry, void *data)
 {
 	struct vlan_data *d = (struct vlan_data *)data;
 	unsigned short *vlan1, *vlan2, *sp_tag;
-	unsigned short vlan_layer;
-	bool is_dsa;
+	unsigned short vlan_layer, new_sp_tag;
 
 	if (!d || !entry)
+		return HNAT_FAIL;
+
+	/* An inner VLAN needs an outer one */
+	if (!d->vlan1 && d->vlan2)
 		return HNAT_FAIL;
 
 	if (IS_IPV4_GRP(entry)) {
@@ -550,27 +616,31 @@ static int hnat_entry_set_vlan(struct foe_entry *entry, void *data)
 	}
 
 	vlan_layer = (d->vlan1 != 0) + (d->vlan2 != 0);
+	new_sp_tag = *sp_tag;
+
+	/* MTK special tag counts as one VLAN layer, BIT(8) flags a VLAN behind it.
+	 * NOTE: tag_8021q DSA (DSA tag in vlan1) is not handled.
+	 */
+	if (entry->bfib1.vlan_layer && *sp_tag != ETH_P_8021Q) {
+		if (vlan_layer) {
+			new_sp_tag |= BIT(8);
+		} else {
+			new_sp_tag &= ~BIT(8);
+			vlan_layer = 1;
+		}
+	} else if (vlan_layer) {
+		new_sp_tag = ETH_P_8021Q;
+	}
 
 	/* Prevent unnecessary update */
-	if (entry->bfib1.vlan_layer == vlan_layer && *vlan1 == d->vlan1 && *vlan2 == d->vlan2)
+	if (entry->bfib1.vlan_layer == vlan_layer && *sp_tag == new_sp_tag &&
+	    *vlan1 == d->vlan1 && *vlan2 == d->vlan2)
 		return HNAT_ALREADY_SET;
 
-	is_dsa = (entry->bfib1.vlan_layer != 0 && *sp_tag != ETH_P_8021Q);
-
 	entry->bfib1.vlan_layer = vlan_layer;
-	*vlan1 = d->vlan1 & 0xffff;
-	*vlan2 = d->vlan2 & 0xffff;
-
-	if (is_dsa) {
-		if (!entry->bfib1.vlan_layer) {
-			entry->bfib1.vlan_layer = 1;
-			*sp_tag &= ~BIT(8);
-		} else {
-			*sp_tag |= BIT(8);
-		}
-	} else if (entry->bfib1.vlan_layer) {
-		*sp_tag = ETH_P_8021Q;
-	}
+	*vlan1 = d->vlan1;
+	*vlan2 = d->vlan2;
+	*sp_tag = new_sp_tag;
 
 	return HNAT_SUCCESS;
 }
@@ -662,6 +732,9 @@ EXPORT_SYMBOL(mtk_hnat_update_pppoe_by_skb);
 
 static int hnat_entry_set_is_prior(struct foe_entry *entry, void *data)
 {
+#if defined(CONFIG_MEDIATEK_NETSYS_V3)
+	struct hnat_winfo_pao *pao;
+#endif
 	unsigned short is_prior;
 
 	if (!data || !entry)
@@ -670,21 +743,11 @@ static int hnat_entry_set_is_prior(struct foe_entry *entry, void *data)
 	is_prior = (*(unsigned short *)data) & 0x1;
 
 #if defined(CONFIG_MEDIATEK_NETSYS_V3)
-	if (IS_IPV4_GRP(entry)) {
-		if (entry->ipv4_hnapt.winfo_pao.is_prior == is_prior)
-			return HNAT_ALREADY_SET;
-		entry->ipv4_hnapt.winfo_pao.is_prior = is_prior;
-	} else if (IS_IPV6_HNAPT(entry) || IS_IPV6_HNAT(entry)) {
-		if (entry->ipv6_hnapt.winfo_pao.is_prior == is_prior)
-			return HNAT_ALREADY_SET;
-		entry->ipv6_hnapt.winfo_pao.is_prior = is_prior;
-	} else if (IS_IPV6_GRP(entry)) {
-		if (entry->ipv4_mape.winfo_pao.is_prior == is_prior)
-			return HNAT_ALREADY_SET;
-		entry->ipv4_mape.winfo_pao.is_prior = is_prior;
-	} else {
-		return HNAT_FAIL;
-	}
+	pao = IS_IPV4_HNAPT(entry) ? &entry->ipv4_hnapt.winfo_pao :
+				     &entry->ipv6_5t_route.winfo_pao;
+	if (pao->is_prior == is_prior)
+		return HNAT_ALREADY_SET;
+	pao->is_prior = is_prior;
 #else
 	return HNAT_FAIL;
 #endif
@@ -715,6 +778,9 @@ EXPORT_SYMBOL(mtk_hnat_update_is_prior_by_skb);
 
 static int hnat_entry_set_tid(struct foe_entry *entry, void *data)
 {
+#if defined(CONFIG_MEDIATEK_NETSYS_V3)
+	struct hnat_winfo_pao *pao;
+#endif
 	unsigned short tid;
 
 	if (!data || !entry)
@@ -723,21 +789,11 @@ static int hnat_entry_set_tid(struct foe_entry *entry, void *data)
 	tid = (*(unsigned short *)data) & 0xf;
 
 #if defined(CONFIG_MEDIATEK_NETSYS_V3)
-	if (IS_IPV4_GRP(entry)) {
-		if (entry->ipv4_hnapt.winfo_pao.tid == tid)
-			return HNAT_ALREADY_SET;
-		entry->ipv4_hnapt.winfo_pao.tid = tid;
-	} else if (IS_IPV6_HNAPT(entry) || IS_IPV6_HNAT(entry)) {
-		if (entry->ipv6_hnapt.winfo_pao.tid == tid)
-			return HNAT_ALREADY_SET;
-		entry->ipv6_hnapt.winfo_pao.tid = tid;
-	} else if (IS_IPV6_GRP(entry)) {
-		if (entry->ipv4_mape.winfo_pao.tid == tid)
-			return HNAT_ALREADY_SET;
-		entry->ipv4_mape.winfo_pao.tid = tid;
-	} else {
-		return HNAT_FAIL;
-	}
+	pao = IS_IPV4_HNAPT(entry) ? &entry->ipv4_hnapt.winfo_pao :
+				     &entry->ipv6_5t_route.winfo_pao;
+	if (pao->tid == tid)
+		return HNAT_ALREADY_SET;
+	pao->tid = tid;
 #else
 	return HNAT_FAIL;
 #endif
@@ -790,6 +846,55 @@ int mtk_hnat_register_fin_callback(void (*func)(struct hnat_tuple *))
 	return HNAT_SUCCESS;
 }
 EXPORT_SYMBOL(mtk_hnat_register_fin_callback);
+
+/* Another CPU may still be running the old callback. Wait for it (callers
+ * are in RCU read side), else the module owning the callback could be
+ * rmmod'ed and its code freed while still executing, crashing the kernel.
+ */
+void mtk_hnat_unregister_bind_callback(void)
+{
+	hnat_bind_callback = NULL;
+	synchronize_rcu();
+}
+EXPORT_SYMBOL(mtk_hnat_unregister_bind_callback);
+
+void mtk_hnat_unregister_fin_callback(void)
+{
+	hnat_fin_callback = NULL;
+	synchronize_rcu();
+}
+EXPORT_SYMBOL(mtk_hnat_unregister_fin_callback);
+
+/* Drop callbacks of a module being unloaded, in case it did not unregister */
+static int hnat_api_module_notify(struct notifier_block *nb,
+				  unsigned long action, void *data)
+{
+	struct module *mod = data;
+
+	if (action != MODULE_STATE_GOING)
+		return NOTIFY_DONE;
+
+	if (within_module((unsigned long)hnat_bind_callback, mod))
+		mtk_hnat_unregister_bind_callback();
+	if (within_module((unsigned long)hnat_fin_callback, mod))
+		mtk_hnat_unregister_fin_callback();
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block hnat_api_module_nb = {
+	.notifier_call = hnat_api_module_notify,
+};
+
+void hnat_api_init(void)
+{
+	register_module_notifier(&hnat_api_module_nb);
+}
+
+void hnat_api_deinit(void)
+{
+	unregister_module_notifier(&hnat_api_module_nb);
+}
 
 int mtk_hnat_get_fin_age_config(unsigned short ppe_index)
 {
@@ -868,10 +973,16 @@ void hnat_trigger_callback(void (*func)(struct hnat_tuple *),
 			   struct sk_buff *skb)
 {
 	struct hnat_tuple opt = {0};
+	struct foe_entry *entry;
 	struct net_device *dev;
 
 	opt.ppe_index = skb_hnat_ppe(skb);
 	opt.hash_index = skb_hnat_entry(skb);
+
+	/* No BIND check here: the fin callback fires while the entry is in FIN state */
+	entry = hnat_get_foe_entry(opt.ppe_index, opt.hash_index);
+	if (!func || IS_ERR(entry))
+		return;
 
 	dev = dev_get_by_index(&init_net, skb->skb_iif);
 	if (dev) {
@@ -881,9 +992,8 @@ void hnat_trigger_callback(void (*func)(struct hnat_tuple *),
 
 	strscpy(opt.eg_dev, skb->dev->name, sizeof(opt.eg_dev));
 
-	if (func && mtk_hnat_get_ppe_entry_by_index(&opt) == HNAT_SUCCESS)
-		func(&opt);
-
+	mtk_hnat_foe_to_hnat_tuple(entry, &opt);
+	func(&opt);
 }
 
 void hnat_bind_callback_test(struct hnat_tuple *opt)
@@ -1182,7 +1292,9 @@ static ssize_t hnat_manual_api_write(struct file *file,
 			return -EINVAL;
 		}
 
-		mtk_hnat_calc_ppe_hash_index_by_tuple(&opt);
+		if (mtk_hnat_calc_ppe_hash_index_by_tuple(&opt) != HNAT_SUCCESS)
+			return -EINVAL;
+
 		pr_info("Calculated ppe=%d, hash=%d\n",
 			opt.ppe_index, opt.hash_index);
 		break;

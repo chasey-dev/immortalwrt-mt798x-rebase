@@ -9,11 +9,20 @@ sockets.
 v1: add generic netlink interface for userspace switch tool
 ---
 
-From a78a0a0d3ded4a9dc1f570289f1c6bc0f272cd81 Mon Sep 17 00:00:00 2001
+From 38ea06d33f5159d9dd5c94b476da14c442b28758 Mon Sep 17 00:00:00 2001
 From: "neal.yen" <neal.yen@mediatek.com>
-Date: Tue, 21 Oct 2025 16:18:39 +0800
+Date: Tue, 4 Aug 2026 09:36:46 +0800
 Subject: [PATCH] net: dsa: add an8855 netlink support for switch app
 
+---
+ drivers/net/dsa/Makefile    |   3 +-
+ drivers/net/dsa/an8855.c    | 123 +++++++++++++-
+ drivers/net/dsa/an8855.h    |   9 +
+ drivers/net/dsa/an8855_nl.c | 322 ++++++++++++++++++++++++++++++++++++
+ drivers/net/dsa/an8855_nl.h |  43 +++++
+ 5 files changed, 498 insertions(+), 2 deletions(-)
+ create mode 100644 drivers/net/dsa/an8855_nl.c
+ create mode 100644 drivers/net/dsa/an8855_nl.h
 
 diff --git a/drivers/net/dsa/Makefile b/drivers/net/dsa/Makefile
 index fd740d0..b329f0d 100644
@@ -30,21 +39,15 @@ index fd740d0..b329f0d 100644
  obj-$(CONFIG_NET_DSA_MT7530)    += mt7530-dsa.o
  mt7530-dsa-objs                 := mt7530.o mt7530_nl.o
 diff --git a/drivers/net/dsa/an8855.c b/drivers/net/dsa/an8855.c
-index e6666d2..c184b84 100644
+index 004a10f..94deeeb 100644
 --- a/drivers/net/dsa/an8855.c
 +++ b/drivers/net/dsa/an8855.c
-@@ -10,15 +10,24 @@
- #include <linux/gpio/consumer.h>
- #include <linux/if_bridge.h>
- #include <linux/iopoll.h>
-+#include <linux/mfd/airoha-an8855-mfd.h>
- #include <linux/netdevice.h>
- #include <linux/of_net.h>
- #include <linux/of_platform.h>
+@@ -16,9 +16,18 @@
  #include <linux/phylink.h>
  #include <linux/platform_device.h>
-+#include <linux/proc_fs.h>
  #include <linux/regmap.h>
++#include <linux/proc_fs.h>
++#include <linux/mfd/airoha-an8855-mfd.h>
  #include <net/dsa.h>
  
  #include "an8855.h"
@@ -56,9 +59,9 @@ index e6666d2..c184b84 100644
 +
 +struct proc_dir_entry *proc_an8855_dsa_dir;
  
- static const struct an8855_mib_desc an8855_mib[] = {
- 	MIB_DESC(1, AN8855_PORT_MIB_TX_DROP, "TxDrop"),
-@@ -128,6 +137,65 @@ static int an8855_fdb_cmd(struct an8855_priv *priv, u32 cmd,
+ static const struct an8855_led_cfg led_cfg[] = {
+ /*************************************************************************
+@@ -193,6 +202,65 @@ static int an8855_fdb_cmd(struct an8855_priv *priv, u32 cmd,
  	return 0;
  }
  
@@ -124,8 +127,8 @@ index e6666d2..c184b84 100644
  static void
  an8855_port_stp_state_set(struct dsa_switch *ds, int port, u8 state)
  {
-@@ -2152,6 +2220,41 @@ static void an8855_pcs_an_restart(struct phylink_pcs *pcs)
- 	return;
+@@ -2600,6 +2668,41 @@ static void an8855_pcs_an_restart(struct phylink_pcs *pcs)
+ 
  }
  
 +static int an8855_proc_device_read(struct seq_file *seq, void *v)
@@ -166,7 +169,7 @@ index e6666d2..c184b84 100644
  static const struct phylink_pcs_ops an8855_pcs_ops = {
  	.pcs_inband_caps = an8855_pcs_inband_caps,
  	.pcs_get_state = an8855_pcs_get_state,
-@@ -2275,7 +2378,22 @@ static int an8855_switch_probe(struct platform_device *pdev)
+@@ -2746,7 +2849,22 @@ static int an8855_switch_probe(struct platform_device *pdev)
  
  	dev_set_drvdata(priv->dev, priv);
  
@@ -190,21 +193,22 @@ index e6666d2..c184b84 100644
  }
  
  static void an8855_switch_remove(struct platform_device *pdev)
-@@ -2284,6 +2402,8 @@ static void an8855_switch_remove(struct platform_device *pdev)
- 
+@@ -2756,6 +2874,9 @@ static void an8855_switch_remove(struct platform_device *pdev)
  	if (priv)
  		dsa_unregister_switch(priv->ds);
+ 
 +	an8855_nl_exit();
 +	an8855_proc_device_exit();
++
+ 	dev_set_drvdata(&pdev->dev, NULL);
  }
  
- static const struct of_device_id an8855_switch_of_match[] = {
 diff --git a/drivers/net/dsa/an8855.h b/drivers/net/dsa/an8855.h
-index 2462b9d..47bfea7 100644
+index ae3d9b7..6982272 100644
 --- a/drivers/net/dsa/an8855.h
 +++ b/drivers/net/dsa/an8855.h
-@@ -780,4 +780,13 @@ struct an8855_priv {
- 	bool phy_require_calib;
+@@ -922,4 +922,13 @@ struct an8855_priv {
+ 	u32 intr_pin;
  };
  
 +u32 an8855_read(struct an8855_priv *priv, u32 reg);
@@ -219,10 +223,10 @@ index 2462b9d..47bfea7 100644
  #endif /* __AN8855_H */
 diff --git a/drivers/net/dsa/an8855_nl.c b/drivers/net/dsa/an8855_nl.c
 new file mode 100644
-index 0000000..ad4845e
+index 0000000..2ff3a58
 --- /dev/null
 +++ b/drivers/net/dsa/an8855_nl.c
-@@ -0,0 +1,318 @@
+@@ -0,0 +1,322 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (c) 2023 Airoha Inc.
@@ -253,12 +257,14 @@ index 0000000..ad4845e
 +
 +static DEFINE_MUTEX(an8855_devs_lock);
 +
-+static void an8855_put(void)
++static void
++an8855_put(void)
 +{
 +	mutex_unlock(&an8855_devs_lock);
 +}
 +
-+static void an8855_lock(void)
++static void
++an8855_lock(void)
 +{
 +	mutex_lock(&an8855_devs_lock);
 +}
@@ -514,7 +520,9 @@ index 0000000..ad4845e
 +	}
 +
 +	an8855_lock();
++
 +	ret = cmditem->process(info);
++
 +	an8855_put();
 +
 +	return ret;

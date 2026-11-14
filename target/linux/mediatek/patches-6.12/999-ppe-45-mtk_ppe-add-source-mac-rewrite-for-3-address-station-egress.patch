@@ -31,15 +31,15 @@ diff --git a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c b/drivers/net/ether
 index 5cbb584..04ff713 100644
 --- a/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
 +++ b/drivers/net/ethernet/mediatek/mtk_ppe_offload.c
-@@ -13,6 +13,7 @@
- #include <net/netfilter/nf_conntrack_core.h>
+@@ -14,6 +14,7 @@
  #include <net/netfilter/nf_flow_table.h>
  #include <net/dsa.h>
+ #include <linux/dsa/8021q.h>
 +#include <net/cfg80211.h>
  #include "mtk_eth_soc.h"
  #include "mtk_wed.h"
  
-@@ -411,6 +412,21 @@ mtk_flow_is_valid_idev(const struct mtk_eth *eth, const struct net_device *idev)
+@@ -458,6 +459,21 @@ mtk_flow_is_valid_idev(const struct mtk_eth *eth, const struct net_device *idev)
  	return false;
  }
  
@@ -61,7 +61,7 @@ index 5cbb584..04ff713 100644
  static bool
  mtk_is_464xlat_offloadable(struct mtk_eth *eth, struct mtk_foe_entry *entry)
  {
-@@ -699,6 +715,13 @@ mtk_flow_offload_replace(struct mtk_eth *eth, struct flow_cls_offload *f,
+@@ -757,6 +773,13 @@ mtk_flow_offload_replace(struct mtk_eth *eth, struct flow_cls_offload *f,
  			offload_type = MTK_PPE_PKT_TYPE_464XLAT_46;
  	}
  

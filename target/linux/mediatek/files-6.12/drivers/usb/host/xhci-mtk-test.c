@@ -306,8 +306,7 @@ static int test_mode_enter(struct xhci_hcd_mtk *mtk,
 		xhci_gki_halt(xhci);
 	}
 
-	addr = &xhci->op_regs->port_power_base +
-			NUM_PORT_REGS * ((port_id - 1) & 0xff);
+	addr = &xhci->op_regs->port_regs[(port_id - 1) & 0xff].portpmsc;
 	temp = readl(addr);
 	temp &= ~(0xf << 28);
 	temp |= (test_value << 28);
@@ -447,8 +446,7 @@ static int t_power_u1u2(struct xhci_hcd_mtk *mtk, int argc, char **argv)
 	clear_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
 	clear_bit(HCD_FLAG_HW_ACCESSIBLE, &xhci->shared_hcd->flags);
 
-	addr = &xhci->op_regs->port_power_base +
-			NUM_PORT_REGS * ((port_id - 1) & 0xff);
+	addr = &xhci->op_regs->port_regs[(port_id - 1) & 0xff].portpmsc;
 
 	temp = readl(addr);
 	if (u_num == 1) {
@@ -609,8 +607,7 @@ static int t_test_suspend(struct xhci_hcd_mtk *mtk, int argc, char **argv)
 		}
 
 		/* set PLS = 3 */
-		addr = &xhci->op_regs->port_status_base +
-				NUM_PORT_REGS*((port_id - 1) & 0xff);
+		addr = &xhci->op_regs->port_regs[(port_id - 1) & 0xff].portsc;
 
 		temp = readl(addr);
 		temp = xhci_gki_port_state_to_neutral(temp);
@@ -671,8 +668,7 @@ static int t_test_resume(struct xhci_hcd_mtk *mtk, int argc, char **argv)
 			return -1;
 		}
 
-		addr = &xhci->op_regs->port_status_base +
-				NUM_PORT_REGS * ((port_id - 1) & 0xff);
+		addr = &xhci->op_regs->port_regs[(port_id - 1) & 0xff].portsc;
 
 		temp = readl(addr);
 		if (PORT_PLS_VALUE(temp) != 3) {
@@ -830,8 +826,7 @@ static ssize_t hqa_show(struct device *dev,
 
 	ports = mtk->num_u3_ports + mtk->num_u2_ports;
 	for (i = 1; i <= ports; i++) {
-		addr = &xhci->op_regs->port_status_base +
-			NUM_PORT_REGS * ((i - 1) & 0xff);
+		addr = &xhci->op_regs->port_regs[(i - 1) & 0xff].portsc;
 		val = readl(addr);
 		if (i <= mtk->num_u3_ports) {
 			len += sprintf(buf + len, "USB30 Port%i: 0x%08X\n", i, val);
@@ -840,8 +835,7 @@ static ssize_t hqa_show(struct device *dev,
 			len += sprintf(buf + len, "USB20 Port%i: 0x%08X\n", i, val);
 			len += sprintf(buf + len, "%s\n", xhci_mtk_decode_portsc(str, val));
 
-			addr = &xhci->op_regs->port_power_base +
-				NUM_PORT_REGS * ((i - 1) & 0xff);
+			addr = &xhci->op_regs->port_regs[(i - 1) & 0xff].portpmsc;
 			val = readl(addr);
 			len += sprintf(buf+len,
 				"USB20 Port%i PORTMSC[31,28] 4b'0000: 0x%08X\n",
@@ -889,8 +883,7 @@ static ssize_t usb3hqa_show(struct device *dev,
 
 	ports = mtk->num_u3_ports + mtk->num_u2_ports;
 	for (i = 1; i <= ports; i++) {
-		addr = &xhci->op_regs->port_status_base +
-			NUM_PORT_REGS * ((i - 1) & 0xff);
+		addr = &xhci->op_regs->port_regs[(i - 1) & 0xff].portsc;
 		val = readl(addr);
 		if (i <= mtk->num_u3_ports) {
 			cnt += sprintf(buf + cnt, "USB30 Port%i: 0x%08X\n", i, val);
@@ -934,8 +927,7 @@ usb3hqa_store(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 	}
 
-	addr = &xhci->op_regs->port_status_base +
-		NUM_PORT_REGS * ((port - 1) & 0xff);
+	addr = &xhci->op_regs->port_regs[(port - 1) & 0xff].portsc;
 	val  = readl(addr);
 	val &= ~(PORT_PLS_MASK);
 	val |= (PORT_LINK_STROBE | XDEV_COMP_MODE);

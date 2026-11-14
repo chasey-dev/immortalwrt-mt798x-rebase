@@ -6,20 +6,17 @@ Add dual-cpu-port support.
 v1: add dual-cpu-port support
 ---
 
-From 55e528d7a636fd030347c9db6a3e530eebf14a36 Mon Sep 17 00:00:00 2001
+From 232f60c3302234c914dd7c1cb10bde06099dbf9e Mon Sep 17 00:00:00 2001
 From: "neal.yen" <neal.yen@mediatek.com>
-Date: Thu, 28 May 2026 15:10:38 +0800
+Date: Wed, 14 Oct 2026 09:31:17 +0800
 Subject: [PATCH] net: dsa: add dual-cpu-port support
 
----
- drivers/net/dsa/mt7530.c | 42 ++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 42 insertions(+)
 
 diff --git a/drivers/net/dsa/mt7530.c b/drivers/net/dsa/mt7530.c
-index 74bcefb..00d00d6 100644
+index 282f8fb..303969d 100644
 --- a/drivers/net/dsa/mt7530.c
 +++ b/drivers/net/dsa/mt7530.c
-@@ -3152,6 +3152,47 @@ static int mt7988_setup(struct dsa_switch *ds)
+@@ -3086,6 +3086,47 @@ static int mt7988_setup(struct dsa_switch *ds)
  	return mt7531_setup_common(ds);
  }
  
@@ -67,7 +64,7 @@ index 74bcefb..00d00d6 100644
  const struct dsa_switch_ops mt7530_switch_ops = {
  	.get_tag_protocol	= mtk_get_tag_protocol,
  	.setup			= mt753x_setup,
-@@ -3165,6 +3206,7 @@ const struct dsa_switch_ops mt7530_switch_ops = {
+@@ -3099,6 +3140,7 @@ const struct dsa_switch_ops mt7530_switch_ops = {
  	.port_change_mtu	= mt7530_port_change_mtu,
  	.port_max_mtu		= mt7530_port_max_mtu,
  	.port_stp_state_set	= mt7530_stp_state_set,

@@ -1,8 +1,9 @@
 ---
-[v4] net: phy: airoha: add an8811hb driver support
+[v5] net: phy: airoha: add an8811hb driver support
 
 Add Airoha AN8811HB 2.5G PHY driver support.
 ---
+v5: Update Airoha AN8811HB 2.5G PHY driver to v1.0.4.
 v4: Update Airoha AN8811HB 2.5G PHY driver to v1.0.3.
 v3: Update Airoha AN8811HB 2.5G PHY driver to v1.0.0.
 v2: Update Airoha AN8811HB 2.5G PHY driver to v0.0.9.
@@ -78,7 +79,7 @@ Subject: [PATCH] net: phy: airoha: add an8811hb driver support
 +#define AN8811HB_MD32_DM		"airoha/an8811hb/EthMD32_CRC.DM.bin"
 +#define AN8811HB_MD32_DSP		"airoha/an8811hb/EthMD32_CRC.DSP.bin"
 +
-+#define AN8811HB_DRIVER_VERSION		"v1.0.3"
++#define AN8811HB_DRIVER_VERSION		"v1.0.4"
 +
 +#define AIR_FW_ADDR_DM	0x00000000
 +#define AIR_FW_ADDR_DSP	0x00100000

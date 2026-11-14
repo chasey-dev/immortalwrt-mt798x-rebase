@@ -58,8 +58,7 @@ ssize_t RG_USB20_TERM_VREF_SEL_show(struct device *dev,
 	cnt += sprintf(buf + cnt,
 			"\n=========current HQA setting check=========\n");
 	for (i = 1; i <= ports; i++) {
-		addr = &xhci->op_regs->port_status_base +
-			NUM_PORT_REGS * ((i - 1) & 0xff);
+		addr = &xhci->op_regs->port_regs[(i - 1) & 0xff].portsc;
 		val = readl(addr);
 		if (i <= mtk->num_u3_ports) {
 			cnt += sprintf(buf + cnt,

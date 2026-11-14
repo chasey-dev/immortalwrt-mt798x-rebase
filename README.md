@@ -14,23 +14,18 @@ Merge Official Source
 Signed-off-by: Tianling Shen <cnsztl@immortalwrt.org>
 ```
 
-### MTK OpenWrt Feeds: [08196fa](https://github.com/mediatek/mtk-openwrt-feeds/commit/08196fa6e5d338ce88aa0002f781e2d24289b1f1)
+### MTK OpenWrt Feeds: [3f66af2](https://github.com/mediatek/mtk-openwrt-feeds/commit/3f66af253becc66364f90669e58d59db19de6d95)
 
 ```
-[HIGH][openwrt-25][MAC80211][WiFi7][Fix build failure due to license header]
+[kernel-6.12][common][ppe][Fix patch conflict issue]
 
 [Description]
-Fix image build failure for MP4.3 release SDK.
+Fix patch conflict issue.
 
 [Root Cause]
-Relevant release patch already includes license header, while internal
-commit does not. Hence, duplicate license header is automatically
-added when transforming commit to patch, causing patching conflict.
+Openwrt 25.12 linux version upgrade.
 
 [Solution]
-Avoid adding duplicate license header.
-
-[Release-log]
 N/A
 
 [How to Verify]
@@ -39,7 +34,8 @@ N/A
 [Info to Customer]
 N/A
 
-Change-Id: Ieb659d0c7763cf11ce2e63cc6bdc53cc2f674000
+
+Change-Id: Ie6b704c027b61032e496c0c7dc51fe268900e7d3
 ```
 
 ### l1parser: [081bb31](https://github.com/chasey-dev/l1parser/commit/081bb31211efc74594d25bfd1bb5811f3408a205)

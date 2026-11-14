@@ -28,7 +28,8 @@ struct hnat_desc {
 	u32 entry : 15;
 	u32 filled : 3;
 	u32 crsn : 5;
-	u32 resv1 : 3;
+	u32 ppe_id : 2;
+	u32 resv1 : 1;
 	u32 sport : 4;
 	u32 resv2 : 1;
 	u32 alg : 1;
@@ -57,7 +58,8 @@ struct hnat_desc {
 	u32 entry : 15;
 	u32 filled : 3;
 	u32 crsn : 5;
-	u32 resv1 : 3;
+	u32 ppe_id : 2;
+	u32 resv1 : 1;
 	u32 sport : 4;
 	u32 resv2 : 1;
 	u32 alg : 1;
@@ -77,7 +79,7 @@ struct hnat_desc {
 	u32 alg : 1;
 	u32 iface : 8;
 	u32 filled : 3;
-	u32 resv : 1;
+	u32 ppe_id : 1;
 	u32 magic_tag_protect : 16;
 	u32 wdmaid : 8;
 	u32 rxid : 2;
@@ -147,6 +149,12 @@ struct hnat_desc {
 #define skb_hnat_is_sp(skb) (((struct hnat_desc *)((skb)->head))->is_sp)
 #define skb_hnat_hf(skb) (((struct hnat_desc *)((skb)->head))->hf)
 #define skb_hnat_amsdu(skb) (((struct hnat_desc *)((skb)->head))->amsdu)
+
+#define skb_hnat_ppe_id(skb) (((struct hnat_desc *)((skb)->head))->ppe_id)
+#define skb_hnat_set_ppe_id(skb, ppe_id) (skb_hnat_ppe_id(skb) = (ppe_id))
+#define skb_hnat_ppe(skb)						\
+	(skb_hnat_ppe_id(skb) < CFG_PPE_NUM ? skb_hnat_ppe_id(skb) : 0)
+
 #define headroom_iface(h) (h.iface)
 #define headroom_ppe1(h)						\
 		((headroom_iface(h) == FOE_MAGIC_GE_LAN2 ||		\

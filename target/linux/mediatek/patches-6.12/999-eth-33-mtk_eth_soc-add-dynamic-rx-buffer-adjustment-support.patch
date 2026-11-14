@@ -1,10 +1,11 @@
 ---
-[v3] net: ethernet: mtk_eth_soc: add dynamic RX buffer adjustment support
+[v4] net: ethernet: mtk_eth_soc: add dynamic RX buffer adjustment support
 
 Add dynamic RX buffer length adjustment based on MTU changes. This allows
 buffer sizes to be adapted to actual requirements, supporting MTUs from
 1.5K up to 9K with proper alignment and validation.
 ---
+v4: Fix incorrect MTU setting flow for XDP.
 v3: Add 9K RX length support for GMAC.
 v2: Fix RX buffer length check error for XDP.
 v1: Add dynamic RX buffer adjustment support.
@@ -23,7 +24,7 @@ support
 
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -801,7 +801,7 @@ static void mtk_mac_config(struct phylin
+@@ -808,7 +808,7 @@ static void mtk_mac_config(struct phylin
  
  	mac->mode = mode;
  	mac->interface = state->interface;
@@ -32,7 +33,7 @@ support
  
  	return;
  
-@@ -898,13 +898,10 @@ static void mtk_set_max_mtu(struct mtk_m
+@@ -905,13 +905,10 @@ static void mtk_set_max_mtu(struct mtk_m
  {
  	struct mtk_eth *eth = mac->hw;
  
@@ -48,7 +49,7 @@ support
  }
  
  static void mtk_set_queue_speed(struct mtk_eth *eth, unsigned int idx,
-@@ -1485,22 +1482,22 @@ static void mtk_get_stats64(struct net_d
+@@ -1492,22 +1489,22 @@ static void mtk_get_stats64(struct net_d
  	storage->tx_dropped = dev->stats.tx_dropped;
  }
  
@@ -77,7 +78,7 @@ support
  
  	return buf_size;
  }
-@@ -3209,8 +3206,8 @@ static int mtk_rx_alloc(struct mtk_eth *
+@@ -3215,8 +3212,8 @@ static int mtk_rx_alloc(struct mtk_eth *
  		rx_dma_size = soc->rx.dma_size;
  	}
  
@@ -88,7 +89,7 @@ support
  	ring->data = kcalloc(rx_dma_size, sizeof(*ring->data),
  			     GFP_KERNEL);
  	if (!ring->data)
-@@ -3488,7 +3485,7 @@ static int mtk_hwlro_rx_init(struct mtk_
+@@ -3485,7 +3482,7 @@ static int mtk_hwlro_rx_init(struct mtk_
  
  	if (mtk_is_netsys_v3_or_greater(eth)) {
  		val = mtk_r32(eth, reg_map->pdma.rx_cfg);
@@ -97,7 +98,7 @@ support
  			MTK_RX_CFG_SDL_OFFSET), reg_map->pdma.rx_cfg);
  
  		lro_ctrl_dw0 |= MTK_PDMA_LRO_SDL << MTK_CTRL_DW0_SDL_OFFSET;
-@@ -5486,10 +5483,17 @@ static void mtk_uninit(struct net_device
+@@ -5533,24 +5530,33 @@ static void mtk_uninit(struct net_device
  
  static int mtk_change_mtu(struct net_device *dev, int new_mtu)
  {
@@ -105,19 +106,19 @@ support
  	struct mtk_mac *mac = netdev_priv(dev);
  	struct mtk_eth *eth = mac->hw;
 -	int max_mtu, i;
-+	int max_mtu, i, length;
++	u32 old_mtu, max_mtu, length;
++	int i;
 +
++	old_mtu = dev->mtu;
 +	WRITE_ONCE(dev->mtu, new_mtu);
 +
 +	max_mtu = mtk_max_gmac_mtu(eth);
-+	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
-+		mtk_ppe_update_mtu(eth->ppe[i], max_mtu);
-+
 +	length = max_mtu + MTK_RX_ETH_HLEN;
  
  	if (rcu_access_pointer(eth->prog) &&
  	    length > MTK_PP_MAX_BUF_SIZE) {
-@@ -5497,12 +5501,11 @@ static int mtk_change_mtu(struct net_dev
++		WRITE_ONCE(dev->mtu, old_mtu);
+ 		netdev_err(dev, "Invalid MTU for XDP mode\n");
  		return -EINVAL;
  	}
  
@@ -125,18 +126,20 @@ support
 -	WRITE_ONCE(dev->mtu, new_mtu);
 -
 -	max_mtu = mtk_max_gmac_mtu(eth);
--	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
--		mtk_ppe_update_mtu(eth->ppe[i], max_mtu);
+ 	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+ 		mtk_ppe_update_mtu(eth->ppe[i], max_mtu);
+ 
 +	if (length <= MTK_MAX_RX_LENGTH)
 +		eth->rx_buf_len = MTK_MAX_RX_LENGTH;
 +	else
 +		eth->rx_buf_len = DIV_ROUND_UP(length, MTK_MAX_RX_LENGTH_UNIT) *
 +				  MTK_MAX_RX_LENGTH_UNIT;
- 
++
  	return 0;
  }
-@@ -7080,6 +7083,8 @@ static int mtk_probe(struct platform_dev
- 				   eth->netdev[i]->base_addr, eth->irq_fe[0]);
+ 
+@@ -7138,6 +7144,8 @@ static int mtk_probe(struct platform_dev
+ 				   eth->netdev[i]->base_addr, eth->irq_fe[MTK_FE_IRQ_SHARED]);
  	}
  
 +	eth->rx_buf_len = MTK_MAX_RX_LENGTH;
@@ -155,7 +158,7 @@ support
  #define	MTK_MAX_LRO_IP_CNT		2
  #define	MTK_HW_LRO_TIMER_UNIT		1	/* 20 us */
  #define	MTK_HW_LRO_REFRESH_TIME		50000	/* 1 sec. */
-@@ -1605,6 +1605,7 @@ struct mtk_eth {
+@@ -1608,6 +1608,7 @@ struct mtk_eth {
  
  	spinlock_t			dim_lock;
  

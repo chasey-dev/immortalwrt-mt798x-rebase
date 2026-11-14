@@ -1033,6 +1033,11 @@ struct hnat_neigh_update_event {
 	u8 tbl_family;
 };
 
+struct hnat_roam_work {
+	struct work_struct work;
+	u8 mac[ETH_ALEN];
+};
+
 struct hnat_prot_3t_cfg {
 	u16 ipv4_chk; /* IPv4 protocol check flag */
 	u16 ipv6_chk; /* IPv6 protocol check flag */
@@ -1047,6 +1052,15 @@ struct mcast_blist_data {
 	bool is_ipv4;
 	u32 ipv4;
 	u32 mask;
+};
+
+struct pppoe_br_rule {
+	struct list_head list;
+	unsigned char smac[ETH_ALEN];
+	unsigned char dmac[ETH_ALEN];
+	char rx_dev[IFNAMSIZ];
+	u16 type;
+	u16 sid;
 };
 
 struct mtk_hnat {
@@ -1101,12 +1115,16 @@ struct mtk_hnat {
 	bool nf_stat_en;
 	struct xlat_conf xlat;
 	struct list_head	mcast_blist_list;
+	struct list_head	pppoe_br_list;
 	spinlock_t		cah_lock;
 	spinlock_t		entry_lock;
 	spinlock_t		flow_entry_lock;
+	spinlock_t		pppoe_br_lock;
 	struct hlist_head *foe_flow[MAX_PPE_NUM];
 	struct hnat_prot_3t_cfg prot_3t[MAX_PPE_NUM]; /* for 3-tuple offload */
 	struct hnat_neigh_update neigh_update;
+	atomic64_t hash_collision_cnt[MAX_PPE_NUM];
+	bool hash_collision_en;
 	int fe_irq2;
 };
 
@@ -1383,19 +1401,18 @@ enum FoeIpAct {
 #define IS_PPPQ_MODE (qos_toggle == 2)		/* Per Port Per Queue */
 #define IS_HQOS_DL_MODE (IS_HQOS_MODE && qos_dl_toggle)
 #define IS_HQOS_UL_MODE (IS_HQOS_MODE && qos_ul_toggle)
-#define MAX_SWITCH_PORT_NUM		(6)
+#define HNAT_QDMA_NUM_QUEUES		(hnat_priv->eth->soc->num_tx_queues)
+#define HNAT_QDMA_QUEUE_MASK		(HNAT_QDMA_NUM_QUEUES - 1)
+#define PPPQ_DSA_QUEUE_NUM		READ_ONCE(hnat_priv->eth->dsa_queue_count)
+#define MAX_PPPQ_QUEUE_NUM		(MTK_MAX_DEVS + 2 * PPPQ_DSA_QUEUE_NUM)
 #if defined(CONFIG_MEDIATEK_NETSYS_V3)
-#define MAX_PPPQ_QUEUE_NUM		(2 * MAX_SWITCH_PORT_NUM + 2)
 #define IS_PPPQ_PATH(dev, skb)						\
-	((IS_DSA_1G_LAN(dev) || IS_DSA_WAN(dev)) ||			\
-	 (IS_ETH_GRP(dev) && is_eth_dev_speed_under(dev, SPEED_1000)) ||\
-	 (FROM_WED(skb) && (IS_DSA_LAN(dev) ||				\
-			    is_eth_dev_speed_under(dev, SPEED_2500))))
+	(is_dev_speed_under(dev, SPEED_1000) ||				\
+	 (FROM_WED(skb) && is_dev_speed_under(dev, SPEED_2500)))
 #else
-#define MAX_PPPQ_QUEUE_NUM		(2 * MAX_SWITCH_PORT_NUM)
-#define IS_PPPQ_PATH(dev, skb)				\
-	((IS_DSA_1G_LAN(dev) || IS_DSA_WAN(dev)) ||	\
-	 (FROM_WED(skb) && IS_DSA_LAN(dev)))
+#define IS_PPPQ_PATH(dev, skb)						\
+	(dsa_user_dev_check(dev) &&					\
+	 (is_dev_speed_under(dev, SPEED_1000) || FROM_WED(skb)))
 #endif
 
 #define es(entry) (entry_state[entry->bfib1.state])
@@ -1471,31 +1488,6 @@ static inline bool hnat_dsa_is_enable(struct mtk_hnat *priv)
 #endif
 }
 
-static inline u32 skb_hnat_ppe(const struct sk_buff *skb)
-{
-	struct mtk_eth *eth = hnat_priv->eth;
-	int gmac_id;
-
-	switch (skb_hnat_sport(skb)) {
-	case NR_GMAC1_PORT:
-		gmac_id = MTK_GMAC1_ID;
-		break;
-	case NR_GMAC2_PORT:
-		gmac_id = MTK_GMAC2_ID;
-		break;
-	case NR_GMAC3_PORT:
-		gmac_id = MTK_GMAC3_ID;
-		break;
-	default:
-		return 0;
-	}
-
-	if (!eth || !eth->mac[gmac_id])
-		return 0;
-
-	return eth->mac[gmac_id]->ppe_idx;
-}
-
 struct foe_entry *hnat_get_foe_entry(u32 ppe_id, u32 index);
 
 void hnat_deinit_debugfs(struct mtk_hnat *h);
@@ -1509,7 +1501,7 @@ int hnat_search_cache_line(u32 ppe_id, u32 tag);
 int hnat_write_cache_line(u32 ppe_id, int line, u32 tag, u32 state, u32 *data);
 int hnat_dump_cache_entry(u32 ppe_id, int hash);
 int hnat_dump_ppe_entry(u32 ppe_id, u32 hash);
-bool is_eth_dev_speed_under(const struct net_device *dev, u32 speed);
+bool is_dev_speed_under(const struct net_device *dev, u32 speed);
 extern int dbg_cpu_reason;
 extern int debug_level;
 extern int mcast_mode;
@@ -1524,6 +1516,7 @@ extern int qos_toggle;
 extern int l2br_toggle;
 extern int l4s_toggle;
 extern int tnl_toggle;
+extern bool pppoe_br_rule_mode;
 extern int (*mtk_tnl_encap_offload)(struct sk_buff *skb, struct ethhdr *eth);
 extern int (*mtk_tnl_decap_offload)(struct sk_buff *skb);
 extern bool (*mtk_tnl_decap_offloadable)(struct sk_buff *skb);
@@ -1569,6 +1562,12 @@ int entry_delete(u32 ppe_id, int index);
 void __entry_delete(struct foe_entry *entry);
 int entry_mac_cmp(struct foe_entry *entry, u8 *mac, enum entry_cmp_flags flags);
 int entry_ip_cmp(struct foe_entry *entry, bool is_ipv4, void *addr, enum entry_cmp_flags flags);
+bool pppoe_br_rule_exist(const struct pppoe_br_rule *rule);
+int pppoe_br_rule_add(const struct pppoe_br_rule *rule);
+int pppoe_br_rule_del(const struct pppoe_br_rule *rule);
+void pppoe_br_rule_flush(void);
+void pppoe_br_entry_invalidate(const struct pppoe_br_rule *rule);
+void pppoe_br_rule_dump(void);
 int hnat_warm_init(void);
 void hnat_hw_set_dft_cport(u32 ppe_id);
 void hnat_hw_set_prot_3t(u32 ppe_id);

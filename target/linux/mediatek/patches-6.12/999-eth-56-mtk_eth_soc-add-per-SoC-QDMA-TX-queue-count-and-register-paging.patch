@@ -1,0 +1,189 @@
+---
+[v1] net: ethernet: mtk_eth_soc: add per-SoC QDMA TX queue count and register paging
+
+Without this patch the driver only ever uses 16 QDMA TX queues, while MT7988
+needs more than that when there are multiple DSA switches.
+---
+v1: add per-SoC QDMA TX queue count and register paging.
+---
+
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Tue, 29 Jul 2026 09:30:00 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add per-SoC QDMA TX queue count
+ and register paging
+
+Add a per-SoC mtk_soc_data::num_tx_queues and redefine MTK_QDMA_NUM_QUEUES as
+(eth->soc->num_tx_queues), num_tx_queues is 32 on MT7988 and stays 16
+elsewhere by default.
+
+Also select qdma.page before touching qtx_cfg / qtx_sch, since the register
+window only exposes MTK_QTX_PER_PAGE queue config registers at a time.
+
+Adapted from OpenWrt upstream 795-04:
+  629c7910dade ("net: ethernet: mtk_eth_soc: per-SoC QDMA TX queue count with
+  register paging") -- Daniel Golle <daniel@makrotopia.org>
+
+Signed-off-by: chak-kei.lam <chak-kei.lam@mediatek.com>
+---
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -1121,8 +1121,10 @@ static void mtk_set_queue_speed(struct m
+ 		eth->qdma_shaper.speed[idx] = speed;
+ 
+ out:
+-	ofs = MTK_QTX_OFFSET * idx;
++	mtk_w32(eth, idx / MTK_QTX_PER_PAGE, soc->reg_map->qdma.page);
++	ofs = MTK_QTX_OFFSET * (idx % MTK_QTX_PER_PAGE);
+ 	mtk_w32(eth, val, soc->reg_map->qdma.qtx_sch + ofs);
++	mtk_w32(eth, 0, soc->reg_map->qdma.page);
+ }
+ 
+ static void mtk_gdm_mac_setup_eee(struct mtk_mac *mac, bool enable)
+@@ -3349,7 +3351,11 @@ static int mtk_tx_alloc(struct mtk_eth *
+ 			soc->reg_map->qdma.crx_ptr);
+ 		mtk_w32(eth, ring->last_free_ptr, soc->reg_map->qdma.drx_ptr);
+ 
+-		for (i = 0, ofs = 0; i < MTK_QDMA_NUM_QUEUES; i++) {
++		for (i = 0; i < MTK_QDMA_NUM_QUEUES; i++) {
++			mtk_w32(eth, i / MTK_QTX_PER_PAGE,
++				soc->reg_map->qdma.page);
++			ofs = MTK_QTX_OFFSET * (i % MTK_QTX_PER_PAGE);
++
+ 			val = (QDMA_RES_THRES << 8) | QDMA_RES_THRES;
+ 			mtk_w32(eth, val, soc->reg_map->qdma.qtx_cfg + ofs);
+ 
+@@ -3367,8 +3373,9 @@ static int mtk_tx_alloc(struct mtk_eth *
+ 			if (mtk_is_netsys_v1(eth))
+ 				val |= MTK_QTX_SCH_LEAKY_BUCKET_EN;
+ 			mtk_w32(eth, val, soc->reg_map->qdma.qtx_sch + ofs);
+-			ofs += MTK_QTX_OFFSET;
+ 		}
++		mtk_w32(eth, 0, soc->reg_map->qdma.page);
++
+ 		val = MTK_QDMA_TX_SCH_MAX_WFQ | (MTK_QDMA_TX_SCH_MAX_WFQ << 16);
+ 		mtk_w32(eth, val, soc->reg_map->qdma.tx_sch_rate);
+ 		if (mtk_is_netsys_v2_or_greater(eth))
+@@ -6554,8 +6561,9 @@ static int mtk_set_rxfh(struct net_devic
+ static u16 mtk_select_queue(struct net_device *dev, struct sk_buff *skb,
+ 			    struct net_device *sb_dev)
+ {
+-	u32 mark = skb->mark & MTK_QDMA_QUEUE_MASK;
+ 	struct mtk_mac *mac = netdev_priv(dev);
++	struct mtk_eth *eth = mac->hw;
++	u32 mark = skb->mark & MTK_QDMA_QUEUE_MASK;
+ 	unsigned int queue = 0;
+ 
+ 	if (mark > 0 && mark < dev->num_tx_queues)
+@@ -7594,6 +7602,7 @@ static const struct mtk_soc_data mt2701_
+ 	.required_clks = MT7623_CLKS_BITMAP,
+ 	.required_pctl = true,
+ 	.version = 1,
++	.num_tx_queues = 16,
+ 	.rss_num = 0,
+ 	.tx = {
+ 		DESC_SIZE(struct mtk_tx_dma),
+@@ -7618,6 +7627,7 @@ static const struct mtk_soc_data mt7621_
+ 	.required_clks = MT7621_CLKS_BITMAP,
+ 	.required_pctl = false,
+ 	.version = 1,
++	.num_tx_queues = 16,
+ 	.offload_version = 1,
+ 	.ppe_num = 1,
+ 	.hash_offset = 2,
+@@ -7647,6 +7657,7 @@ static const struct mtk_soc_data mt7622_
+ 	.required_clks = MT7622_CLKS_BITMAP,
+ 	.required_pctl = false,
+ 	.version = 1,
++	.num_tx_queues = 16,
+ 	.offload_version = 2,
+ 	.ppe_num = 1,
+ 	.hash_offset = 2,
+@@ -7676,6 +7687,7 @@ static const struct mtk_soc_data mt7623_
+ 	.required_clks = MT7623_CLKS_BITMAP,
+ 	.required_pctl = true,
+ 	.version = 1,
++	.num_tx_queues = 16,
+ 	.offload_version = 1,
+ 	.ppe_num = 1,
+ 	.hash_offset = 2,
+@@ -7707,6 +7719,7 @@ static const struct mtk_soc_data mt7629_
+ 	.required_pctl = false,
+ 	.has_accounting = true,
+ 	.version = 1,
++	.num_tx_queues = 16,
+ 	.rss_num = 0,
+ 	.tx = {
+ 		DESC_SIZE(struct mtk_tx_dma),
+@@ -7732,6 +7745,7 @@ static const struct mtk_soc_data mt7981_
+ 	.required_clks = MT7981_CLKS_BITMAP,
+ 	.required_pctl = false,
+ 	.version = 2,
++	.num_tx_queues = 16,
+ 	.offload_version = 2,
+ 	.ppe_num = 2,
+ 	.hash_offset = 4,
+@@ -7762,6 +7776,7 @@ static const struct mtk_soc_data mt7986_
+ 	.required_clks = MT7986_CLKS_BITMAP,
+ 	.required_pctl = false,
+ 	.version = 2,
++	.num_tx_queues = 16,
+ 	.offload_version = 2,
+ 	.ppe_num = 2,
+ 	.hash_offset = 4,
+@@ -7792,6 +7807,7 @@ static const struct mtk_soc_data mt7987_
+ 	.required_clks = MT7987_CLKS_BITMAP,
+ 	.required_pctl = false,
+ 	.version = 3,
++	.num_tx_queues = 16,
+ 	.offload_version = 2,
+ 	.ppe_num = 2,
+ 	.hash_offset = 4,
+@@ -7822,6 +7838,7 @@ static const struct mtk_soc_data mt7988_
+ 	.required_clks = MT7988_CLKS_BITMAP,
+ 	.required_pctl = false,
+ 	.version = 3,
++	.num_tx_queues = 32,
+ 	.offload_version = 2,
+ 	.ppe_num = 3,
+ 	.hash_offset = 4,
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -28,7 +28,7 @@
+ #define MTK_MAX_DSA_PORTS	7
+ #define MTK_DSA_PORT_MASK	GENMASK(2, 0)
+ 
+-#define MTK_QDMA_NUM_QUEUES	16
++#define MTK_QDMA_NUM_QUEUES	(eth->soc->num_tx_queues)
+ #define MTK_QDMA_QUEUE_MASK	(MTK_QDMA_NUM_QUEUES - 1)
+ #define MTK_QDMA_PAGE_SIZE	2048
+ #define MTK_MAX_RX_LENGTH	1536
+@@ -1298,8 +1298,8 @@ struct mtk_napi {
+ 				rate control for the Tx Scheduler
+  */
+ struct mtk_qdma_params {
+-	u32	qtx_cfg[MTK_QDMA_NUM_QUEUES];
+-	u32	qtx_sch[MTK_QDMA_NUM_QUEUES];
++	u32	qtx_cfg[128];
++	u32	qtx_sch[128];
+ 	u32	tx_sch[2];
+ };
+ 
+@@ -1312,8 +1312,8 @@ struct mtk_qdma_params {
+  */
+ struct mtk_qdma_shaper {
+ 	spinlock_t	lock;
+-	atomic_t	refcnt[MTK_QDMA_NUM_QUEUES];
+-	u32		speed[MTK_QDMA_NUM_QUEUES];
++	atomic_t	refcnt[128];
++	u32		speed[128];
+ 	u32		threshold;
+ };
+ 
+@@ -1631,6 +1631,7 @@ struct mtk_soc_data {
+ 	u8		hash_offset;
+ 	u8		version;
+ 	u8		ppe_num;
++	u16		num_tx_queues;
+ 	u16		foe_entry_size;
+ 	netdev_features_t hw_features;
+ 	bool		has_accounting;

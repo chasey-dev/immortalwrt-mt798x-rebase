@@ -23,14 +23,12 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  arch/arm64/boot/dts/mediatek/mt7988a.dtsi | 6 +++++-
  1 file changed, 5 insertions(+), 1 deletion(-)
 
-diff --git a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
-index a0aad82..2e471ce 100644
 --- a/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
 +++ b/arch/arm64/boot/dts/mediatek/mt7988a.dtsi
-@@ -1106,7 +1106,11 @@ eth: ethernet@15100000 {
+@@ -1133,7 +1133,11 @@
+ 		eth: ethernet@15100000 {
  			compatible = "mediatek,mt7988-eth";
- 			reg = <0 0x15100000 0 0x80000>,
- 			      <0 0x15400000 0 0x200000>;
+ 			reg = <0 0x15100000 0 0x80000>;
 -			interrupts = <GIC_SPI 196 IRQ_TYPE_LEVEL_HIGH>,
 +			interrupts = <GIC_SPI 189 IRQ_TYPE_LEVEL_HIGH>,
 +				     <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>,
@@ -40,6 +38,3 @@ index a0aad82..2e471ce 100644
  				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>,
  				     <GIC_SPI 198 IRQ_TYPE_LEVEL_HIGH>,
  				     <GIC_SPI 199 IRQ_TYPE_LEVEL_HIGH>;
--- 
-2.45.2
-

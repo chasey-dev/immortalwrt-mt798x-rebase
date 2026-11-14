@@ -129,11 +129,16 @@ int mtk_hnat_update_tid_by_index(unsigned short ppe_index,
 int mtk_hnat_update_tid_by_skb(struct sk_buff *skb, unsigned short tid);
 int mtk_hnat_register_bind_callback(void (*func)(struct hnat_tuple *));
 int mtk_hnat_register_fin_callback(void (*func)(struct hnat_tuple *));
+/* Must be called before the callback's module is unloaded, may sleep */
+void mtk_hnat_unregister_bind_callback(void);
+void mtk_hnat_unregister_fin_callback(void);
 int mtk_hnat_get_fin_age_config(unsigned short ppe_index);
 int mtk_hnat_set_fin_age_config(unsigned short ppe_index, bool enable);
 
 void hnat_trigger_callback(void (*func)(struct hnat_tuple *), struct sk_buff *skb);
 void hnat_api_init_debugfs(struct dentry *root);
+void hnat_api_init(void);
+void hnat_api_deinit(void);
 
 #define IS_HNAT_API_SUPPORTED(x)	\
 	(IS_IPV4_HNAPT(x) || IS_IPV6_5T_ROUTE(x))

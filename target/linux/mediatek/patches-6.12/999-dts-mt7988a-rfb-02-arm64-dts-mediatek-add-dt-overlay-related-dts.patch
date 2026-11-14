@@ -1,11 +1,12 @@
 ---
-[v7] arm64: dts: mediatek: add dt overlay related dts
+[v8] arm64: dts: mediatek: add dt overlay related dts
 
 Add device tree overlay support for MT7988A RFB with various Ethernet PHY
 configurations including AN8831X, AN8855, AQR113C, CUX3410, interal 2.5G PHYs,
 and MXL86252 switch. Enables flexible hardware configuration through
 runtime DTS overlays.
 ---
+v8: Add device tree overlays for AN8833X.
 v7: Add 'managed = "in-band-status"' to the relevant AN8831X DTSO, allowing
     AN8831X to activate INBAND after new driver supports inband_caps and
     config_inband callbacks.
@@ -65,6 +66,81 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +					};
 +
 +					phy28_led1: an8831x_phy28_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gmac1>;
++		__overlay__ {
++			managed = "in-band-status";
++			phy-mode = "usxgmii";
++			phy-connection-type = "usxgmii";
++			phy = <&phy28>;
++			status = "okay";
++		};
++	};
++
++	fragment@2 {
++		target = <&eth>;
++		__overlay__ {
++			pinctrl-0 = <&mdio0_pins>;
++			pinctrl-names = "default";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-an8833x.dtso
+@@ -0,0 +1,72 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clock-frequency = <12500000>;
++			reset-gpios = <&pio 71 GPIO_ACTIVE_LOW>;
++			reset-delay-us = <200000>;
++			reset-post-delay-us = <350000>;
++
++			/* external Airoha AN8833X */
++			phy28: ethernet-phy@28 {
++				reg = <28>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "as22x1x_fw.bin";
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy28_led0: an8833x_phy28_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++
++					phy28_led1: an8833x_phy28_led1@1 {
 +						reg = <1>;
 +						linux,default-trigger = "netdev";
 +						active-high;
@@ -287,6 +363,128 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +};
 +
 --- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-sfp-an8833x.dtso
+@@ -0,0 +1,119 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&i2c2>;
++		__overlay__ {
++			pinctrl-names = "default";
++			pinctrl-0 = <&i2c2_0_pins>;
++			status = "okay";
++		};
++	};
++
++	fragment@1 {
++		target-path = "/";
++		__overlay__ {
++			sfp_esp1: sfp@1 {
++				compatible = "sff,sfp";
++				i2c-bus = <&i2c2>;
++				mod-def0-gpios = <&pio 82 GPIO_ACTIVE_LOW>;
++				los-gpios = <&pio 81 GPIO_ACTIVE_HIGH>;
++				tx-disable-gpios = <&pio 36 GPIO_ACTIVE_HIGH>;
++				maximum-power-milliwatt = <3000>;
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&eth>;
++		__overlay__ {
++			mux: mux-bus {
++				mux1: ethernet-mux@1 {
++					compatible = "mediatek,eth-mux";
++					reg = <1>;
++
++					chan-sel-gpios = <&pio 33 GPIO_ACTIVE_HIGH>;
++					mod-def0-gpios = <&pio 82 GPIO_ACTIVE_LOW>;
++					sfp-connected-channel = <0>;
++
++					channel0: channel@0 {
++						reg = <0>;
++						phy-mode = "10gbase-r";
++						phy-connection-type = "10gbase-r";
++						managed = "in-band-status";
++						sfp = <&sfp_esp1>;
++					};
++
++					channel1: channel@1 {
++						reg = <1>;
++						phy-mode = "usxgmii";
++						phy-connection-type = "usxgmii";
++						managed = "in-band-status";
++						phy-handle = <&phy28>;
++					};
++				};
++			};
++		};
++	};
++
++	fragment@3 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clock-frequency = <12500000>;
++			reset-gpios = <&pio 71 GPIO_ACTIVE_LOW>;
++			reset-delay-us = <200000>;
++			reset-post-delay-us = <350000>;
++
++			/* external Airoha AN8833X */
++			phy28: ethernet-phy@28 {
++				reg = <28>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "as22x1x_fw.bin";
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy28_led0: an8833x_phy28_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++
++					phy28_led1: an8833x_phy28_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++				};
++			};
++		};
++	};
++
++	fragment@4 {
++		target = <&gmac1>;
++		__overlay__ {
++			managed = "in-band-status";
++			phy-mode = "usxgmii";
++			phy-connection-type = "usxgmii";
++			phy = <&phy28>;
++			status = "okay";
++		};
++	};
++};
++
+--- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth1-sfp-aqr.dtso
 @@ -0,0 +1,99 @@
 +// SPDX-License-Identifier: (GPL-2.0 OR MIT)
@@ -433,6 +631,81 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +					};
 +
 +					phy24_led1: an8831x_phy24_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++				};
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gmac2>;
++		__overlay__ {
++			managed = "in-band-status";
++			phy-mode = "usxgmii";
++			phy-connection-type = "usxgmii";
++			phy = <&phy24>;
++			status = "okay";
++		};
++	};
++
++	fragment@2 {
++		target = <&eth>;
++		__overlay__ {
++			pinctrl-0 = <&mdio0_pins>;
++			pinctrl-names = "default";
++		};
++	};
++};
++
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-an8833x.dtso
+@@ -0,0 +1,72 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	compatible = "mediatek,mt7988a-rfb", "mediatek,mt7988a";
++
++	fragment@0 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clock-frequency = <12500000>;
++			reset-gpios = <&pio 71 GPIO_ACTIVE_LOW>;
++			reset-delay-us = <200000>;
++			reset-post-delay-us = <350000>;
++
++			/* external Airoha AN8833X */
++			phy24: ethernet-phy@24 {
++				reg = <24>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "as22x1x_fw.bin";
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy24_led0: an8833x_phy24_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++
++					phy24_led1: an8833x_phy24_led1@1 {
 +						reg = <1>;
 +						linux,default-trigger = "netdev";
 +						active-high;
@@ -703,6 +976,179 @@ v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
 +		};
 +	};
 +};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-mxl86252-an8833x.dtso
+@@ -0,0 +1,170 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright (C) 2022 MediaTek Inc.
++ * Author: Sam.Shih <sam.shih@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	fragment@0 {
++		target-path = "/";
++		__overlay__ {
++			compatible = "mediatek,mt7988a-mxl86252-rfb",
++						 "mediatek,mt7988a",
++						 "mediatek,mt7988";
++		};
++	};
++
++	fragment@1 {
++		target = <&mdio_bus>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clock-frequency = <12500000>;
++			reset-gpios = <&pio 71 GPIO_ACTIVE_LOW>;
++			reset-delay-us = <200000>;
++			reset-post-delay-us = <350000>;
++
++			/* external Airoha AN8833X is connected to Mxl 2.5G switch */
++			phy24: ethernet-phy@24 {
++				reg = <24>;
++				compatible = "ethernet-phy-ieee802.3-c45";
++				firmware-name = "as22x1x_fw.bin";
++
++				leds {
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					phy24_led0: an8833x_phy24_led0@0 {
++						reg = <0>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++
++					phy24_led1: an8833x_phy24_led1@1 {
++						reg = <1>;
++						linux,default-trigger = "netdev";
++						active-high;
++						status = "okay";
++					};
++				};
++			};
++
++			switch16: switch@16 {
++				compatible = "mxl,86252";
++				reg = <16>;
++				dsa,member = <0 0>;
++
++				ports {
++					port0: port@0 {
++						reg = <0>;
++						label = "mxl_lan0";
++						phy-handle = <&switchphy0>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port1: port@1 {
++						reg = <1>;
++						label = "mxl_lan1";
++						phy-handle = <&switchphy1>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port2: port@2 {
++						reg = <2>;
++						label = "mxl_lan2";
++						phy-handle = <&switchphy2>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port3: port@3 {
++						reg = <3>;
++						label = "mxl_lan3";
++						phy-handle = <&switchphy3>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port4: port@4 {
++						reg = <4>;
++						label = "mxl_lan4";
++						phy-handle = <&switchphy4>;
++						phy-mode = "internal";
++						status = "okay";
++					};
++
++					port5: port@5 {
++						reg = <8>;
++						label = "cpu";
++						phy-mode = "10gbase-r";
++						ethernet = <&gmac2>;
++						dsa-tag-protocol = "mxl862_8021q";
++
++						fixed-link {
++							speed = <10000>;
++							full-duplex;
++						};
++					};
++
++					port6: port@6 {
++						reg = <12>;
++						label = "mxl_lan5";
++						managed = "in-band-status";
++						phy-mode = "usxgmii";
++						phy-handle = <&phy24>;
++						status = "okay";
++					};
++				};
++
++				mdio {
++					switchphy0:switchphy@0 {
++						reg= <0>;
++					};
++					switchphy1:switchphy@1 {
++						reg= <1>;
++					};
++					switchphy2:switchphy@2 {
++						reg= <2>;
++					};
++					switchphy3:switchphy@3 {
++						reg= <3>;
++					};
++					switchphy4:switchphy@4 {
++						reg= <4>;
++					};
++				};
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&gmac2>;
++		__overlay__ {
++			phy-mode = "10gbase-r";
++			phy-connection-type = "10gbase-r";
++			status = "okay";
++
++			fixed-link {
++				speed = <10000>;
++				full-duplex;
++				pause;
++			};
++		};
++	};
++
++	fragment@3 {
++		target = <&switch>;
++		__overlay__ {
++			dsa,member = <1 0>;
++		};
++	};
++};
++
 --- /dev/null
 +++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-eth2-mxl86252-aqr.dtso
 @@ -0,0 +1,150 @@

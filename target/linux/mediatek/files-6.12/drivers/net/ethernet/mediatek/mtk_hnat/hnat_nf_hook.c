@@ -1317,16 +1317,12 @@ drop:
 	return NF_DROP;
 }
 
-bool is_eth_dev_speed_under(const struct net_device *dev, u32 speed)
+bool is_dev_speed_under(const struct net_device *dev, u32 speed)
 {
-	const struct mtk_mac *mac;
+	int link_speed = mtk_dev_link_speed(hnat_priv->eth,
+					   (struct net_device *)dev);
 
-	if (!dev || !IS_ETH_GRP(dev) || netdev_uses_dsa((struct net_device *)dev))
-		return false;
-
-	mac = netdev_priv(dev);
-
-	return mac->speed <= speed;
+	return link_speed > 0 && link_speed <= speed;
 }
 
 static inline bool mtk_tnl_foe_valid(struct sk_buff *skb)
@@ -1494,6 +1490,37 @@ static int hnat_bridge_flood_check(struct sk_buff *skb,
 	}
 
 	return 0;
+}
+
+/* In rule mode, bind a bridged PPPoE session only if it matches a rule. */
+static bool hnat_pppoe_bridge_allowed(struct sk_buff *skb, u16 sid)
+{
+	struct pppoe_br_rule rule = { .type = ETH_P_PPP_SES, .sid = sid };
+	struct net_device *in;
+
+	if (!READ_ONCE(pppoe_br_rule_mode))
+		return true;
+
+	in = dev_get_by_index_rcu(dev_net(skb->dev), skb->skb_iif);
+	if (!in)
+		return false;
+
+	if (!netif_is_bridge_port(in))
+		return true;
+
+	ether_addr_copy(rule.smac, eth_hdr(skb)->h_source);
+	ether_addr_copy(rule.dmac, eth_hdr(skb)->h_dest);
+	strscpy(rule.rx_dev, in->name, sizeof(rule.rx_dev));
+
+	if (pppoe_br_rule_exist(&rule))
+		return true;
+
+	if (debug_level >= 7)
+		printk_ratelimited(KERN_WARNING
+				   "Skip HNAT bind, no matching rule: SMAC=%pM => DMAC=%pM | rx_dev:%s | SID=0x%04x\n",
+				   rule.smac, rule.dmac, rule.rx_dev, rule.sid);
+
+	return false;
 }
 
 static unsigned int
@@ -2256,10 +2283,12 @@ hnat_skip_fill_inner:
 		entry.ipv6_5t_route.pppoe_id = hw_path.pppoe_sid;
 	}
 
-	if (IS_HQOS_MODE || (skb->mark & MTK_QDMA_QUEUE_MASK) >= MAX_PPPQ_QUEUE_NUM)
-		qid = skb->mark & (MTK_QDMA_QUEUE_MASK);
+	if (IS_HQOS_MODE || (skb->mark & HNAT_QDMA_QUEUE_MASK) >= MAX_PPPQ_QUEUE_NUM)
+		qid = skb->mark & (HNAT_QDMA_QUEUE_MASK);
 	else if (IS_PPPQ_MODE && IS_PPPQ_PATH(dev, skb))
-		qid = ((port_id >= 0) ? MTK_GMAC_ID_MAX + port_id : mac->id) & MTK_QDMA_QUEUE_MASK;
+		qid = (port_id >= 0 && port_id < MTK_DSA_USER_PORT_MAX) ?
+		      mac->dsa_queue_base + mac->dsa_port_rank[port_id] :
+		      mac->id;
 	else
 		qid = 0;
 
@@ -2388,6 +2417,8 @@ static int skb_to_hnat_info(struct sk_buff *skb,
 		/* Apply PPPoE Bridge packet info to hw_path for further PPE entry preparing */
 		hw_path->flags |= BIT(DEV_PATH_PPPOE);
 		hw_path->pppoe_sid = ntohs(pppoe_hdr(skb)->sid);
+		if (!hnat_pppoe_bridge_allowed(skb, hw_path->pppoe_sid))
+			return -1;
 		h_proto = hnat_get_hdr_protocol(skb, &h_offset);
 	} else if (ip_hdr(skb)->version == IPVERSION_V4)
 		h_proto = ETH_P_IP;
@@ -2898,14 +2929,17 @@ hnat_entry_bind:
 		return -1;
 	}
 
-	if (IS_HQOS_MODE || (skb->mark & MTK_QDMA_QUEUE_MASK) >= MAX_PPPQ_QUEUE_NUM)
-		qid = skb->mark & (MTK_QDMA_QUEUE_MASK);
+	if (IS_HQOS_MODE || (skb->mark & HNAT_QDMA_QUEUE_MASK) >= MAX_PPPQ_QUEUE_NUM)
+		qid = skb->mark & (HNAT_QDMA_QUEUE_MASK);
 	else if (IS_PPPQ_MODE && IS_PPPQ_PATH(dev, skb))
-		qid = ((port_id >= 0) ? MTK_GMAC_ID_MAX + port_id : mac->id) & MTK_QDMA_QUEUE_MASK;
+		qid = (port_id >= 0 && port_id < MTK_DSA_USER_PORT_MAX) ?
+		      mac->dsa_queue_base + mac->dsa_port_rank[port_id] :
+		      mac->id;
 	else
 		qid = 0;
 
-	if (IS_PPPQ_MODE && IS_PPPQ_PATH(dev, skb) && port_id >= 0) {
+	if (IS_PPPQ_MODE && IS_PPPQ_PATH(dev, skb) &&
+	    port_id >= 0 && qid < MAX_PPPQ_QUEUE_NUM) {
 		if (h_proto == ETH_P_IP) {
 			iph = (struct iphdr *)(skb_network_header(skb) + h_offset);
 			if (iph->protocol == IPPROTO_TCP) {
@@ -2913,8 +2947,9 @@ hnat_entry_bind:
 				payload_len = be16_to_cpu(iph->tot_len) -
 					      iph->ihl * 4 - __tcp_hdrlen(tcph);
 				/* Dispatch ACK packets to high priority queue */
-				if (payload_len == 0)
-					qid += MAX_SWITCH_PORT_NUM;
+				if (payload_len == 0 &&
+				    qid + PPPQ_DSA_QUEUE_NUM < HNAT_QDMA_NUM_QUEUES)
+					qid += PPPQ_DSA_QUEUE_NUM;
 			}
 		} else if (h_proto == ETH_P_IPV6) {
 			ip6h = (struct ipv6hdr *)(skb_network_header(skb) + h_offset);
@@ -2922,8 +2957,9 @@ hnat_entry_bind:
 				tcph = (struct tcphdr *)((u8 *)ip6h + sizeof(struct ipv6hdr));
 				payload_len = be16_to_cpu(ip6h->payload_len) - __tcp_hdrlen(tcph);
 				/* Dispatch ACK packets to high priority queue */
-				if (payload_len == 0)
-					qid += MAX_SWITCH_PORT_NUM;
+				if (payload_len == 0 &&
+				    qid + PPPQ_DSA_QUEUE_NUM < HNAT_QDMA_NUM_QUEUES)
+					qid += PPPQ_DSA_QUEUE_NUM;
 			}
 		}
 	}
@@ -3531,6 +3567,7 @@ int mtk_sw_nat_hook_rx(struct sk_buff *skb)
 	skb_hnat_set_cdrt(skb, 0);
 	skb_hnat_set_is_pppoe(skb, 0);
 	skb_hnat_set_is_decrypt(skb, 0);
+	skb_hnat_set_ppe_id(skb, 0);
 	skb_hnat_magic_tag(skb) = HNAT_MAGIC_TAG;
 
 	if (skb_hnat_iface(skb) == FOE_MAGIC_WED0)
@@ -4079,6 +4116,17 @@ static unsigned int mtk_hnat_nf_post_routing(
 		}
 
 		skb_to_hnat_info(skb, out, entry, &hw_path);
+		break;
+	case UN_HIT:
+		/* All 4 ways of the bucket are occupied, PPE reports the last way */
+		if (!hnat_priv->hash_collision_en ||
+		    (skb_hnat_entry(skb) & 0x3) != 0x3)
+			break;
+
+		if (fn && !mtk_hnat_accel_type(skb))
+			break;
+
+		atomic64_inc(&hnat_priv->hash_collision_cnt[skb_hnat_ppe(skb)]);
 		break;
 	case HIT_BIND_KEEPALIVE_DUP_OLD_HDR:
 		/* update hnat count to virtual interface/nf_conntrack by keepalive */

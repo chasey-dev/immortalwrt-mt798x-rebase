@@ -6,7 +6,7 @@ This repository is worked on ImmortalWrt with MTK OpenWrt Feeds patches imported
 
 ## Commit Cutoff Revisions
 
-### ImmortalWrt: [84b665b](https://github.com/immortalwrt/immortalwrt/commit/84b665b5de552e297d0f7d755b88a46fc0cfeb13)
+### ImmortalWrt: [761b7ff](https://github.com/immortalwrt/immortalwrt/commit/761b7ff22cbf7c13f28fc631bd70a84d295fd627)
 
 ```
 Merge Official Source

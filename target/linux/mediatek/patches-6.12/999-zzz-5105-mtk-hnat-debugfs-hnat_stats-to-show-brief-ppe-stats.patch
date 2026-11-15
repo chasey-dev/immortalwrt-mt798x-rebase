@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
-@@ -2262,6 +2262,61 @@ static const struct file_operations hnat
+@@ -2308,6 +2308,61 @@ static const struct file_operations hnat
  	.release = single_release,
  };
  
@@ -62,7 +62,7 @@
  static int __hnat_setting_read(struct seq_file *m, void *private, u32 ppe_id)
  {
  	struct mtk_hnat *h = hnat_priv;
-@@ -4075,6 +4130,8 @@ int hnat_init_debugfs(struct mtk_hnat *h
+@@ -4236,6 +4291,8 @@ int hnat_init_debugfs(struct mtk_hnat *h
  			    &cpu_reason_fops);
  	debugfs_create_file("hnat_entry", 0444, root, h,
  			    &hnat_entry_fops);

@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
-@@ -893,11 +893,19 @@ static int binding_threshold(int thresho
+@@ -929,11 +929,19 @@ static int binding_threshold(int thresho
  {
  	int i;
  

@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/Kconfig
 +++ b/drivers/net/ethernet/mediatek/Kconfig
-@@ -50,7 +50,7 @@ config MEDIATEK_NETSYS_V3
+@@ -51,7 +51,7 @@ config MEDIATEK_NETSYS_V3
  
  config NET_MEDIATEK_HNAT
  	tristate "MediaTek HW NAT support"

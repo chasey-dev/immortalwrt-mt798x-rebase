@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -1974,7 +1974,9 @@ static void mtk_tx_set_dma_desc_v2(struc
+@@ -1991,7 +1991,9 @@ static void mtk_tx_set_dma_desc_v2(struc
  	data |= TX_DMA_SWC_V2 | QID_BITS_V2(info->qid);
  
  	/* Set tport */
@@ -11,7 +11,7 @@
  	WRITE_ONCE(desc->txd4, data);
  
  	data = 0;
-@@ -1997,8 +1999,10 @@ static void mtk_tx_set_dma_desc_v2(struc
+@@ -2014,8 +2016,10 @@ static void mtk_tx_set_dma_desc_v2(struc
  	WRITE_ONCE(desc->txd7, 0);
  
  	data = 0;

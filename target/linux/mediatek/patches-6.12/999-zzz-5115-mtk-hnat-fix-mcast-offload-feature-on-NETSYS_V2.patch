@@ -72,7 +72,7 @@
  
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_debugfs.c
-@@ -2484,10 +2484,14 @@ static void print_hw_mcast(struct ppe_mc
+@@ -2530,10 +2530,14 @@ static void print_hw_mcast(struct ppe_mc
  
  static int mcast_table_dump(struct seq_file *m, void *private)
  {

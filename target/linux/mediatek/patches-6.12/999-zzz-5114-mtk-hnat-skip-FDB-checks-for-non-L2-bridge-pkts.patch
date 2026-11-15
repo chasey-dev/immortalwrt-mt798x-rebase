@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
-@@ -1538,6 +1538,7 @@ static int hnat_bridge_flood_check(struc
+@@ -1534,6 +1534,7 @@ static int hnat_bridge_flood_check(struc
  				    const struct net_device *in)
  {
  	struct flow_offload_hw_path hw_path = {};
@@ -8,7 +8,7 @@
  	struct net_device *br_dev;
  	u16 vid = 0;
  
-@@ -1547,6 +1548,18 @@ static int hnat_bridge_flood_check(struc
+@@ -1543,6 +1544,18 @@ static int hnat_bridge_flood_check(struc
  	if (skb_hnat_alg(skb) || !skb_hnat_reason_ready_bind(skb))
  		return 0;
  

@@ -49,7 +49,7 @@
  	if (!is_magic_tag_valid(skb))
  		return NF_ACCEPT;
  
-@@ -1378,6 +1397,25 @@ mtk_hnat_ipv4_nf_pre_routing(void *priv,
+@@ -1374,6 +1393,25 @@ mtk_hnat_ipv4_nf_pre_routing(void *priv,
  	if (!skb)
  		goto drop;
  
@@ -75,7 +75,7 @@
  	if (!is_magic_tag_valid(skb))
  		return NF_ACCEPT;
  
-@@ -1512,6 +1550,25 @@ mtk_hnat_br_nf_local_in(void *priv, stru
+@@ -1539,6 +1577,25 @@ mtk_hnat_br_nf_local_in(void *priv, stru
  	if (!skb)
  		goto drop;
  
@@ -101,7 +101,7 @@
  	if (!is_magic_tag_valid(skb))
  		return NF_ACCEPT;
  
-@@ -2868,7 +2925,7 @@ hnat_entry_bind:
+@@ -2899,7 +2956,7 @@ hnat_entry_bind:
  			entry.ipv4_hnapt.act_dp |= dev->ifindex & UDF_PINGPONG_IFIDX;
  		}
  	} else if (IS_EXT(dev) && (FROM_GE_PPD(skb) || FROM_GE_LAN_GRP(skb) ||

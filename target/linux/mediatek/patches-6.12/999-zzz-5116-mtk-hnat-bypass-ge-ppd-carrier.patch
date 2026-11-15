@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
 +++ b/drivers/net/ethernet/mediatek/mtk_hnat/hnat_nf_hook.c
-@@ -772,11 +772,64 @@ static void fix_skb_packet_type(struct s
+@@ -772,11 +772,63 @@ static void fix_skb_packet_type(struct s
  	}
  }
  
@@ -17,7 +17,7 @@
 +		return -ENETDOWN;
 +	}
 +
-+	queue = min_t(u16, MTK_QDMA_NUM_QUEUES - 1,
++	queue = min_t(u16, HNAT_QDMA_NUM_QUEUES - 1,
 +		      dev->real_num_tx_queues - 1);
 +	skb->dev = dev;
 +	skb_set_queue_mapping(skb, queue);
@@ -38,11 +38,10 @@
 +	local_bh_disable();
 +	dev_xmit_recursion_inc();
 +	HARD_TX_LOCK(dev, txq, smp_processor_id());
-+	if (unlikely(netif_xmit_frozen_or_drv_stopped(txq))) {
++	if (unlikely(netif_xmit_frozen_or_drv_stopped(txq)))
 +		ret = NETDEV_TX_BUSY;
-+	} else {
++	else
 +		ret = netdev_start_xmit(skb, dev, txq, false);
-+	}
 +	HARD_TX_UNLOCK(dev, txq);
 +	dev_xmit_recursion_dec();
 +	local_bh_enable();
@@ -65,7 +64,7 @@
  
  		skb_set_network_header(skb, 0);
  		skb_push(skb, ETH_HLEN);
-@@ -793,11 +846,12 @@ static unsigned int do_hnat_ext_to_ge(st
+@@ -793,11 +845,12 @@ static unsigned int do_hnat_ext_to_ge(st
  		skb->vlan_proto = htons(ETH_P_8021Q);
  		skb->vlan_tci =
  			(VLAN_CFI_MASK | (in->ifindex & VLAN_VID_MASK));
@@ -81,7 +80,7 @@
  				     in->name, hnat_priv->g_ppdev->name);
  			trace_printk("%s: called from %s successfully\n", __func__, func);
  		}
-@@ -1091,7 +1145,7 @@ static unsigned int do_hnat_mape_w2l_fas
+@@ -1091,7 +1144,7 @@ static unsigned int do_hnat_mape_w2l_fas
  		skb->dev = hnat_priv->g_ppdev;
  		skb->protocol = htons(ETH_P_IP);
  

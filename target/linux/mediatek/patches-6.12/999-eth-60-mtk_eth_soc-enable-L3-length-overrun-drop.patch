@@ -1,0 +1,388 @@
+---
+[v1] net: ethernet: mtk_eth_soc: enable L3 length overrun drop and
+ add page information dump for NETSYSv3.1
+
+This change enables L3 length overrun dropping to prevent abnormal
+packets from entering PSE, and adds an abnormal packet handler for
+NETSYSv3.1 to provide debug information for troubleshooting.
+---
+v1: enable L3 length overrun drop and add page information dump for NETSYSv3.1
+---
+
+From add4294cfeeace89aa202c0c6e4aa143b195d9d7 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Fri, 6 Nov 2026 14:40:14 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: enable L3 length overrun drop and
+ add page information dump for NETSYSv3.1
+
+This change enables L3 length overrun dropping to prevent abnormal
+packets from entering PSE, and adds an abnormal packet handler for
+NETSYSv3.1 to provide debug information for troubleshooting.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 272 +++++++++++++++++++-
+ drivers/net/ethernet/mediatek/mtk_eth_soc.h |  29 ++-
+ 2 files changed, 298 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+index 04812db..86e15d9 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -4514,9 +4514,186 @@ static irqreturn_t mtk_handle_irq(int irq, void *_eth)
+ 	return IRQ_HANDLED;
+ }
+ 
+-static irqreturn_t mtk_handle_irq_misc(int irq, void *_eth)
++static u32 mtk_gdm_dbg_out(struct mtk_eth *eth, u32 reg, u32 mask, u32 index)
++{
++	mtk_m32(eth, mask, index, reg);
++
++	return mtk_r32(eth, reg + 0x4);
++}
++
++static void mtk_gdm_pl_end_page_error(struct mtk_eth *eth, int id)
++{
++	enum mtk_gdm_dbg_index {
++		FS_PL_END_MISMATCH_LGC_INFO_LSB = 20,
++		FS_PL_END_MISMATCH_LGC_INFO_MSB,
++		FS_PL_END_MISMATCH_EXT_INFO_31_0,
++		FS_PL_END_MISMATCH_EXT_INFO_63_32,
++		FS_PL_END_MISMATCH_EXT_INFO_95_64,
++		FS_PL_END_MISMATCH_EXT_INFO_127_96,
++		FS_PL_END_MISMATCH_EXT_INFO_159_128,
++		FS_PL_END_MISMATCH_EXT_INFO_161_160,
++		FS_PL_END_MISMATCH_LINK_LIST_INDEX,
++	};
++
++	if (id < 0 || id > 2)
++		return;
++
++	pr_info("====================================================\n");
++	pr_info("GDM%d FS_PL_END_MISMATCH_LGC_INFO_LSB      = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
++				FIELD_PREP(GDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_LGC_INFO_LSB)));
++	pr_info("GDM%d FS_PL_END_MISMATCH_LGC_INFO_MSB      = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
++				FIELD_PREP(GDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_LGC_INFO_MSB)));
++	pr_info("GDM%d FS_PL_END_MISMATCH_EXT_INFO[31:0]    = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
++				FIELD_PREP(GDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_31_0)));
++	pr_info("GDM%d FS_PL_END_MISMATCH_EXT_INFO[63:32]   = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
++				FIELD_PREP(GDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_63_32)));
++	pr_info("GDM%d FS_PL_END_MISMATCH_EXT_INFO[95:64]   = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
++				FIELD_PREP(GDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_95_64)));
++	pr_info("GDM%d FS_PL_END_MISMATCH_EXT_INFO[127:96]  = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
++				FIELD_PREP(GDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_127_96)));
++	pr_info("GDM%d FS_PL_END_MISMATCH_EXT_INFO[159:128] = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
++				FIELD_PREP(GDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_159_128)));
++	pr_info("GDM%d FS_PL_END_MISMATCH_EXT_INFO[161:160] = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
++				FIELD_PREP(GDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_161_160)));
++	pr_info("GDM%d FS_PL_END_MISMATCH_LINK_LIST_INDEX = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
++				FIELD_PREP(GDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_LINK_LIST_INDEX)));
++	pr_info("====================================================\n");
++}
++
++static void mtk_cdm_v2_pl_end_page_error(struct mtk_eth *eth, int id)
++{
++	enum mtk_gdm_dbg_index {
++		FS_PL_END_MISMATCH_LGC_INFO_LSB = 24,
++		FS_PL_END_MISMATCH_LGC_INFO_MSB,
++		FS_PL_END_MISMATCH_EXT_INFO_31_0,
++		FS_PL_END_MISMATCH_EXT_INFO_63_32,
++		FS_PL_END_MISMATCH_EXT_INFO_95_64,
++		FS_PL_END_MISMATCH_EXT_INFO_127_96,
++		FS_PL_END_MISMATCH_EXT_INFO_159_128,
++		FS_PL_END_MISMATCH_EXT_INFO_161_160,
++		FS_PL_END_MISMATCH_LINK_LIST_INDEX,
++	};
++
++	if (id < 0 || id > 2)
++		return;
++
++	pr_info("====================================================\n");
++	pr_info("CDM%d FS_PL_END_MISMATCH_LGC_INFO_LSB      = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_LGC_INFO_LSB)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_LGC_INFO_MSB      = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_LGC_INFO_MSB)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[31:0]    = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_31_0)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[63:32]   = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_63_32)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[95:64]   = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_95_64)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[127:96]  = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_127_96)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[159:128] = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_159_128)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[161:160] = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_161_160)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_LINK_LIST_INDEX = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_LINK_LIST_INDEX)));
++	pr_info("====================================================\n");
++}
++
++static void mtk_cdm_v3_pl_end_page_error(struct mtk_eth *eth, int id)
++{
++	enum mtk_gdm_dbg_index {
++		FS_PL_END_MISMATCH_LGC_INFO_LSB = 27,
++		FS_PL_END_MISMATCH_LGC_INFO_MSB,
++		FS_PL_END_MISMATCH_EXT_INFO_31_0,
++		FS_PL_END_MISMATCH_EXT_INFO_63_32,
++		FS_PL_END_MISMATCH_EXT_INFO_95_64,
++		FS_PL_END_MISMATCH_EXT_INFO_127_96,
++		FS_PL_END_MISMATCH_EXT_INFO_159_128,
++		FS_PL_END_MISMATCH_EXT_INFO_161_160,
++		FS_PL_END_MISMATCH_LINK_LIST_INDEX,
++	};
++
++	if (id < 2 || id > 8)
++		return;
++
++	pr_info("====================================================\n");
++	pr_info("CDM%d FS_PL_END_MISMATCH_LGC_INFO_LSB      = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_LGC_INFO_LSB)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_LGC_INFO_MSB      = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_LGC_INFO_MSB)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[31:0]    = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_31_0)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[63:32]   = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_63_32)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[95:64]   = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_95_64)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[127:96]  = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_127_96)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[159:128] = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_159_128)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_EXT_INFO[161:160] = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_EXT_INFO_161_160)));
++	pr_info("CDM%d FS_PL_END_MISMATCH_LINK_LIST_INDEX = %08x\n", id + 1,
++		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
++				FIELD_PREP(CDM_DBG_IDX_MASK,
++					   FS_PL_END_MISMATCH_LINK_LIST_INDEX)));
++	pr_info("====================================================\n");
++}
++
++static irqreturn_t mtk_handle_fe_irq(struct mtk_eth *eth)
+ {
+-	struct mtk_eth *eth = _eth;
+ 	u32 status, val;
+ 
+ 	status = mtk_r32(eth, MTK_FE_INT_STATUS) & mtk_r32(eth, MTK_FE_INT_ENABLE);
+@@ -4551,6 +4728,85 @@ static irqreturn_t mtk_handle_irq_misc(int irq, void *_eth)
+ 	return IRQ_HANDLED;
+ }
+ 
++static irqreturn_t mtk_handle_pinfo_irq(struct mtk_eth *eth)
++{
++	bool pl_end_error = false;
++	u32 pinfo, cgdm;
++	int i;
++
++	pinfo = mtk_r32(eth, MTK_FE_PINFO_INT_STATUS) &
++		mtk_r32(eth, MTK_FE_PINFO_INT_ENABLE);
++	cgdm = mtk_r32(eth, FE_CGDM_INT3);
++	if (!pinfo && !cgdm)
++		return IRQ_NONE;
++
++	/* handle GDM/CDM l3len_over_run and pl_end_error */
++	for (i = 0; i < 3; i++) {
++		if (pinfo & MTK_GDM_L3LEN_OVER_RUN(i))
++			pr_warn("[%s] Detect GDM%d L3 length over run !\n",
++				__func__, i + 1);
++		if (pinfo & MTK_GDM_PL_END_ERR(i)) {
++			pr_warn("[%s] Detect GDM%d packet end page error !\n",
++				__func__, i + 1);
++			mtk_gdm_pl_end_page_error(eth, i);
++			pl_end_error = true;
++		}
++	}
++	for (i = 0; i < 9; i++) {
++		if (pinfo & MTK_CDM_L3LEN_OVER_RUN(i))
++			pr_warn("[%s] Detect CDM%d L3 length over run !\n",
++				__func__, i + 1);
++		if (pinfo & MTK_CDM_PL_END_ERR(i)) {
++			pr_warn("[%s] Detect CDM%d packet end page error !\n",
++				__func__, i + 1);
++			if (i >= 2)
++				mtk_cdm_v3_pl_end_page_error(eth, i);
++			else
++				mtk_cdm_v2_pl_end_page_error(eth, i);
++			pl_end_error = true;
++		}
++	}
++	mtk_w32(eth, pinfo, MTK_FE_PINFO_INT_STATUS);
++
++	/* handle GDM/CDM page_num_mismatch and runt_pkt_error */
++	for (i = 0; i < 3; i++) {
++		if (cgdm & FE_GDM_PAGE_MISMATCH(i))
++			pr_warn("[%s] Detect GDM%d page number mismatch !\n",
++				__func__, i + 1);
++	}
++	for (i = 0; i < 9; i++) {
++		if (cgdm & FE_CDM_PAGE_MISMATCH(i))
++			pr_warn("[%s] Detect CDM%d page number mismatch !\n",
++				__func__, i + 1);
++		if (cgdm & FE_CDM_RUNT_PACKET(i))
++			pr_warn("[%s] Detect CDM%d runt packet error !\n",
++				__func__, i + 1);
++	}
++	mtk_w32(eth, cgdm, FE_CGDM_INT3);
++
++	if (pl_end_error && !test_bit(MTK_RESETTING, &eth->state)) {
++		/* disable GDM and GDM packet end page error interrupt */
++		mtk_w32(eth, 0x00000fff, MTK_FE_PINFO_INT_ENABLE);
++		/* trigger an SER to let PSE go back to work normally */
++		mtk_reset_event_update(eth, MTK_EVENT_FORCE);
++		schedule_work(&eth->pending_work);
++	}
++
++	return IRQ_HANDLED;
++}
++
++static irqreturn_t mtk_handle_irq_misc(int irq, void *_eth)
++{
++	struct mtk_eth *eth = _eth;
++	irqreturn_t ret = IRQ_NONE;
++
++	ret |= mtk_handle_fe_irq(eth);
++	if (eth->soc->caps == MT7987_CAPS)
++		ret |= mtk_handle_pinfo_irq(eth);
++
++	return ret;
++}
++
+ #ifdef CONFIG_NET_POLL_CONTROLLER
+ static void mtk_poll_controller(struct net_device *dev)
+ {
+@@ -5812,6 +6068,18 @@ static int mtk_hw_init(struct mtk_eth *eth, bool reset)
+ 			mtk_w32(eth, 0x08000707, MTK_CDMW0_THRES);
+ 			mtk_w32(eth, 0x00000077, MTK_CDMW1_THRES);
+ 		} else if (eth->soc->caps == MT7987_CAPS) {
++			/* enable PSE info error interrupt */
++			mtk_w32(eth, 0x00ffffff, MTK_FE_PINFO_INT_ENABLE);
++			/* enable CDMP l3_len_ov_drop */
++			mtk_m32(eth, MTK_CDMP_L3_LEN_OV_DROP,
++				MTK_CDMP_L3_LEN_OV_DROP, MTK_CDMP_IG_CTRL);
++			/* enable CDMQ l3_len_ov_drop */
++			mtk_m32(eth, MTK_CDMQ_L3_LEN_OV_DROP,
++				MTK_CDMQ_L3_LEN_OV_DROP, MTK_CDMQ_IG_CTRL);
++			/* enable CDMW0 l3_len_ov_drop */
++			mtk_m32(eth, MTK_CDMW0_L3_LEN_OV_DROP,
++				MTK_CDMW0_L3_LEN_OV_DROP, MTK_CDMW0_IG_CTRL);
++
+ 			/* PSE should not drop port8 packets from WDMA Tx */
+ 			mtk_w32(eth, 0x00000100, PSE_DROP_CFG);
+ 
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.h b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+index 36d0066..0dc2f89 100644
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -129,13 +129,26 @@
+ /* Frame Engine Interrupt Status 2 Register */
+ #define MTK_FE_INT_STATUS2	0x28
+ 
++/* PSE Error Interrupt Status Register */
++#define MTK_FE_PINFO_INT_ENABLE	0x58
++#define MTK_FE_PINFO_INT_STATUS	0x5c
++#define MTK_CDM_PL_END_ERR(x)		BIT((x) + 15)
++#define MTK_GDM_PL_END_ERR(x)		BIT((x) + 12)
++#define MTK_CDM_L3LEN_OVER_RUN(x)	BIT((x) + 3)
++#define MTK_GDM_L3LEN_OVER_RUN(x)	BIT((x))
++
+ /* Frame Engine LRO Auto-Learn Table Information */
+ #define MTK_FE_ALT_CF8		0x300
+ #define MTK_FE_ALT_SGL_CFC	0x304
+ #define MTK_FE_ALT_SEQ_CFC	0x308
+ 
+-/* CDMP Ingress Control Register */
++/* CDMW Ingress Control Register */
++#define MTK_CDMW0_IG_CTRL       0x1600
++#define MTK_CDMW0_L3_LEN_OV_DROP	BIT(1)
++
++/* CDMQ Ingress Control Register */
+ #define MTK_CDMQ_IG_CTRL	0x1400
++#define MTK_CDMQ_L3_LEN_OV_DROP	BIT(2)
+ #define MTK_CDMQ_STAG_EN	BIT(0)
+ 
+ /* CDMQ Exgress Control Register */
+@@ -143,6 +156,7 @@
+ 
+ /* CDMP Ingress Control Register */
+ #define MTK_CDMP_IG_CTRL	0x400
++#define MTK_CDMP_L3_LEN_OV_DROP	BIT(2)
+ #define MTK_CDMP_STAG_EN	BIT(0)
+ 
+ /* CDMP Exgress Control Register */
+@@ -201,6 +215,19 @@
+ /* PSE Output Queue Threshold Register*/
+ #define PSE_OQ_TH(x)		(0x160 + (((x) - 1) << 2))
+ 
++/* GDM and CDM Debug Control */
++#define FE_CDM_DBG_CTRL(x)	(0x38c + ((x) * 0x8))
++#define CDM_DBG_IDX_MASK	GENMASK(5, 0)
++
++#define FE_GDM_DBG_CTRL(x)	(0x3e0 + ((x) * 0x8))
++#define GDM_PAGE_MISMATCH_DET	BIT(9)
++#define GDM_DBG_IDX_MASK	GENMASK(5, 1)
++
++#define FE_CGDM_INT3		(0x3fc)
++#define FE_CDM_RUNT_PACKET(x)	BIT(22 - (x))
++#define FE_CDM_PAGE_MISMATCH(x)	BIT(11 - (x))
++#define FE_GDM_PAGE_MISMATCH(x)	BIT(2 - (x))
++
+ /* Global Memroy Interface Control Register */
+ #define MTK_GLO_MEM_CTRL	0x604
+ #define MTK_GLO_MEM_ADDR	GENMASK(19, 0)
+-- 
+2.45.2
+

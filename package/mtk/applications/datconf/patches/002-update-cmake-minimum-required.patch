@@ -1,0 +1,32 @@
+--- a/datconf/CMakeLists.txt
++++ b/datconf/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 2.6)
++cmake_minimum_required(VERSION 3.5)
+ 
+ project(datconf)
+ 
+--- a/kvcutil/CMakeLists.txt
++++ b/kvcutil/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 2.6)
++cmake_minimum_required(VERSION 3.5)
+ 
+ project(kvcutil)
+ 
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 2.6)
++cmake_minimum_required(VERSION 3.5)
+ 
+ set(DATCONF_VERSION_MAJOR 1)
+ set(DATCONF_VERSION_MINOR 0)
+--- a/datconf/lua/CMakeLists.txt
++++ b/datconf/lua/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 2.6)
++cmake_minimum_required(VERSION 3.5)
+ 
+ project(datconf-lua)
+ 

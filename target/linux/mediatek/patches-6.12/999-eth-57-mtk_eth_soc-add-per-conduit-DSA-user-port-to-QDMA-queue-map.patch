@@ -1,0 +1,198 @@
+---
+[v1] net: ethernet: mtk_eth_soc: add per-conduit DSA user-port to QDMA queue map
+
+Without this patch every DSA user port maps to QDMA TX queue "dp->index + 3",
+which collides when two DSA switches share one NETSYS or when a switch has
+non-contiguous user-port indices.
+---
+v1: Add a per-conduit DSA user-port to QDMA queue map.
+---
+
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Mon, 27 Jul 2026 19:20:00 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add per-conduit DSA user-port to
+ QDMA queue map
+
+Derive the egress queue from mac->dsa_queue_base + mac->dsa_port_rank[dp->index],
+recomputed by mtk_update_dsa_queue_map() from the existing DSA user-port
+NETDEV_CHANGE notifier. The initial identity map reproduces the old layout, so
+a single switch with contiguous dp->index is unaffected.
+
+Also cache the DSA user-port link speed in mac->dsa_port_speed[dp->index]
+from the same notifier, so that the PPE can get the egress link speed of a
+DSA user port for PPPQ path selection.
+
+Adapted from OpenWrt upstream 795-05 and 795-06:
+  e404de9968c4 ("net: ethernet: mtk_eth_soc: add per-conduit DSA user-port
+  queue map") -- Daniel Golle <daniel@makrotopia.org>
+  199cb88e7127 ("net: ethernet: mtk_eth_soc: use DSA queue map in TX paths")
+  -- Daniel Golle <daniel@makrotopia.org>
+
+Signed-off-by: chak-kei.lam <chak-kei.lam@mediatek.com>
+---
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -4620,6 +4620,52 @@ static bool mtk_uses_dsa(struct net_devi
+ #endif
+ }
+ 
++/*
++ * Recompute the per-conduit DSA user-port queue map.  Each conduit's mac
++ * gets a queue base (queues 0..MTK_MAX_DEVS-1 are reserved for non-DSA
++ * egress via GDM{1,2,3}), followed by a contiguous rank for every user
++ * port of the DSA switch attached to that conduit.  dsa_port_rank[]
++ * translates dp->index (which may be non-contiguous and may collide
++ * across switches) into that rank.
++ *
++ * Call this on DSA topology changes.  Idempotent.
++ */
++static void mtk_update_dsa_queue_map(struct mtk_eth *eth)
++{
++#if IS_ENABLED(CONFIG_NET_DSA)
++	struct net_device *conduit;
++	struct dsa_switch *ds;
++	struct mtk_mac *mac;
++	struct dsa_port *dp;
++	u8 base = MTK_MAX_DEVS;
++	u8 rank;
++	int i;
++
++	for (i = 0; i < MTK_MAX_DEVS; i++) {
++		conduit = eth->netdev[i];
++		if (!conduit)
++			continue;
++
++		mac = netdev_priv(conduit);
++		mac->dsa_queue_base = base;
++
++		if (!netdev_uses_dsa(conduit))
++			continue;
++
++		ds = conduit->dsa_ptr->ds;
++		rank = 0;
++		dsa_switch_for_each_user_port(dp, ds) {
++			if (dp->index < MTK_DSA_USER_PORT_MAX)
++				mac->dsa_port_rank[dp->index] = rank;
++			rank++;
++		}
++		base += rank;
++	}
++
++	WRITE_ONCE(eth->dsa_queue_count, base - MTK_MAX_DEVS);
++#endif
++}
++
+ static int mtk_device_event(struct notifier_block *n, unsigned long event, void *ptr)
+ {
+ 	struct mtk_mac *mac = container_of(n, struct mtk_mac, device_notifier);
+@@ -4647,6 +4693,9 @@ static int mtk_device_event(struct notif
+ 	return NOTIFY_DONE;
+ 
+ found:
++	if (dsa_user_dev_check(dev))
++		mtk_update_dsa_queue_map(eth);
++
+ 	if (__ethtool_get_link_ksettings(dev, &s))
+ 		return NOTIFY_DONE;
+ 
+@@ -4655,7 +4704,11 @@ found:
+ 
+ 	if (dsa_user_dev_check(dev)) {
+ 		dp = dsa_port_from_netdev(dev);
+-		queue = dp->index + 3;
++		if (dp->index >= MTK_DSA_USER_PORT_MAX)
++			return NOTIFY_DONE;
++
++		WRITE_ONCE(mac->dsa_port_speed[dp->index], s.base.speed);
++		queue = mac->dsa_queue_base + mac->dsa_port_rank[dp->index];
+ 	} else
+ 		queue = mac->id;
+ 
+@@ -6564,15 +6617,20 @@ static u16 mtk_select_queue(struct net_d
+ 	struct mtk_mac *mac = netdev_priv(dev);
+ 	struct mtk_eth *eth = mac->hw;
+ 	u32 mark = skb->mark & MTK_QDMA_QUEUE_MASK;
++	unsigned int dp_idx;
+ 	unsigned int queue = 0;
+ 
+ 	if (mark > 0 && mark < dev->num_tx_queues)
+ 		return mark;
+ 
+-	if (netdev_uses_dsa(dev))
+-		queue = skb_get_queue_mapping(skb) + 3;
+-	else
++	if (netdev_uses_dsa(dev)) {
++		dp_idx = skb_get_queue_mapping(skb);
++		if (dp_idx < MTK_DSA_USER_PORT_MAX)
++			queue = mac->dsa_queue_base +
++				mac->dsa_port_rank[dp_idx];
++	} else {
+ 		queue = mac->id;
++	}
+ 
+ 	if (queue >= dev->num_tx_queues)
+ 		queue = 0;
+@@ -6856,7 +6914,7 @@ static int mtk_add_mac(struct mtk_eth *e
+ 	phy_interface_t phy_mode;
+ 	struct phylink *phylink;
+ 	struct mtk_mac *mac;
+-	int id, err;
++	int id, err, i;
+ 	int txqs = 1;
+ 	u32 val;
+ 
+@@ -6891,6 +6949,19 @@ static int mtk_add_mac(struct mtk_eth *e
+ 	mac->id = id;
+ 	mac->hw = eth;
+ 	mac->of_node = np;
++
++	/*
++	 * Initialize the DSA user-port queue map to an identity mapping
++	 * starting at MTK_MAX_DEVS, so that a mac without any DSA switch
++	 * attached keeps the historic "queue = dp->index + 3" layout.
++	 * mtk_update_dsa_queue_map() rewrites this once DSA state is up.
++	 */
++	mac->dsa_queue_base = MTK_MAX_DEVS;
++	for (i = 0; i < MTK_DSA_USER_PORT_MAX; i++) {
++		mac->dsa_port_rank[i] = i;
++		mac->dsa_port_speed[i] = SPEED_UNKNOWN;
++	}
++
+ 	pcs_np = of_parse_phandle(mac->of_node, "pcs-handle", 0);
+ 	if (pcs_np) {
+ 		mac->sgmii_pcs = mtk_pcs_lynxi_get(eth->dev, pcs_np);
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -28,6 +28,14 @@
+ #define MTK_MAX_DSA_PORTS	7
+ #define MTK_DSA_PORT_MASK	GENMASK(2, 0)
+ 
++/*
++ * Upper bound on dp->index across all DSA switches we support attaching
++ * to an MT7988 / MT7986 / MT7622 / MT7621 conduit.  Sized to cover the
++ * 16-port MaxLinear MxL862xx with room to spare; increase when a larger
++ * switch needs per-port queue mapping.
++ */
++#define MTK_DSA_USER_PORT_MAX	32
++
+ #define MTK_QDMA_NUM_QUEUES	(eth->soc->num_tx_queues)
+ #define MTK_QDMA_QUEUE_MASK	(MTK_QDMA_NUM_QUEUES - 1)
+ #define MTK_QDMA_PAGE_SIZE	2048
+@@ -1781,6 +1789,7 @@ struct mtk_eth {
+ 	int				ip_align;
+ 
+ 	struct metadata_dst		*dsa_meta[MTK_MAX_DSA_PORTS];
++	u8				dsa_queue_count;
+ 
+ 	u8				l4s_toggle;
+ 	struct mtk_ppe			*ppe[3];
+@@ -1841,6 +1850,9 @@ struct mtk_mac {
+ 	int				hwlro_ip_cnt;
+ 	unsigned int			syscfg0;
+ 	struct notifier_block		device_notifier;
++	u8				dsa_queue_base;
++	u8				dsa_port_rank[MTK_DSA_USER_PORT_MAX];
++	int				dsa_port_speed[MTK_DSA_USER_PORT_MAX];
+ 	struct work_struct		ptp_tx_work;
+ 	struct sk_buff			*ptp_tx_skb;
+ 	unsigned long			ptp_tx_start;

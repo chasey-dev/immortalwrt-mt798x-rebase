@@ -1,0 +1,65 @@
+---
+[v2] arm64: dts: mediatek: add SPI-NOR flash overlay for MT7986a
+
+Add device tree overlay for SPI-NOR flash support on MT7986a. Includes
+flash partitions for bootloader, firmware, and root filesystem with
+quad-SPI configuration.
+---
+v2: Add SFP support for eth1 interface.
+v1: Initial SPI-NOR overlay support.
+---
+
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7986-spim-nor.dtso
+@@ -0,0 +1,50 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR MIT) */
++/*
++ * Copyright (C) 2025 MediaTek Inc.
++ * Author: Tim Kuo <Tim.Kuo@mediatek.com>
++ */
++
++/dts-v1/;
++/plugin/;
++
++&{/soc/spi@1100a000} {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi_nor_pins>;
++
++	flash@0 {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <52000000>;
++		spi-tx-bus-width = <4>;
++		spi-rx-bus-width = <4>;
++
++		partition@00000 {
++			label = "BL2";
++			reg = <0x00000 0x0040000>;
++		};
++		partition@40000 {
++			label = "u-boot-env";
++			reg = <0x40000 0x0010000>;
++		};
++		partition@50000 {
++			label = "Factory";
++			reg = <0x50000 0x00b0000>;
++		};
++		partition@100000 {
++			label = "FIP";
++			reg = <0x100000 0x0080000>;
++		};
++		nor_rootfs: partition@180000 {
++			label = "firmware";
++			reg = <0x180000 0x1e80000>;
++		};
++	};
++};
++
++&{/chosen} {
++	rootdisk-nor = <&nor_rootfs>;
++	bootargs-append = " root=/dev/fit0 rootwait";
++};
+\ No newline at end of file

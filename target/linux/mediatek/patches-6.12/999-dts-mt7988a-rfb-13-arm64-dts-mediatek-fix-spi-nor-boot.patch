@@ -1,0 +1,20 @@
+---
+[v1] arm64: dts: mt7988: fix spi nor boot
+
+Remove denx,fit compatible string from firmware partition in SPI NOR overlay to
+fix boot issues with FIT image handling.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nor.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb-spim-nor.dtso
+@@ -54,7 +54,6 @@
+ 				nor_root: partition@2D0000 {
+ 					label = "firmware";
+ 					reg = <0x2d0000 0x1d30000>;
+-					compatible = "denx,fit";
+ 				};
+ 			};
+ 		};

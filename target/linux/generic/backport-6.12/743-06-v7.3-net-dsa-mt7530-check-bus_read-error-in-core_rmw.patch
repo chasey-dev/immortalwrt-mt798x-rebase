@@ -1,0 +1,42 @@
+From 573d6e3afe3d01e34dc82c77bf22ca96a74d805e Mon Sep 17 00:00:00 2001
+From: Daniel Golle <daniel@makrotopia.org>
+Date: Tue, 4 Aug 2026 04:10:33 +0100
+Subject: net: dsa: mt7530: check bus->read() error in core_rmw()
+
+core_rmw() accesses the MMD core registers directly rather than
+through the regmap and has the same unchecked bus->read() as the
+one just fixed in the MDIO regmap backend: a negative errno is
+consumed as register data, modified and written back to the switch.
+Check the read and bail out like the surrounding bus accesses do.
+
+Signed-off-by: Daniel Golle <daniel@makrotopia.org>
+Reviewed-by: Andrew Lunn <andrew@lunn.ch>
+Link: https://patch.msgid.link/48bb9f0b311a9efeda2a6b24a7e05d4792393a3b.1785811140.git.daniel@makrotopia.org
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+---
+ drivers/net/dsa/mt7530.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+(limited to 'drivers/net/dsa')
+
+diff --git a/drivers/net/dsa/mt7530.c b/drivers/net/dsa/mt7530.c
+index 55131bfd11f6d..5ff203fba37e9 100644
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -124,8 +124,12 @@ core_rmw(struct mt7530_priv *priv, u32 reg, u32 mask, u32 set)
+ 		goto err;
+ 
+ 	/* Read the content of the MMD's selected register */
+-	val = bus->read(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
++	ret = bus->read(bus, MT753X_CTRL_PHY_ADDR(priv->mdiodev->addr),
+ 			MII_MMD_DATA);
++	if (ret < 0)
++		goto err;
++	val = ret;
++
+ 	val &= ~mask;
+ 	val |= set;
+ 	/* Write the data into MMD's selected register */
+-- 
+cgit 1.3.1-korg
+

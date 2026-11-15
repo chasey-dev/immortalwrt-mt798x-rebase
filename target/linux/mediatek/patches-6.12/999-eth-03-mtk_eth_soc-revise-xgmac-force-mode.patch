@@ -1,0 +1,98 @@
+---
+[v2] net: ethernet: mtk_eth_soc: revise XGMAC force mode
+
+Without this patch, the ETH driver cannot successfully force the XGAMC
+link down or up.
+---
+v2: Move the XGMAC force link down to mtk_hw_init to prevent XGMAC Rx
+    FIFO overflow.
+v1: Refactor XGMAC link down/up flow.
+---
+
+From 740d56718e6cd9482e48eaa10ba0295ef4c1f841 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Thu, 18 Sep 2025 17:00:04 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: revise xgmac force mode
+
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 30 ++++++++++++++++-----
+ drivers/net/ethernet/mediatek/mtk_eth_soc.h |  3 ++-
+ 2 files changed, 25 insertions(+), 8 deletions(-)
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -784,10 +784,9 @@ static void mtk_mac_link_down(struct phy
+ 
+ 	if (!mtk_interface_mode_is_xgmii(interface)) {
+ 		mtk_m32(mac->hw, MAC_MCR_TX_EN | MAC_MCR_RX_EN | MAC_MCR_FORCE_LINK, 0, MTK_MAC_MCR(mac->id));
+-		if (mtk_is_netsys_v3_or_greater(mac->hw))
+-			mtk_m32(mac->hw, MTK_XGMAC_FORCE_LINK(mac->id), 0, MTK_XGMAC_STS(mac->id));
+ 	} else if (mtk_is_netsys_v3_or_greater(mac->hw) && mac->id != MTK_GMAC1_ID) {
+ 		mtk_m32(mac->hw, XMAC_MCR_TRX_DISABLE, XMAC_MCR_TRX_DISABLE, MTK_XMAC_MCR(mac->id));
++		mtk_m32(mac->hw, MTK_XGMAC_FORCE_LINK(mac->id), 0, MTK_XGMAC_STS(mac->id));
+ 	}
+ }
+ 
+@@ -943,7 +942,7 @@ static void mtk_xgdm_mac_link_up(struct
+ 				 unsigned int mode, phy_interface_t interface,
+ 				 int speed, int duplex, bool tx_pause, bool rx_pause)
+ {
+-	u32 mcr, force_link = 0;
++	u32 mcr;
+ 
+ 	if (mac->id == MTK_GMAC1_ID)
+ 		return;
+@@ -953,10 +952,8 @@ static void mtk_xgdm_mac_link_up(struct
+ 	mdelay(20);
+ 	mtk_m32(mac->hw, XMAC_GLB_CNTCLR, XMAC_GLB_CNTCLR, MTK_XMAC_CNT_CTRL(mac->id));
+ 
+-	if (mac->interface == PHY_INTERFACE_MODE_INTERNAL || mac->id == MTK_GMAC3_ID)
+-		force_link = MTK_XGMAC_FORCE_LINK(mac->id);
+-
+-	mtk_m32(mac->hw, MTK_XGMAC_FORCE_LINK(mac->id), force_link, MTK_XGMAC_STS(mac->id));
++	mtk_m32(mac->hw, MTK_XGMAC_FORCE_LINK(mac->id),
++		MTK_XGMAC_FORCE_LINK(mac->id), MTK_XGMAC_STS(mac->id));
+ 
+ 	mcr = mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id));
+ 	mcr &= ~(XMAC_MCR_FORCE_TX_FC | XMAC_MCR_FORCE_RX_FC | XMAC_MCR_TRX_DISABLE);
+@@ -4410,12 +4407,25 @@ static int mtk_hw_init(struct mtk_eth *e
+ 	for (i = 0; i < MTK_MAX_DEVS; i++) {
+ 		struct net_device *dev = eth->netdev[i];
+ 
+-		if (!dev)
++		if (!mtk_is_netsys_v3_or_greater(eth) && i == MTK_GMAC3_ID)
+ 			continue;
+ 
++		if (dev)
++			mtk_set_mcr_max_rx(netdev_priv(dev),
++					   dev->mtu + MTK_RX_ETH_HLEN);
++
+ 		mtk_w32(eth, MAC_MCR_FORCE_LINK_DOWN, MTK_MAC_MCR(i));
+-		mtk_set_mcr_max_rx(netdev_priv(dev),
+-				   dev->mtu + MTK_RX_ETH_HLEN);
++
++		if (mtk_is_netsys_v3_or_greater(eth) && eth->soc->caps == MT7988_CAPS)
++			mtk_m32(eth, MTK_XGMAC_FORCE_MODE(i) | MTK_XGMAC_FORCE_LINK(i),
++				     MTK_XGMAC_FORCE_MODE(i), MTK_XGMAC_STS(i));
++
++		if (mtk_is_netsys_v3_or_greater(eth) && i >= MTK_GMAC2_ID) {
++			if (eth->soc->caps == MT7987_CAPS && i == MTK_GMAC3_ID)
++				continue;
++
++			mtk_m32(eth, XMAC_MCR_TRX_DISABLE, XMAC_MCR_TRX_DISABLE, MTK_XMAC_MCR(i));
++		}
+ 	}
+ 
+ 	/* Indicates CDM to parse the MTK special tag from CPU
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -442,7 +442,8 @@
+ 
+ /* XMAC status registers */
+ #define MTK_XGMAC_STS(x)	(((x) == MTK_GMAC3_ID) ? 0x1001C : 0x1000C)
+-#define MTK_XGMAC_FORCE_LINK(x)	(((x) == MTK_GMAC2_ID) ? BIT(31) : BIT(15))
++#define MTK_XGMAC_FORCE_MODE(x)	(((x) == MTK_GMAC2_ID) ? BIT(31) : BIT(15))
++#define MTK_XGMAC_FORCE_LINK(x)	(((x) == MTK_GMAC2_ID) ? BIT(27) : BIT(11))
+ #define MTK_USXGMII_PCS_LINK	BIT(8)
+ #define MTK_XGMAC_RX_FC		BIT(5)
+ #define MTK_XGMAC_TX_FC		BIT(4)

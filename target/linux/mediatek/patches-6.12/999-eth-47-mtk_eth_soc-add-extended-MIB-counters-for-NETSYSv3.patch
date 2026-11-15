@@ -1,0 +1,401 @@
+---
+[v2] net: ethernet: mtk_eth_soc: add extended MIB counters for NETSYSv3
+
+Without this patch, the users are unable to obtain ethtool statistic
+data for the Unicast, Multicast, and Broadcast counters from both the
+GMAC and XGMAC.
+---
+v2: Fix out-of-bounds access issue on MT7988's eth0.
+v1: Add extended MIB counters for NETSYSv3.
+---
+
+From b1b27f32994b0f0266844df4a0b42b77c4ab230b Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Wed, 22 Apr 2026 12:47:00 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add extended MIB counters for
+ NETSYSv3
+
+Without this patch, the users are unable to read ethtool statistic data
+for the Unicast, Multicast, and Broadcast counters from both the GMAC
+and XGMAC.
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 267 ++++++++++++++------
+ drivers/net/ethernet/mediatek/mtk_eth_soc.h |  16 ++
+ 2 files changed, 202 insertions(+), 81 deletions(-)
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -276,6 +276,24 @@ static const struct mtk_ethtool_stats {
+ 	MTK_ETHTOOL_XDP_STAT(tx_xdp_xmit_errors),
+ };
+ 
++static const struct mtk_ethtool_ext_stats {
++	char str[ETH_GSTRING_LEN];
++	u32 offset;
++} mtk_ethtool_ext_stats[] = {
++	MTK_ETHTOOL_STAT(tx_unicast_bytes),
++	MTK_ETHTOOL_STAT(tx_unicast_packets),
++	MTK_ETHTOOL_STAT(tx_multicast_bytes),
++	MTK_ETHTOOL_STAT(tx_multicast_packets),
++	MTK_ETHTOOL_STAT(tx_broadcast_bytes),
++	MTK_ETHTOOL_STAT(tx_broadcast_packets),
++	MTK_ETHTOOL_STAT(rx_unicast_bytes),
++	MTK_ETHTOOL_STAT(rx_unicast_packets),
++	MTK_ETHTOOL_STAT(rx_multicast_bytes),
++	MTK_ETHTOOL_STAT(rx_multicast_packets),
++	MTK_ETHTOOL_STAT(rx_broadcast_bytes),
++	MTK_ETHTOOL_STAT(rx_broadcast_packets),
++};
++
+ static const char * const mtk_clks_source_name[] = {
+ 	"ethif",
+ 	"sgmiitop",
+@@ -347,6 +365,11 @@ u32 mtk_m32(struct mtk_eth *eth, u32 mas
+ 	return reg;
+ }
+ 
++u64 mtk_r64(struct mtk_eth *eth, unsigned reg)
++{
++	return mtk_r32(eth, reg) + ((u64)mtk_r32(eth, reg + 0x4) << 32);
++}
++
+ static int mtk_mdio_busy_wait(struct mtk_eth *eth)
+ {
+ 	unsigned long t_start = jiffies;
+@@ -1349,6 +1372,146 @@ static int mtk_set_mac_address(struct ne
+ 	return 0;
+ }
+ 
++static void mtk_stats_update_gmac_ext(struct mtk_mac *mac)
++{
++	struct mtk_hw_stats *hw_stats = mac->hw_stats;
++
++	hw_stats->rx_unicast_packets +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x00);
++	hw_stats->rx_unicast_bytes +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x08);
++	hw_stats->rx_multicast_packets +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x10);
++	hw_stats->rx_multicast_bytes +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x18);
++	hw_stats->rx_broadcast_packets +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x20);
++	hw_stats->rx_broadcast_bytes +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x28);
++
++	hw_stats->tx_unicast_packets +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x30);
++	hw_stats->tx_unicast_bytes +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x38);
++	hw_stats->tx_multicast_packets +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x40);
++	hw_stats->tx_multicast_bytes +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x48);
++	hw_stats->tx_broadcast_packets +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x50);
++	hw_stats->tx_broadcast_bytes +=
++		mtk_r64(mac->hw, MTK_MAC_MIB(mac->id) + 0x58);
++}
++
++static void mtk_stats_update_xgmac(struct mtk_mac *mac)
++{
++	struct mtk_hw_stats *hw_stats = mac->hw_stats;
++	u64 rx_crcerr_cnt, rx_eof_cnt;
++
++	rx_crcerr_cnt = FIELD_GET(GENMASK(15, 0),
++				  mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x198));
++	rx_eof_cnt = FIELD_GET(GENMASK(15, 0),
++			       mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1a4));
++	if (rx_crcerr_cnt <= rx_eof_cnt * 2) {
++		hw_stats->rx_packets +=
++			mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x18c);
++		hw_stats->rx_bytes +=
++			mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1ac);
++		hw_stats->rx_flow_control_packets += FIELD_GET(GENMASK(15, 0),
++			mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x190));
++		hw_stats->rx_fcs_errors += rx_crcerr_cnt;
++		hw_stats->rx_long_errors += FIELD_GET(GENMASK(15, 0),
++			mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x194));
++		if (mac->hw->soc->caps != MT7988_CAPS)
++			hw_stats->rx_short_errors +=
++				mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1bc);
++		hw_stats->rx_unicast_packets +=
++			mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1c0);
++		hw_stats->rx_unicast_bytes +=
++			mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1c8);
++		hw_stats->rx_multicast_packets +=
++			mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1d0);
++		hw_stats->rx_multicast_bytes +=
++			mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1d8);
++		hw_stats->rx_broadcast_packets +=
++			mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1e0);
++		hw_stats->rx_broadcast_bytes +=
++			mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1e8);
++	}
++
++	hw_stats->tx_packets +=
++		mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x114);
++	hw_stats->tx_bytes +=
++		mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x134);
++	hw_stats->tx_unicast_packets +=
++		mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x150);
++	hw_stats->tx_unicast_bytes +=
++		mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x158);
++	hw_stats->tx_multicast_packets +=
++		mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x160);
++	hw_stats->tx_multicast_bytes +=
++		mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x168);
++	hw_stats->tx_broadcast_packets +=
++		mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x170);
++	hw_stats->tx_broadcast_bytes +=
++		mtk_r64(mac->hw, MTK_XMAC_MCR(mac->id) + 0x178);
++
++	mtk_m32(mac->hw, XMAC_GLB_CNTCLR, 0x1, MTK_XMAC_CNT_CTRL(mac->id));
++}
++
++static void mtk_stats_update_gdm(struct mtk_mac *mac)
++{
++	const struct mtk_reg_map *reg_map = mac->hw->soc->reg_map;
++	struct mtk_hw_stats *hw_stats = mac->hw_stats;
++	unsigned int offs = hw_stats->reg_offset;
++	u64 stats;
++
++	hw_stats->rx_bytes += mtk_r32(mac->hw, reg_map->gdm1_cnt + offs);
++	stats = mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x4 + offs);
++	if (stats)
++		hw_stats->rx_bytes += (stats << 32);
++	hw_stats->rx_packets +=
++		mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x8 + offs);
++	hw_stats->rx_overflow +=
++		mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x10 + offs);
++	hw_stats->rx_fcs_errors +=
++		mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x14 + offs);
++	hw_stats->rx_short_errors +=
++		mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x18 + offs);
++	hw_stats->rx_long_errors +=
++		mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x1c + offs);
++	hw_stats->rx_checksum_errors +=
++		mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x20 + offs);
++	hw_stats->rx_flow_control_packets +=
++		mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x24 + offs);
++
++	if (mtk_is_netsys_v3_or_greater(mac->hw)) {
++		hw_stats->tx_skip +=
++			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x50 + offs);
++		hw_stats->tx_collisions +=
++			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x54 + offs);
++		hw_stats->tx_bytes +=
++			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x40 + offs);
++		stats =  mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x44 + offs);
++		if (stats)
++			hw_stats->tx_bytes += (stats << 32);
++		hw_stats->tx_packets +=
++			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x48 + offs);
++	} else {
++		hw_stats->tx_skip +=
++			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x28 + offs);
++		hw_stats->tx_collisions +=
++			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x2c + offs);
++		hw_stats->tx_bytes +=
++			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x30 + offs);
++		stats =  mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x34 + offs);
++		if (stats)
++			hw_stats->tx_bytes += (stats << 32);
++		hw_stats->tx_packets +=
++			mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x38 + offs);
++	}
++}
++
+ void mtk_stats_update_mac(struct mtk_mac *mac)
+ {
+ 	struct mtk_hw_stats *hw_stats = mac->hw_stats;
+@@ -1367,88 +1530,14 @@ void mtk_stats_update_mac(struct mtk_mac
+ 		hw_stats->rx_checksum_errors +=
+ 			mtk_r32(mac->hw, MT7628_SDM_CS_ERR);
+ 	} else {
+-		const struct mtk_reg_map *reg_map = eth->soc->reg_map;
+-		unsigned int offs = hw_stats->reg_offset;
+-		u64 stats, rx_crcerr_cnt, rx_eof_cnt;;
+-
+ 		if (mtk_is_netsys_v3_or_greater(eth) &&
+ 		    mtk_interface_mode_is_xgmii(mac->interface) &&
+-		    mac->id != MTK_GMAC1_ID) {
+-			rx_crcerr_cnt = FIELD_GET(GENMASK(15, 0),
+-						  mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x198));
+-			rx_eof_cnt = FIELD_GET(GENMASK(15, 0),
+-					       mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1a4));
+-			if (rx_crcerr_cnt <= rx_eof_cnt * 2) {
+-				hw_stats->rx_fcs_errors += rx_crcerr_cnt;
+-				hw_stats->rx_packets +=
+-					mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x18c);
+-				hw_stats->rx_bytes +=
+-					mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1ac);
+-				hw_stats->rx_flow_control_packets += FIELD_GET(GENMASK(15, 0),
+-					mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x190));
+-				hw_stats->rx_long_errors += FIELD_GET(GENMASK(15, 0),
+-					mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x194));
+-
+-				if (!MTK_HAS_CAPS(eth->soc->caps, MTK_XGMAC)) {
+-					hw_stats->rx_short_errors +=
+-						mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x1bc);
+-				} else {
+-					hw_stats->rx_short_errors +=
+-						mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x18 + offs);
+-				}
+-			}
+-
+-			hw_stats->tx_packets +=
+-				mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x114);
+-			hw_stats->tx_bytes +=
+-				mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id) + 0x134);
+-
+-			mtk_m32(mac->hw, XMAC_GLB_CNTCLR, 0x1, MTK_XMAC_CNT_CTRL(mac->id));
+-		} else {
+-			hw_stats->rx_bytes += mtk_r32(mac->hw, reg_map->gdm1_cnt + offs);
+-			stats = mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x4 + offs);
+-			if (stats)
+-				hw_stats->rx_bytes += (stats << 32);
+-			hw_stats->rx_packets +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x8 + offs);
+-			hw_stats->rx_overflow +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x10 + offs);
+-			hw_stats->rx_fcs_errors +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x14 + offs);
+-			hw_stats->rx_short_errors +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x18 + offs);
+-			hw_stats->rx_long_errors +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x1c + offs);
+-			hw_stats->rx_checksum_errors +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x20 + offs);
+-			hw_stats->rx_flow_control_packets +=
+-				mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x24 + offs);
+-
+-			if (mtk_is_netsys_v3_or_greater(eth)) {
+-				hw_stats->tx_skip +=
+-					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x50 + offs);
+-				hw_stats->tx_collisions +=
+-					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x54 + offs);
+-				hw_stats->tx_bytes +=
+-					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x40 + offs);
+-				stats =  mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x44 + offs);
+-				if (stats)
+-					hw_stats->tx_bytes += (stats << 32);
+-				hw_stats->tx_packets +=
+-					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x48 + offs);
+-			} else {
+-				hw_stats->tx_skip +=
+-					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x28 + offs);
+-				hw_stats->tx_collisions +=
+-					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x2c + offs);
+-				hw_stats->tx_bytes +=
+-					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x30 + offs);
+-				stats =  mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x34 + offs);
+-				if (stats)
+-					hw_stats->tx_bytes += (stats << 32);
+-				hw_stats->tx_packets +=
+-					mtk_r32(mac->hw, reg_map->gdm1_cnt + 0x38 + offs);
+-			}
++		    mac->id != MTK_GMAC1_ID)
++			mtk_stats_update_xgmac(mac);
++		else {
++			mtk_stats_update_gdm(mac);
++			if (mtk_is_netsys_v3_or_greater(eth))
++				mtk_stats_update_gmac_ext(mac);
+ 		}
+ 	}
+ 
+@@ -5412,6 +5501,7 @@ static int mtk_hw_init(struct mtk_eth *e
+ 					     XMAC_FORCE_LINK_MODE, MTK_XMAC_STS_FRC(i));
+ 
+ 			mtk_m32(eth, XMAC_MCR_TRX_DISABLE, XMAC_MCR_TRX_DISABLE, MTK_XMAC_MCR(i));
++			mtk_w32(eth, 0x4, MTK_XMAC_CNT_CTRL(i));
+ 		}
+ 	}
+ 
+@@ -5909,6 +5999,8 @@ static void mtk_get_drvinfo(struct net_d
+ 	strscpy(info->driver, mac->hw->dev->driver->name, sizeof(info->driver));
+ 	strscpy(info->bus_info, dev_name(mac->hw->dev), sizeof(info->bus_info));
+ 	info->n_stats = ARRAY_SIZE(mtk_ethtool_stats);
++	if (mtk_is_netsys_v3_or_greater(mac->hw))
++		info->n_stats += ARRAY_SIZE(mtk_ethtool_ext_stats);
+ }
+ 
+ static u32 mtk_get_msglevel(struct net_device *dev)
+@@ -5950,6 +6042,12 @@ static void mtk_get_strings(struct net_d
+ 			memcpy(data, mtk_ethtool_stats[i].str, ETH_GSTRING_LEN);
+ 			data += ETH_GSTRING_LEN;
+ 		}
++		if (mtk_is_netsys_v3_or_greater(mac->hw)) {
++			for (i = 0; i < ARRAY_SIZE(mtk_ethtool_ext_stats); i++) {
++				memcpy(data, mtk_ethtool_ext_stats[i].str, ETH_GSTRING_LEN);
++				data += ETH_GSTRING_LEN;
++			}
++		}
+ 		if (mtk_page_pool_enabled(mac->hw))
+ 			page_pool_ethtool_stats_get_strings(data);
+ 		break;
+@@ -5966,6 +6064,8 @@ static int mtk_get_sset_count(struct net
+ 		int count = ARRAY_SIZE(mtk_ethtool_stats);
+ 		struct mtk_mac *mac = netdev_priv(dev);
+ 
++		if (mtk_is_netsys_v3_or_greater(mac->hw))
++			count += ARRAY_SIZE(mtk_ethtool_ext_stats);
+ 		if (mtk_page_pool_enabled(mac->hw))
+ 			count += page_pool_ethtool_stats_get_count();
+ 		return count;
+@@ -6020,6 +6120,10 @@ static void mtk_get_ethtool_stats(struct
+ 
+ 		for (i = 0; i < ARRAY_SIZE(mtk_ethtool_stats); i++)
+ 			*data_dst++ = *(data_src + mtk_ethtool_stats[i].offset);
++		if (mtk_is_netsys_v3_or_greater(mac->hw)) {
++			for (i = 0; i < ARRAY_SIZE(mtk_ethtool_ext_stats); i++)
++				*data_dst++ = *(data_src + mtk_ethtool_ext_stats[i].offset);
++		}
+ 		if (mtk_page_pool_enabled(mac->hw))
+ 			mtk_ethtool_pp_stats(mac->hw, data_dst);
+ 	} while (u64_stats_fetch_retry(&hwstats->syncp, start));
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -646,6 +646,9 @@
+ #define MAC_MSR_DPX		BIT(1)
+ #define MAC_MSR_LINK		BIT(0)
+ 
++/* Mac MIB registers */
++#define MTK_MAC_MIB(x)		(0x10400 + (x * 0x60))
++
+ /* TRGMII RXC control register */
+ #define TRGMII_RCK_CTRL		0x10300
+ #define DQSI0(x)		((x << 0) & GENMASK(6, 0))
+@@ -951,10 +954,22 @@ struct mtk_xdp_stats {
+ struct mtk_hw_stats {
+ 	u64 tx_bytes;
+ 	u64 tx_packets;
++	u64 tx_unicast_bytes;
++	u64 tx_unicast_packets;
++	u64 tx_multicast_bytes;
++	u64 tx_multicast_packets;
++	u64 tx_broadcast_bytes;
++	u64 tx_broadcast_packets;
+ 	u64 tx_skip;
+ 	u64 tx_collisions;
+ 	u64 rx_bytes;
+ 	u64 rx_packets;
++	u64 rx_unicast_bytes;
++	u64 rx_unicast_packets;
++	u64 rx_multicast_bytes;
++	u64 rx_multicast_packets;
++	u64 rx_broadcast_bytes;
++	u64 rx_broadcast_packets;
+ 	u64 rx_overflow;
+ 	u64 rx_fcs_errors;
+ 	u64 rx_short_errors;
+@@ -1974,6 +1989,7 @@ void mtk_stats_update_mac(struct mtk_mac
+ void mtk_w32(struct mtk_eth *eth, u32 val, unsigned reg);
+ u32 mtk_r32(struct mtk_eth *eth, unsigned reg);
+ u32 mtk_m32(struct mtk_eth *eth, u32 mask, u32 set, unsigned int reg);
++u64 mtk_r64(struct mtk_eth *eth, unsigned reg);
+ 
+ int mtk_gmac_sgmii_path_setup(struct mtk_eth *eth, int mac_id);
+ int mtk_gmac_2p5gphy_path_setup(struct mtk_eth *eth, int mac_id);

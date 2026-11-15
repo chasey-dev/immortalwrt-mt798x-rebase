@@ -1,0 +1,57 @@
+---
+[v1] net: ethernet: mtk_eth_soc: add decrypt CDRT handle in RX path
+
+In IPsec inline mode, inbound ESP packets are decrypted by EIP197
+before being sent to the CPU, so they reach the stack as plain packets
+without a secpath. Consequently, these packets will be dropped by
+xfrm_policy_check() due to the lack of secpath infomation.
+
+Add mtk_crypto_set_dec_secpath hook, which is called in
+mtk_poll_rx() with the CDRT index from RX descriptor rxd7. The
+crypto-eip driver uses the index to resolve the inbound packet offload
+xfrm_state and attaches a secpath marked CRYPTO_DONE, so that
+__xfrm_policy_check2() accepts the packet as hardware decrypted.
+---
+v1: Add decrypt CDRT handle in RX path.
+---
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -373,6 +373,8 @@ static const char * const mtk_reset_even
+ 
+ struct net_device *(*mtk_get_tnl_dev)(u8 tops_crsn) = NULL;
+ EXPORT_SYMBOL(mtk_get_tnl_dev);
++void (*mtk_crypto_set_dec_secpath)(struct sk_buff *skb, u16 cdrt) = NULL;
++EXPORT_SYMBOL(mtk_crypto_set_dec_secpath);
+ 
+ void mtk_w32(struct mtk_eth *eth, u32 val, unsigned reg)
+ {
+@@ -2842,6 +2844,7 @@ static int mtk_poll_rx(struct napi_struc
+ 		unsigned int pktlen, *rxdcsum;
+ 		struct net_device *netdev = NULL;
+ 		u32 hash, reason;
++		u16 cdrt = 0;
+ 		int mac = 0;
+ 
+ 		idx = NEXT_DESP_IDX(ring->calc_idx, ring->dma_size);
+@@ -2968,6 +2971,11 @@ static int mtk_poll_rx(struct napi_struc
+ 
+ 			skb_reserve(skb, NET_SKB_PAD + NET_IP_ALIGN);
+ 			skb_put(skb, pktlen);
++
++			if (mtk_crypto_set_dec_secpath) {
++				cdrt = RX_DMA_GET_CDRT(trxd.rxd7);
++				mtk_crypto_set_dec_secpath(skb, cdrt);
++			}
+ 		}
+ 
+ 		skb->dev = netdev;
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -2120,6 +2120,7 @@ static inline bool mtk_interface_mode_is
+ 
+ /* tunnel offload related */
+ extern struct net_device *(*mtk_get_tnl_dev)(u8 tops_crsn);
++extern void (*mtk_crypto_set_dec_secpath)(struct sk_buff* skb, u16 cdrt);
+ 
+ /* read the hardware status register */
+ void mtk_stats_update_mac(struct mtk_mac *mac);

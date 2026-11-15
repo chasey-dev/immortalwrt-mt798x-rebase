@@ -1,0 +1,140 @@
+---
+[v2] net: ethernet: mtk_eth_soc: add netdev restart work to
+reallocate RX buffer
+
+Previously, in order to support jumbo frame in the Ethernet driver,
+we adjusted the RX buffer length setting synchronously when the MTU
+was changed. However, since all interfaces share the same RX rings,
+the RX buffer could not be reallocated until a network restart was
+triggered in user space. This patch adds a netdev restart work,
+which schedules a restart of all netdevs after the MTU is changed,
+so that the RX buffer can be reallocated according to the updated
+RX buffer length immediately.
+---
+v2: Fix netdev free before cancel_work_sync.
+v1: Add netdev restart work to reallocate RX buffer.
+---
+
+From ffcd2c090a0409e7ae402bca4a3f5cea2ad3002e Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Thu, 28 May 2026 13:57:41 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add netdev restart work
+
+Add netdev restart work to reallocate RX buffer.
+
+Previously, in order to support jumbo frame in the Ethernet driver,
+we adjusted the RX buffer length setting synchronously when the MTU
+was changed. However, since all interfaces share the same RX rings,
+the RX buffer could not be reallocated until a network restart was
+triggered in user space. This patch adds a netdev restart work,
+which schedules a restart of all netdevs after the MTU is changed,
+so that the RX buffer can be reallocated according to the updated
+RX buffer length immediately.
+
+Without this patch, the adjustment of RX buffer length would not
+take effect until a network restart was triggered in user space.
+---
+ mtk_eth_soc.c | 41 +++++++++++++++++++++++++++++++++++++++++
+ mtk_eth_soc.h |  1 +
+ 2 files changed, 42 insertions(+)
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -5733,11 +5733,42 @@ static void mtk_uninit(struct net_device
+ 	mtk_rx_irq_disable(eth, ~0);
+ }
+ 
++static void mtk_netdev_restart_work(struct work_struct *work)
++{
++	struct mtk_eth *eth = container_of(work, struct mtk_eth, netdev_restart_work);
++	unsigned long restart = 0;
++	int i;
++
++	rtnl_lock();
++
++	for (i = 0; i < MTK_MAX_DEVS; i++) {
++		if (!eth->netdev[i] || !netif_running(eth->netdev[i]))
++			continue;
++
++		mtk_stop(eth->netdev[i]);
++		__set_bit(i, &restart);
++	}
++
++	for (i = 0; i < MTK_MAX_DEVS; i++) {
++		if (!test_bit(i, &restart) || !eth->netdev[i])
++			continue;
++
++		if (mtk_open(eth->netdev[i])) {
++			netif_alert(eth, ifup, eth->netdev[i],
++				    "Netdev restart failed, closing device...\n");
++			dev_close(eth->netdev[i]);
++		}
++	}
++
++	rtnl_unlock();
++}
++
+ static int mtk_change_mtu(struct net_device *dev, int new_mtu)
+ {
+ 	struct mtk_mac *mac = netdev_priv(dev);
+ 	struct mtk_eth *eth = mac->hw;
+-	u32 old_mtu, max_mtu, length;
++	u32 length, rx_buf_len;
++	u32 old_mtu, max_mtu;
+ 	int i;
+ 
+ 	old_mtu = dev->mtu;
+@@ -5756,12 +5787,21 @@ static int mtk_change_mtu(struct net_dev
+ 	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+ 		mtk_ppe_update_mtu(eth->ppe[i], max_mtu);
+ 
++	rx_buf_len = eth->rx_buf_len;
++
+ 	if (length <= MTK_MAX_RX_LENGTH)
+ 		eth->rx_buf_len = MTK_MAX_RX_LENGTH;
+ 	else
+ 		eth->rx_buf_len = DIV_ROUND_UP(length, MTK_MAX_RX_LENGTH_UNIT) *
+ 				  MTK_MAX_RX_LENGTH_UNIT;
+ 
++	if (eth->rx_buf_len != rx_buf_len && refcount_read(&eth->dma_refcnt) > 0) {
++		netdev_info(dev,
++			    "RX buffer length changed (%u -> %u), scheduling netdevs restart\n",
++			    rx_buf_len, eth->rx_buf_len);
++		schedule_work(&eth->netdev_restart_work);
++	}
++
+ 	return 0;
+ }
+ 
+@@ -6045,10 +6085,12 @@ static int mtk_cleanup(struct mtk_eth *e
+ {
+ 	mtk_sgmii_destroy(eth);
+ 	mtk_unreg_dev(eth);
+-	mtk_free_dev(eth);
+ 	cancel_work_sync(&eth->pending_work);
++	cancel_work_sync(&eth->netdev_restart_work);
+ 	cancel_delayed_work_sync(&eth->reset.monitor_work);
+ 
++	mtk_free_dev(eth);
++
+ 	return 0;
+ }
+ 
+@@ -7207,6 +7249,7 @@ static int mtk_probe(struct platform_dev
+ 
+ 	eth->msg_enable = netif_msg_init(mtk_msg_level, MTK_DEFAULT_MSG_ENABLE);
+ 	INIT_WORK(&eth->pending_work, mtk_pending_work);
++	INIT_WORK(&eth->netdev_restart_work, mtk_netdev_restart_work);
+ 
+ 	err = mtk_hw_init(eth, false);
+ 	if (err)
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -1739,6 +1739,7 @@ struct mtk_eth {
+ 	struct mii_bus			*mii_bus;
+ 	unsigned int			mdc_divider;
+ 	struct work_struct		pending_work;
++	struct work_struct		netdev_restart_work;
+ 	unsigned long			state;
+ 
+ 	struct ptp_clock_info		ptp_info;

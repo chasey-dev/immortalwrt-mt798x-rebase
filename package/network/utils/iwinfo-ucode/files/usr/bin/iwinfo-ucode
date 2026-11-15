@@ -1,0 +1,522 @@
+#!/usr/bin/ucode
+
+/*
+ * Copyright (C) 2025  chasey-dev <ellenyoung0912@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+
+'use strict';
+
+const iw = require("iwinfo");
+const fs = require("fs");
+const math = require("math");
+
+const INDENT_STR = '          ';
+
+// Helper: Convert dBm to mW
+function dbm2mw(dbm) {
+	if (!math || !math.pow) return 0;
+	return math.pow(10, dbm / 10.0);
+}
+
+// Global formatter for rate (extracted to avoid recursion in fmt object)
+function format_rate(r) {
+	return (r && r > 0) ? sprintf("%d.%d MBit/s", r / 1000, (r % 1000) / 100) : 'unknown';
+}
+
+const fmt = {
+	ssid: function(s) {
+		return (s && length(s)) ? '"' + s + '"' : 'unknown';
+	},
+
+	bssid: function(m) {
+		return m ? m : '00:00:00:00:00:00';
+	},
+
+	val_or_unknown: function(v, suffix) {
+		if (v == null || v == -1) return 'unknown';
+		return suffix ? v + ' ' + suffix : v;
+	},
+
+	freq: function(f) {
+		return (f && f > 0) ? sprintf("%.3f GHz", f / 1000.0) : 'unknown';
+	},
+
+	rate: format_rate,
+
+	quality: function(v, max) {
+		return (v != null && v >= 0 && max != null && max > 0) ? sprintf("%d/%d", v, max) : 'unknown';
+	},
+
+	signal_noise: function(v) {
+		return (v != null && v != 0) ? v + ' dBm' : 'unknown';
+	},
+
+	hwmodes: function(modes_obj) {
+		if (!modes_obj) return 'unknown';
+		let res = [];
+		let modes = ['a', 'b', 'g', 'n', 'ac', 'ad', 'ax', 'be'];
+		// In ucode, for(val in arr) iterates values
+		for (let m in modes) {
+			if (modes_obj[m]) push(res, m);
+		}
+		return length(res) ? '802.11' + join('/', res) : 'unknown';
+	},
+
+	encryption: function(c) {
+		if (!c || !c.enabled) return 'none';
+		if (c.wep) {
+			let auth = (c.auth_algs && length(c.auth_algs)) ? join('/', c.auth_algs) : 'Open/Shared';
+			let pair = (c.pair_ciphers && length(c.pair_ciphers)) ? join(', ', c.pair_ciphers) : '';
+			return sprintf("WEP %s (%s)", auth, pair);
+		}
+
+		let wpa_versions = [];
+		if (c.wpa & 1) push(wpa_versions, 'WPA');
+		if (c.wpa & 2) push(wpa_versions, 'WPA2');
+		if (c.wpa & 4) push(wpa_versions, 'WPA3');
+
+		let main_method = length(wpa_versions) > 1 ? 'mixed ' + join('/', wpa_versions) : join('/', wpa_versions);
+		let auth_suites = (c.auth_suites && length(c.auth_suites)) ? join('/', c.auth_suites) : '';
+		
+        let unique_ciphers = {};
+		if (c.pair_ciphers) {
+			for (let val in c.pair_ciphers) {
+				unique_ciphers[val] = true;
+			}
+		}
+		if (c.group_ciphers) {
+			for (let val in c.group_ciphers) {
+				unique_ciphers[val] = true;
+			}
+		}
+		
+		let ciphers = join(', ', keys(unique_ciphers));
+
+		return sprintf("%s %s (%s)", main_method, auth_suites, ciphers);
+	},
+
+	assoc_rate: function(r) {
+		if (!r || r.rate <= 0) return 'unknown';
+		let parts = [ format_rate(r.rate) ];
+
+		if (r.ht) {
+			push(parts, sprintf("MCS %d", r.mcs), r.mhz + "MHz");
+		}
+		else if (r.vht) {
+			push(parts, sprintf("VHT-MCS %d", r.mcs), r.mhz + "MHz");
+			if (r.nss) push(parts, sprintf("VHT-NSS %d", r.nss));
+		}
+		else if (r.he) {
+			push(parts, sprintf("HE-MCS %d", r.mcs), r.mhz + "MHz", sprintf("HE-NSS %d", r.nss), sprintf("HE-GI %d", r.he_gi), sprintf("HE-DCM %d", r.he_dcm));
+		}
+		else if (r.eht) {
+			push(parts, sprintf("EHT-MCS %d", r.mcs), r.mhz + "MHz", sprintf("EHT-NSS %d", r.nss), sprintf("EHT-GI %d", r.eht_gi));
+		}
+
+		let final_parts = [];
+		for (let p in parts) {
+			if (p != null) push(final_parts, p);
+		}
+		return join(', ', final_parts);
+	},
+
+	htmode: function(m) {
+		return m || 'unknown';
+	},
+
+	chan_width: function(w) {
+		if (w == 20) return "20 MHz";
+		if (w == 40) return "40 MHz";
+		if (w == 80) return "80 MHz";
+		if (w == 160) return "160 MHz";
+		if (w == 320) return "320 MHz";
+		if (w == 8080) return "80+80 MHz";
+		return "unknown";
+	},
+
+	freq_flags: function(flags) {
+		if (!flags) return '';
+		let res = [];
+		if (iw.const && iw.const.IWINFO_FREQ_FLAG_NAMES) {
+			for (let i = 0; i < iw.const.IWINFO_FREQ_FLAG_COUNT; i++) {
+				if (flags & (1 << i)) {
+					push(res, iw.const.IWINFO_FREQ_FLAG_NAMES[i]);
+				}
+			}
+		}
+		return length(res) ? '[' + join(', ', res) + ']' : '';
+	},
+
+	hardware_id: function(ids) {
+		if (!ids) return 'unknown';
+		return sprintf("%04X:%04X %04X:%04X",
+			ids.vendor_id, ids.device_id,
+			ids.subsystem_vendor_id, ids.subsystem_device_id);
+	},
+
+	band_name: function(band_id) {
+		if (band_id == 1) return "2.4 GHz";
+		if (band_id == 2) return "5 GHz";
+		if (band_id == 3) return "6 GHz";
+		return "unknown";
+	}
+};
+
+const commands = {
+	info: function(bk, ifname, json, options) {
+		options = options || {};
+
+		let data = {
+			iface:         ifname,
+			type:          iw.type(ifname),
+			phy:           bk.phyname(ifname),
+			ssid:          bk.ssid(ifname),
+			bssid:         bk.bssid(ifname),
+			mode:          bk.mode(ifname),
+			channel:       bk.channel(ifname),
+			frequency:     bk.frequency(ifname),
+			center_chan1:  (bk.center_chan1) ? bk.center_chan1(ifname) : -1,
+			center_chan2:  (bk.center_chan2) ? bk.center_chan2(ifname) : -1,
+			txpower:       bk.txpower(ifname),
+			txpower_offset: bk.txpower_offset(ifname),
+			frequency_offset: bk.frequency_offset(ifname),
+			quality:       bk.quality(ifname),
+			quality_max:   bk.quality_max(ifname),
+			signal:        bk.signal(ifname),
+			noise:         bk.noise(ifname),
+			bitrate:       bk.bitrate(ifname),
+			encryption:    bk.encryption(ifname),
+			hwmodes:       bk.hwmodelist(ifname),
+			htmode:        bk.htmode(ifname),
+			hardware_id:   bk.hardware_id(ifname),
+			hardware_name: bk.hardware_name(ifname),
+			mbssid_support: bk.mbssid_support(ifname)
+		};
+
+		if (options.dry_run) {
+			return data;
+		}
+
+		if (json) {
+			print(data);
+			return;
+		}
+
+		printf("%-9s ESSID: %s\n", ifname, fmt.ssid(data.ssid));
+		printf("%sAccess Point: %s\n", INDENT_STR, fmt.bssid(data.bssid));
+
+		let txp = data.txpower;
+		if (txp != null && data.txpower_offset != null && data.txpower_offset != 0) {
+			txp += data.txpower_offset;
+		}
+
+		printf("%sMode: %s  Channel: %s (%s)  HT Mode: %s\n",
+			INDENT_STR, data.mode, fmt.val_or_unknown(data.channel), fmt.freq(data.frequency), fmt.htmode(data.htmode));
+
+		if (data.center_chan1 != -1) {
+			printf("%sCenter Channel 1: %s 2: %s\n",
+				INDENT_STR, fmt.val_or_unknown(data.center_chan1), fmt.val_or_unknown(data.center_chan2));
+		}
+
+		printf("%sTx-Power: %s  Link Quality: %s\n",
+			INDENT_STR, fmt.val_or_unknown(txp, 'dBm'), fmt.quality(data.quality, data.quality_max));
+		printf("%sSignal: %s  Noise: %s\n",
+			INDENT_STR, fmt.signal_noise(data.signal), fmt.signal_noise(data.noise));
+		printf("%sBit Rate: %s\n",
+			INDENT_STR, fmt.rate(data.bitrate));
+		printf("%sEncryption: %s\n",
+			INDENT_STR, fmt.encryption(data.encryption));
+		printf("%sType: %s  HW Mode(s): %s\n",
+			INDENT_STR, data.type, fmt.hwmodes(data.hwmodes));
+
+		let hw_id_str = fmt.hardware_id(data.hardware_id);
+		printf("%sHardware: %s [%s]\n",
+			INDENT_STR, hw_id_str, data.hardware_name || 'unknown');
+
+		printf("%sTX power offset: %s\n",
+			INDENT_STR, fmt.val_or_unknown(data.txpower_offset, 'dB'));
+		printf("%sFrequency offset: %s\n",
+			INDENT_STR, fmt.val_or_unknown(data.frequency_offset, 'GHz'));
+		printf("%sSupports VAPs: %s  PHY name: %s\n",
+			INDENT_STR, data.mbssid_support ? "yes" : "no", data.phy || "?");
+	},
+
+	scan: function(bk, ifname, json) {
+		let list = bk.scanlist(ifname);
+
+		if (json) {
+			print(list || []);
+			return;
+		}
+
+		if (!list || !length(list)) {
+			print("No scan results\n\n");
+			return;
+		}
+
+		let idx = 1;
+		for (let cell in list) {
+			printf("Cell %02d - Address: %s\n", idx++, fmt.bssid(cell.bssid));
+			printf("%sESSID: %s\n", INDENT_STR, fmt.ssid(cell.ssid));
+
+			let mode_name = cell.mode;
+			let band_name = fmt.band_name(cell.band);
+
+			printf("%sMode: %s  Frequency: %s  Band: %s  Channel: %d\n",
+				INDENT_STR, mode_name, fmt.freq(cell.mhz), band_name, cell.channel);
+			printf("%sSignal: %s  Quality: %s\n",
+				INDENT_STR, fmt.signal_noise(cell.signal), fmt.quality(cell.quality, cell.quality_max));
+			printf("%sEncryption: %s\n",
+				INDENT_STR, fmt.encryption(cell.encryption));
+
+			if (cell.ht_chan_info && cell.ht_chan_info.primary_chan) {
+				printf("%sHT Operation:\n", INDENT_STR);
+				printf("%s          Primary Channel: %d\n", INDENT_STR, cell.ht_chan_info.primary_chan);
+				let off_str = "no secondary";
+				if (cell.ht_chan_info.secondary_chan_off == 1) off_str = "above";
+				if (cell.ht_chan_info.secondary_chan_off == 3) off_str = "below";
+				printf("%s          Secondary Channel Offset: %s\n", INDENT_STR, off_str);
+				printf("%s          Channel Width: %s\n", INDENT_STR, fmt.chan_width(cell.ht_chan_info.chan_width));
+			}
+
+			if (cell.vht_chan_info && cell.vht_chan_info.center_chan_1) {
+				printf("%sVHT Operation:\n", INDENT_STR);
+				printf("%s          Center Frequency 1: %d\n", INDENT_STR, cell.vht_chan_info.center_chan_1);
+				printf("%s          Center Frequency 2: %d\n", INDENT_STR, cell.vht_chan_info.center_chan_2);
+				printf("%s          Channel Width: %s\n", INDENT_STR, fmt.chan_width(cell.vht_chan_info.chan_width));
+			}
+			print("\n");
+		}
+	},
+
+	assoclist: function(bk, ifname, json) {
+		let list = bk.assoclist(ifname);
+		if (json) {
+			print(list || {});
+			return;
+		}
+
+		if (!list || !length(keys(list))) {
+			print("No station connected\n");
+			return;
+		}
+
+		for (let mac, sta in list) {
+			printf("%s  %s / %s (SNR %d)  %d ms ago\n",
+				mac, fmt.signal_noise(sta.signal), fmt.signal_noise(sta.noise),
+				(sta.signal - sta.noise), sta.inactive);
+
+			printf("\tRX: %-38s  %8d Pkts.\n", fmt.assoc_rate(sta.rx_rate), sta.rx_packets);
+			printf("\tTX: %-38s  %8d Pkts.\n", fmt.assoc_rate(sta.tx_rate), sta.tx_packets);
+			printf("\texpected throughput: %s\n\n", fmt.rate(sta.expected_throughput));
+		}
+	},
+
+	freqlist: function(bk, ifname, json) {
+		let list = bk.freqlist(ifname);
+		let cur_freq = bk.frequency(ifname);
+
+		if (json) {
+			print(list || []);
+			return;
+		}
+
+		if (!list || !length(list)) {
+			print("No frequency information available\n");
+			return;
+		}
+
+		for (let e in list) {
+			let mark = (cur_freq == e.mhz) ? "*" : " ";
+			printf("%s %s (Band: %s, Channel %d) %s\n",
+				mark, fmt.freq(e.mhz), fmt.band_name(e.band), e.channel, fmt.freq_flags(e.flags));
+		}
+	},
+
+	txpowerlist: function(bk, ifname, json) {
+		let list = bk.txpwrlist(ifname);
+		let cur_pwr = bk.txpower(ifname);
+		let pwr_offset = bk.txpower_offset(ifname);
+
+		if (json) {
+			print(list || []);
+			return;
+		}
+
+		if (!list || !length(list)) {
+			print("No TX power information available\n");
+			return;
+		}
+
+		for (let e in list) {
+			let dbm_with_offset = e.dbm + (pwr_offset || 0);
+			let mw_with_offset = dbm2mw(dbm_with_offset);
+			let mark = (cur_pwr == e.dbm) ? "*" : " ";
+
+			printf("%s%3d dBm (%4d mW)\n",
+				mark, dbm_with_offset, mw_with_offset);
+		}
+	},
+
+	countrylist: function(bk, ifname, json) {
+		let list = bk.countrylist(ifname);
+		let cur_country_code = bk.country(ifname);
+
+		if (json) {
+			print(list || []);
+			return;
+		}
+		if (!list || !length(list)) {
+			print("No country code information available\n");
+			return;
+		}
+
+		for (let c in list) {
+			let mark = (c.alpha2 == cur_country_code) ? "*" : " ";
+			printf("%s %4s  %s\n", mark, c.alpha2, c.name);
+		}
+	},
+
+	htmodelist: function(bk, ifname, json) {
+		let modes_obj = bk.htmodelist(ifname);
+
+		if (json) {
+			print(modes_obj || {});
+			return;
+		}
+
+		if (!modes_obj) {
+			print("No HT mode information available\n");
+			return;
+		}
+
+		let enabled = [];
+		let k = keys(modes_obj);
+		sort(k);
+		for (let key in k) {
+			if (modes_obj[key]) push(enabled, key);
+		}
+		print(join(" ", enabled) + "\n");
+	}
+};
+
+let args = ARGV;
+let is_json = false;
+
+if (args[0] == '-j') {
+	is_json = true;
+	shift(args);
+}
+
+const get_backend_for_iface = function(n) {
+	let t = iw.type(n);
+	if (!t || !iw[t]) return null;
+	return iw[t];
+};
+
+if (length(args) == 0) {
+	let interfaces_paths = fs.glob('/sys/class/net/*');
+	let all_info_data = {};
+
+	for (let path in interfaces_paths) {
+		let p = split(path, '/');
+		let ifn = p[length(p) - 1];
+		let bk = get_backend_for_iface(ifn);
+
+		if (bk) {
+			if (is_json) {
+				let d = commands.info(bk, ifn, true, { dry_run: true });
+				if (d) all_info_data[ifn] = d;
+			} else {
+				commands.info(bk, ifn, false);
+				print("\n");
+			}
+		}
+	}
+
+	if (is_json) {
+		print(all_info_data);
+	}
+	exit(0);
+}
+
+if (length(args) >= 3 && args[1] == 'phyname') {
+	let bname = args[0];
+	let carg = args[2];
+	let bk = iw[bname];
+
+	if (!bk) {
+		warn("No such wireless backend: " + bname + "\n");
+		exit(1);
+	}
+
+	if (bk.lookup_phy) {
+		let phy = bk.lookup_phy(carg);
+		if (phy) {
+			print(phy + "\n");
+		} else {
+			warn("Phy not found\n");
+		}
+	} else {
+		warn("'phyname' not supported by backend\n");
+	}
+	exit(0);
+}
+
+let ifn = args[0];
+let cmd_raw = args[1];
+
+let clean_args = [];
+for (let arg in args) {
+	if (arg == '-j') is_json = true;
+	else push(clean_args, arg);
+}
+args = clean_args;
+
+let bk = get_backend_for_iface(ifn);
+
+if (!bk) {
+	warn("No such wireless device: " + ifn + "\n");
+	exit(1);
+}
+
+const COMMAND_ALIASES = {
+	'i': 'info', 's': 'scan', 't': 'txpowerlist',
+	'f': 'freqlist', 'a': 'assoclist', 'c': 'countrylist',
+	'h': 'htmodelist',
+	'info': 'info', 'scan': 'scan', 'txpowerlist': 'txpowerlist',
+	'freqlist': 'freqlist', 'assoclist': 'assoclist',
+	'countrylist': 'countrylist', 'htmodelist': 'htmodelist'
+};
+
+let resolved = COMMAND_ALIASES[cmd_raw];
+
+if (resolved && commands[resolved]) {
+	commands[resolved](bk, ifn, is_json);
+} else {
+	warn("Unknown command: " + cmd_raw + "\n");
+	warn(`Usage:
+	iwinfo [-j] <device> info
+	iwinfo [-j] <device> scan
+	iwinfo [-j] <device> txpowerlist
+	iwinfo [-j] <device> freqlist
+	iwinfo [-j] <device> assoclist
+	iwinfo [-j] <device> countrylist
+	iwinfo [-j] <device> htmodelist
+	iwinfo [-j] <backend> phyname <section>\n`);
+	exit(1);
+}

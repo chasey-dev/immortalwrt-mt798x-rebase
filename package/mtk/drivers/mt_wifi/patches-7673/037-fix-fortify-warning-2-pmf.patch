@@ -1,0 +1,11 @@
+--- a/mt_wifi/embedded/include/security/dot11w_pmf.h
++++ b/mt_wifi/embedded/include/security/dot11w_pmf.h
+@@ -86,7 +86,7 @@ typedef struct GNU_PACKED _PMF_MMIE {
+ typedef struct GNU_PACKED _PMF_IGTK_KDE {
+ 	UINT8 KeyID[2];		/* identifies the IGTK used to compute the MIC */
+ 	UINT8 IPN[6];		/* indicates the receive sequence counter for the IGTK being installed */
+-	UINT8 IGTK[0];		/* The length of the IGTK */
++	UINT8 IGTK[];		/* The length of the IGTK, C99: use flexible array member */
+ } PMF_IGTK_KDE, *PPMF_IGTK_KDE;
+ 
+ 

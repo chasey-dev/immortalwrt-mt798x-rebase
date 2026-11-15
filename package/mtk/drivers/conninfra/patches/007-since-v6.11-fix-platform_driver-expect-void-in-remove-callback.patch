@@ -1,0 +1,29 @@
+--- a/platform/consys_hw.c
++++ b/platform/consys_hw.c
+@@ -62,7 +62,7 @@
+ */
+ 
+ static int mtk_conninfra_probe(struct platform_device *pdev);
+-static int mtk_conninfra_remove(struct platform_device *pdev);
++static void mtk_conninfra_remove(struct platform_device *pdev);
+ static int mtk_conninfra_suspend(struct platform_device *pdev, pm_message_t state);
+ static int mtk_conninfra_resume(struct platform_device *pdev);
+ 
+@@ -588,7 +588,7 @@ int mtk_conninfra_probe(struct platform_
+ 	return ret;
+ }
+ 
+-int mtk_conninfra_remove(struct platform_device *pdev)
++void mtk_conninfra_remove(struct platform_device *pdev)
+ {
+ 	int ret;
+ 
+@@ -611,8 +611,6 @@ int mtk_conninfra_remove(struct platform
+ 
+ 	if (g_pdev)
+ 		g_pdev = NULL;
+-
+-	return 0;
+ }
+ 
+ int mtk_conninfra_suspend(struct platform_device *pdev, pm_message_t state)

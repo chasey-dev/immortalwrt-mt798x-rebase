@@ -1,0 +1,324 @@
+--- a/mt_wifi/os/linux/rt_linux.c
++++ b/mt_wifi/os/linux/rt_linux.c
+@@ -1055,6 +1055,9 @@ int RtmpOSFileWrite(RTMP_OS_FD osfd, cha
+ {
+ #if (KERNEL_VERSION(4, 1, 0) > LINUX_VERSION_CODE)
+ 	return osfd->f_op->write(osfd, pDataPtr, (size_t) writeLen, &osfd->f_pos);
++#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)) /* kernel >= 5.18 */
++	/* __kernel_write is a GPL symbol, we cant use it */
++	return kernel_write(osfd, pDataPtr, (size_t) writeLen, &osfd->f_pos);
+ #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+ 	return __kernel_write(osfd, pDataPtr, (size_t) writeLen, &osfd->f_pos);
+ #elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
+@@ -1067,6 +1070,7 @@ int RtmpOSFileWrite(RTMP_OS_FD osfd, cha
+ 
+ static inline void __RtmpOSFSInfoChange(OS_FS_INFO *pOSFSInfo, BOOLEAN bSet)
+ {
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	if (bSet) {
+ 		/* Save uid and gid used for filesystem access. */
+ 		/* Set user and group to 0 (root) */
+@@ -1097,6 +1101,7 @@ static inline void __RtmpOSFSInfoChange(
+ 		current->fsgid = pOSFSInfo->fsgid;
+ #endif
+ 	}
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ }
+ 
+ 
+@@ -2230,7 +2235,9 @@ VOID RtmpDrvAllMacPrint(
+ {
+ 	struct file *file_w;
+ 	RTMP_STRING *fileName = "MacDump.txt";
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	mm_segment_t orig_fs;
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	RTMP_STRING *msg;
+ 	UINT32 macAddr = 0, macValue = 0;
+ 	INT ret;
+@@ -2240,8 +2247,11 @@ VOID RtmpDrvAllMacPrint(
+ 	if (!msg)
+ 		return;
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	orig_fs = get_fs();
+ 	set_fs(KERNEL_DS);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
++
+ 	/* open file */
+ 	file_w = filp_open(fileName, O_WRONLY | O_CREAT, 0);
+ 
+@@ -2263,19 +2273,23 @@ VOID RtmpDrvAllMacPrint(
+ 						 "msg sprintf error!!!\n");
+ 				}
+ 				/* write data to file */
+-#if (KERNEL_VERSION(4, 1, 0) > LINUX_VERSION_CODE)
++#if (KERNEL_VERSION(4, 1, 0) > LINUX_VERSION_CODE) /* kernel < 4.1 */
+ 			if (file_w->f_op->write) {
+ 				file_w->f_op->write(file_w, msg, strlen(msg), &file_w->f_pos);
+ 			} else{
+ 				MTWF_DBG(NULL, DBG_CAT_INIT, DBG_SUBCAT_ALL, DBG_LVL_ERROR, "no file write method\n");
+ 			}
+-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
++#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)) /* kernel >= 5.18 */
++			/* __kernel_write is a GPL symbol, we cant use it */
++			kernel_write(file_w, msg, strlen(msg), &file_w->f_pos);
++#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)) /* 4.19 =< kernel < 5.18 */
+ 			__kernel_write(file_w, msg, strlen(msg), &file_w->f_pos);
+-#elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
++#elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE) /* 4.10 <= kernel < 4.19 */
+ 			kernel_write(file_w, msg, strlen(msg), &file_w->f_pos);
+-#else
++#else /* 4.1 <= kernel < 4.10 */
+ 			__vfs_write(file_w, msg, strlen(msg), &file_w->f_pos);
+-#endif
++#endif /* (KERNEL_VERSION(4, 1, 0) > LINUX_VERSION_CODE) */
++
+ 				MTWF_DBG(NULL, DBG_CAT_INIT, DBG_SUBCAT_ALL, DBG_LVL_INFO, "%s", msg);
+ 				macAddr += AddrStep;
+ 			}
+@@ -2289,8 +2303,9 @@ VOID RtmpDrvAllMacPrint(
+ 
+ 		filp_close(file_w, NULL);
+ 	}
+-
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	set_fs(orig_fs);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	os_free_mem(msg);
+ }
+ 
+@@ -2303,7 +2318,9 @@ VOID RtmpDrvAllE2PPrint(
+ {
+ 	struct file *file_w;
+ 	RTMP_STRING *fileName = "EEPROMDump.txt";
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	mm_segment_t orig_fs;
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	RTMP_STRING *msg;
+ 	USHORT eepAddr = 0;
+ 	USHORT eepValue;
+@@ -2314,8 +2331,11 @@ VOID RtmpDrvAllE2PPrint(
+ 	if (!msg)
+ 		return;
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	orig_fs = get_fs();
+ 	set_fs(KERNEL_DS);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
++
+ 	/* open file */
+ 	file_w = filp_open(fileName, O_WRONLY | O_CREAT, 0);
+ 
+@@ -2342,6 +2362,9 @@ VOID RtmpDrvAllE2PPrint(
+ 				} else{
+ 					MTWF_DBG(NULL, DBG_CAT_INIT, DBG_SUBCAT_ALL, DBG_LVL_ERROR, "no file write method\n");
+ 				}
++#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)) /* kernel >= 5.18 */
++				/* __kernel_write is a GPL symbol, we cant use it */
++				kernel_write(file_w, msg, strlen(msg), &file_w->f_pos);
+ #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+ 				__kernel_write(file_w, msg, strlen(msg), &file_w->f_pos);
+ #elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
+@@ -2349,6 +2372,7 @@ VOID RtmpDrvAllE2PPrint(
+ #else
+ 				__vfs_write(file_w, msg, strlen(msg), &file_w->f_pos);
+ #endif
++
+ 				MTWF_DBG(NULL, DBG_CAT_INIT, DBG_SUBCAT_ALL, DBG_LVL_INFO, "%s", msg);
+ 				eepAddr += AddrStep;
+ 				pMacContent += (AddrStep >> 1);
+@@ -2365,7 +2389,9 @@ VOID RtmpDrvAllE2PPrint(
+ 		filp_close(file_w, NULL);
+ 	}
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	set_fs(orig_fs);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	os_free_mem(msg);
+ }
+ 
+@@ -2377,10 +2403,15 @@ VOID RtmpDrvAllRFPrint(
+ {
+ 	struct file *file_w;
+ 	RTMP_STRING *fileName = "RFDump.txt";
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	mm_segment_t orig_fs;
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	orig_fs = get_fs();
+ 	set_fs(KERNEL_DS);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
++
+ 	/* open file */
+ 	file_w = filp_open(fileName, O_WRONLY | O_CREAT, 0);
+ 
+@@ -2398,6 +2429,9 @@ VOID RtmpDrvAllRFPrint(
+ 			} else{
+ 				MTWF_DBG(NULL, DBG_CAT_INIT, DBG_SUBCAT_ALL, DBG_LVL_ERROR, "no file write method\n");
+ 			}
++#elif (KERNEL_VERSION(5, 18, 0) <= LINUX_VERSION_CODE) /* kernel >= 5.18 */
++			/* __kernel_write is a GPL symbol, we cant use it */
++			kernel_write(file_w, pBuf, BufLen, &file_w->f_pos);
+ #elif (KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE)
+ 			__kernel_write(file_w, pBuf, BufLen, &file_w->f_pos);
+ #elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
+@@ -2411,7 +2445,9 @@ VOID RtmpDrvAllRFPrint(
+ 		filp_close(file_w, NULL);
+ 	}
+ 
+-	set_fs(orig_fs);
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
++ 	set_fs(orig_fs);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ }
+ 
+ 
+--- a/mt_wifi/chips/mt7981_dbg.c
++++ b/mt_wifi/chips/mt7981_dbg.c
+@@ -4567,7 +4567,9 @@ static INT32 chip_show_coredump_proc(str
+ 	RTMP_STRING *msg;
+ 	UCHAR fileName[64];
+ 	struct file *file_w;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	mm_segment_t orig_fs;
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	UINT32 addr = 0;
+ 	UINT32 end_addr = 0;
+ 	UINT32 macVal = 0;
+@@ -4580,8 +4582,10 @@ static INT32 chip_show_coredump_proc(str
+ 
+ 	NdisZeroMemory(msg, 4);
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	orig_fs = get_fs();
+ 	set_fs(KERNEL_DS);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 
+ 	while (COREDUMP_QUEUE_INFO[i].Name != NULL) {
+ 		snprintf(fileName, sizeof(fileName), "/etc/%s.bin", COREDUMP_QUEUE_INFO[i].Name);
+@@ -4626,7 +4630,9 @@ static INT32 chip_show_coredump_proc(str
+ 	}
+ 
+ done:
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	set_fs(orig_fs);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	os_free_mem(msg);
+ 
+ 	return TRUE;
+--- a/mt_wifi/chips/mt7986_dbg.c
++++ b/mt_wifi/chips/mt7986_dbg.c
+@@ -4795,7 +4795,9 @@ static INT32 chip_show_coredump_proc(str
+ 	RTMP_STRING *msg;
+ 	UCHAR fileName[64];
+ 	struct file *file_w;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	mm_segment_t orig_fs;
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	UINT32 addr = 0;
+ 	UINT32 end_addr = 0;
+ 	UINT32 macVal = 0;
+@@ -4809,8 +4811,10 @@ static INT32 chip_show_coredump_proc(str
+ 
+ 	NdisZeroMemory(msg, 4);
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	orig_fs = get_fs();
+ 	set_fs(KERNEL_DS);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 
+ 	while (COREDUMP_QUEUE_INFO[i].Name != NULL) {
+ 		ret = snprintf(fileName, sizeof(fileName), "/etc/%s.bin", COREDUMP_QUEUE_INFO[i].Name);
+@@ -4859,7 +4863,9 @@ static INT32 chip_show_coredump_proc(str
+ 	}
+ 
+ done:
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	set_fs(orig_fs);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	os_free_mem(msg);
+ 
+ 	return TRUE;
+--- a/mt_wifi/include/os/rt_linux.h
++++ b/mt_wifi/include/os/rt_linux.h
+@@ -366,7 +366,9 @@ typedef struct file *RTMP_OS_FD;
+ typedef struct _OS_FS_INFO_ {
+ 	int				fsuid;
+ 	int				fsgid;
+-	mm_segment_t	fs;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
++ 	mm_segment_t	fs;
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ } OS_FS_INFO;
+ 
+ typedef struct _RTMP_OS_FD {
+--- a/mt_wifi/chips/mt7916_dbg.c
++++ b/mt_wifi/chips/mt7916_dbg.c
+@@ -4757,7 +4757,9 @@ static INT32 chip_show_coredump_proc(str
+ 	RTMP_STRING *msg;
+ 	UCHAR fileName[64];
+ 	struct file *file_w;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	mm_segment_t orig_fs;
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	UINT32 addr = 0;
+ 	UINT32 end_addr = 0;
+ 	UINT32 macVal = 0;
+@@ -4771,8 +4773,10 @@ static INT32 chip_show_coredump_proc(str
+ 
+ 	NdisZeroMemory(msg, 4);
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	orig_fs = get_fs();
+ 	set_fs(KERNEL_DS);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 
+ 	while (COREDUMP_QUEUE_INFO[i].Name != NULL) {
+ 		ret = snprintf(fileName, sizeof(fileName), "/etc/%s.bin", COREDUMP_QUEUE_INFO[i].Name);
+@@ -4821,7 +4825,9 @@ static INT32 chip_show_coredump_proc(str
+ 	}
+ 
+ done:
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	set_fs(orig_fs);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	os_free_mem(msg);
+ 
+ 	return TRUE;
+--- a/mt_wifi/embedded/ap/ap_cfg.c
++++ b/mt_wifi/embedded/ap/ap_cfg.c
+@@ -17779,7 +17779,9 @@ INT Show_SimSectionUlm_Proc(RTMP_ADAPTER
+ {
+ 	UCHAR fileName[64];
+ 	struct file *file_w;
+-	mm_segment_t orig_fs;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
++ 	mm_segment_t	fs;
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	UINT32 startaddr = 0,  endaddr = 0, addr = 0;
+ 	UINT32 macVal = 0;
+ 	UINT Idx;/* enable load from bin */
+@@ -17819,9 +17821,10 @@ INT Show_SimSectionUlm_Proc(RTMP_ADAPTER
+ 		startaddr = 0xE0000000;
+ 		endaddr = 0xE00D7FFF;
+ 	}
+-
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	orig_fs = get_fs();
+ 	set_fs(KERNEL_DS);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 	/* open file */
+ 	file_w = filp_open(fileName, O_WRONLY | O_CREAT, 0);
+ 
+@@ -17861,7 +17864,9 @@ INT Show_SimSectionUlm_Proc(RTMP_ADAPTER
+ 	}
+ 
+ done:
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0))
+ 	set_fs(orig_fs);
++#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)) */
+ 
+ 	return TRUE;
+ }

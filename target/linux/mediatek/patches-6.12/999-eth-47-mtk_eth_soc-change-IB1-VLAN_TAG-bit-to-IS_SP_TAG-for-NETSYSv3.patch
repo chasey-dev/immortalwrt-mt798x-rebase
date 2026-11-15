@@ -1,0 +1,46 @@
+---
+[v1] net: ethernet: mtk_eth_soc: change IB1 VLAN_TAG bit to IS_SP_TAG for NETSYSv3
+
+In NETSYSv3, IB1 bit 18 is repurposed from VLAN_TAG to IS_SP_TAG
+after the MTK_PPE_TB_CFG_IS_SP_TAG_EN is enabled. Rename
+mtk_get_ib1_vlan_tag_mask() to mtk_get_ib1_sp_tag_mask() and update
+its logic accordingly.
+---
+v1: Rename IB1 VLAN_TAG helper to IS_SP_TAG and restrict to NETSYSv3 or greater.
+---
+
+From 64d373fc955ef83dd69c645f9890c7d58250f929 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Fri, 17 Apr 2026 11:05:55 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: change IB1 VLAN_TAG bit to
+ IS_SP_TAG for NETSYSv3
+
+In NETSYSv3, IB1 bit 18 is repurposed from VLAN_TAG to IS_SP_TAG
+after the MTK_PPE_TB_CFG_IS_SP_TAG_EN is enabled.
+
+Rename mtk_get_ib1_vlan_tag_mask() to mtk_get_ib1_sp_tag_mask()
+and update its logic to return MTK_FOE_IB1_BIND_IS_SP_TAG_V3 for
+NETSYSv3 or greater, and 0 for older generations.
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.h | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -1911,12 +1911,12 @@ static inline u32 mtk_get_ib1_ppoe_mask(
+ 	return MTK_FOE_IB1_BIND_PPPOE;
+ }
+ 
+-static inline u32 mtk_get_ib1_vlan_tag_mask(struct mtk_eth *eth)
++static inline u32 mtk_get_ib1_sp_tag_mask(struct mtk_eth *eth)
+ {
+-	if (mtk_is_netsys_v2_or_greater(eth))
+-		return MTK_FOE_IB1_BIND_VLAN_TAG_V2;
++	if (mtk_is_netsys_v3_or_greater(eth))
++		return MTK_FOE_IB1_BIND_IS_SP_TAG_V3;
+ 
+-	return MTK_FOE_IB1_BIND_VLAN_TAG;
++	return 0;
+ }
+ 
+ static inline u32 mtk_get_ib1_vlan_layer_mask(struct mtk_eth *eth)

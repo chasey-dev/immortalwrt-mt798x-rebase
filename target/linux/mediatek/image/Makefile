@@ -39,6 +39,7 @@ define Build/asus-trx
 endef
 
 include $(SUBTARGET).mk
+include filogic-ext.mk
 
 define Image/Build
 	$(call Image/Build/$(1),$(1))

@@ -1,0 +1,165 @@
+---
+[v1] net: dsa: mt7530: add get_stats64
+
+Add get_stats64 and MT7530_PORT_MIB_* defines.
+---
+v1: add get_stats64
+---
+
+From 4da2d3fa4fac26358cbe61b32bbaf56dbe9fdad2 Mon Sep 17 00:00:00 2001
+From: YP Wang <yp.wang@mediatek.com>
+Date: Tue, 3 Nov 2026 08:45:03 +0800
+Subject: [PATCH] net: dsa: mt7530: add get_stats64
+
+Backport of upstream commit 88c810f35ed5 ("net: dsa: mt7530: implement
+.get_stats64") to 6.12.
+
+Unlike the upstream patch, this also adds mt7530_read_port_stats() and
+the MT7530_PORT_MIB_* register offset defines in mt7530.h, which are
+introduced by earlier patches of the same upstream series and are not
+present in this tree.
+
+Link: https://patch.msgid.link/20250410163022.3695-7-ansuelsmth@gmail.com
+Link: https://patch.msgid.link/20250410163022.3695-6-ansuelsmth@gmail.com
+Link: https://patch.msgid.link/20250410163022.3695-5-ansuelsmth@gmail.com
+Signed-off-by: YP Wang <yp.wang@mediatek.com>
+---
+ drivers/net/dsa/mt7530.c | 61 ++++++++++++++++++++++++++++++++++++++++
+ drivers/net/dsa/mt7530.h | 42 +++++++++++++++++++++++++++
+ 2 files changed, 103 insertions(+)
+
+diff --git a/drivers/net/dsa/mt7530.c b/drivers/net/dsa/mt7530.c
+index 5331379..796dd08 100644
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -794,6 +794,66 @@ mt7530_get_sset_count(struct dsa_switch *ds, int port, int sset)
+ 	return ARRAY_SIZE(mt7530_mib);
+ }
+ 
++static void
++mt7530_read_port_stats(struct mt7530_priv *priv, int port,
++		       u32 offset, u8 size, uint64_t *data)
++{
++	u32 val, reg = MT7530_PORT_MIB_COUNTER(port) + offset;
++
++	val = mt7530_read(priv, reg);
++	*data = val;
++
++	if (size == 2) {
++		val = mt7530_read(priv, reg + 4);
++		*data |= (u64)val << 32;
++	}
++}
++
++static void mt7530_get_stats64(struct dsa_switch *ds, int port,
++			       struct rtnl_link_stats64 *storage)
++{
++	struct mt7530_priv *priv = ds->priv;
++	uint64_t data;
++
++	/* MIB counter doesn't provide a FramesTransmittedOK but instead
++	 * provide stats for Unicast, Broadcast and Multicast frames separately.
++	 * To simulate a global frame counter, read Unicast and addition Multicast
++	 * and Broadcast later
++	 */
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_RX_UNICAST, 1,
++			       &storage->rx_packets);
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_RX_MULTICAST, 1,
++			       &storage->multicast);
++	storage->rx_packets += storage->multicast;
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_RX_BROADCAST, 1,
++			       &data);
++	storage->rx_packets += data;
++
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_TX_UNICAST, 1,
++			       &storage->tx_packets);
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_TX_MULTICAST, 1,
++			       &data);
++	storage->tx_packets += data;
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_TX_BROADCAST, 1,
++			       &data);
++	storage->tx_packets += data;
++
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_RX_BYTES, 2,
++			       &storage->rx_bytes);
++
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_TX_BYTES, 2,
++			       &storage->tx_bytes);
++
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_RX_DROP, 1,
++			       &storage->rx_dropped);
++
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_TX_DROP, 1,
++			       &storage->tx_dropped);
++
++	mt7530_read_port_stats(priv, port, MT7530_PORT_MIB_RX_CRC_ERR, 1,
++			       &storage->rx_crc_errors);
++}
++
+ static int
+ mt7530_set_ageing_time(struct dsa_switch *ds, unsigned int msecs)
+ {
+@@ -3193,6 +3253,7 @@ const struct dsa_switch_ops mt7530_switch_ops = {
+ 	.get_strings		= mt7530_get_strings,
+ 	.get_ethtool_stats	= mt7530_get_ethtool_stats,
+ 	.get_sset_count		= mt7530_get_sset_count,
++	.get_stats64		= mt7530_get_stats64,
+ 	.set_ageing_time	= mt7530_set_ageing_time,
+ 	.port_enable		= mt7530_port_enable,
+ 	.port_disable		= mt7530_port_disable,
+diff --git a/drivers/net/dsa/mt7530.h b/drivers/net/dsa/mt7530.h
+index 2aac404..5afcb2d 100644
+--- a/drivers/net/dsa/mt7530.h
++++ b/drivers/net/dsa/mt7530.h
+@@ -411,6 +411,48 @@ enum mt7530_vlan_port_acc_frm {
+ 
+ /* Register for MIB */
+ #define MT7530_PORT_MIB_COUNTER(x)	(0x4000 + (x) * 0x100)
++/* Each define is an offset of MT7530_PORT_MIB_COUNTER */
++#define   MT7530_PORT_MIB_TX_DROP	0x00
++#define   MT7530_PORT_MIB_TX_CRC_ERR	0x04
++#define   MT7530_PORT_MIB_TX_UNICAST	0x08
++#define   MT7530_PORT_MIB_TX_MULTICAST	0x0c
++#define   MT7530_PORT_MIB_TX_BROADCAST	0x10
++#define   MT7530_PORT_MIB_TX_COLLISION	0x14
++#define   MT7530_PORT_MIB_TX_SINGLE_COLLISION 0x18
++#define   MT7530_PORT_MIB_TX_MULTIPLE_COLLISION 0x1c
++#define   MT7530_PORT_MIB_TX_DEFERRED	0x20
++#define   MT7530_PORT_MIB_TX_LATE_COLLISION 0x24
++#define   MT7530_PORT_MIB_TX_EXCESSIVE_COLLISION 0x28
++#define   MT7530_PORT_MIB_TX_PAUSE	0x2c
++#define   MT7530_PORT_MIB_TX_PKT_SZ_64	0x30
++#define   MT7530_PORT_MIB_TX_PKT_SZ_65_TO_127 0x34
++#define   MT7530_PORT_MIB_TX_PKT_SZ_128_TO_255 0x38
++#define   MT7530_PORT_MIB_TX_PKT_SZ_256_TO_511 0x3c
++#define   MT7530_PORT_MIB_TX_PKT_SZ_512_TO_1023 0x40
++#define   MT7530_PORT_MIB_TX_PKT_SZ_1024_TO_MAX 0x44
++#define   MT7530_PORT_MIB_TX_BYTES	0x48 /* 64 bytes */
++#define   MT7530_PORT_MIB_RX_DROP	0x60
++#define   MT7530_PORT_MIB_RX_FILTERING	0x64
++#define   MT7530_PORT_MIB_RX_UNICAST	0x68
++#define   MT7530_PORT_MIB_RX_MULTICAST	0x6c
++#define   MT7530_PORT_MIB_RX_BROADCAST	0x70
++#define   MT7530_PORT_MIB_RX_ALIGN_ERR	0x74
++#define   MT7530_PORT_MIB_RX_CRC_ERR	0x78
++#define   MT7530_PORT_MIB_RX_UNDER_SIZE_ERR 0x7c
++#define   MT7530_PORT_MIB_RX_FRAG_ERR	0x80
++#define   MT7530_PORT_MIB_RX_OVER_SZ_ERR 0x84
++#define   MT7530_PORT_MIB_RX_JABBER_ERR	0x88
++#define   MT7530_PORT_MIB_RX_PAUSE	0x8c
++#define   MT7530_PORT_MIB_RX_PKT_SZ_64	0x90
++#define   MT7530_PORT_MIB_RX_PKT_SZ_65_TO_127 0x94
++#define   MT7530_PORT_MIB_RX_PKT_SZ_128_TO_255 0x98
++#define   MT7530_PORT_MIB_RX_PKT_SZ_256_TO_511 0x9c
++#define   MT7530_PORT_MIB_RX_PKT_SZ_512_TO_1023 0xa0
++#define   MT7530_PORT_MIB_RX_PKT_SZ_1024_TO_MAX 0xa4
++#define   MT7530_PORT_MIB_RX_BYTES	0xa8 /* 64 bytes */
++#define   MT7530_PORT_MIB_RX_CTRL_DROP	0xb0
++#define   MT7530_PORT_MIB_RX_INGRESS_DROP 0xb4
++#define   MT7530_PORT_MIB_RX_ARL_DROP	0xb8
+ #define MT7530_MIB_CCR			0x4fe0
+ #define  CCR_MIB_ENABLE			BIT(31)
+ #define  CCR_RX_OCT_CNT_GOOD		BIT(7)
+-- 
+2.45.2
+

@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+/dts-v1/;
+#include "mt7986a-clx-s20-common.dtsi"
+
+/ {
+	model = "CLX S20P";
+	compatible = "clx,s20p", "mediatek,mt7986a";
+};
+
+&eth {
+	gmac1: mac@1 {
+		compatible = "mediatek,eth-mac";
+		reg = <1>;
+		nvmem-cells = <&macaddr_factory_24 0>;
+		nvmem-cell-names = "mac-address";
+		phy-mode = "2500base-x";
+		phy-handle = <&phy7>;
+	};
+};
+
+&mdio {
+	phy5: ethernet-phy@5 {
+		compatible = "ethernet-phy-ieee802.3-c45";
+		reg = <5>;
+		reset-assert-us = <100000>;
+		reset-deassert-us = <100000>;
+		reset-gpios = <&pio 48 GPIO_ACTIVE_LOW>;
+		interrupt-parent = <&pio>;
+		interrupts = <47 IRQ_TYPE_LEVEL_LOW>;
+		realtek,aldps-enable;
+		realtek,led-link-select = <0xa7 0x03 0x0>;
+		realtek,led-act-select = <0x001b>;
+	};
+
+	phy7: ethernet-phy@7 {
+		compatible = "ethernet-phy-ieee802.3-c45";
+		reg = <7>;
+		reset-assert-us = <100000>;
+		reset-deassert-us = <100000>;
+		reset-gpios = <&pio 6 GPIO_ACTIVE_LOW>;
+		interrupt-parent = <&pio>;
+		interrupts = <46 IRQ_TYPE_LEVEL_LOW>;
+		realtek,aldps-enable;
+		realtek,led-link-select = <0xa7 0x03 0x0>;
+		realtek,led-act-select = <0x001b>;
+	};
+};
+
+&switch {
+	ports {
+		port@0 {
+			label = "lan5";
+		};
+
+		port@1 {
+			label = "lan4";
+		};
+
+		port@2 {
+			label = "lan3";
+		};
+
+		port@3 {
+			label = "lan2";
+		};
+
+		port@4 {
+			label = "lan1";
+		};
+
+		port@5 {
+			reg = <5>;
+			label = "lan6";
+			phy-mode = "2500base-x";
+			phy-handle = <&phy5>;
+		};
+	};
+};

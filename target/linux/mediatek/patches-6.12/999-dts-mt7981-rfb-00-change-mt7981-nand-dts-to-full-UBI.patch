@@ -1,0 +1,101 @@
+--- a/arch/arm64/boot/dts/mediatek/mt7981-rfb-spim-nand.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb-spim-nand.dtso
+@@ -7,7 +7,8 @@
+ 
+ 	fragment@0 {
+ 		target = <&chosen>;
+-		rootdisk-spim-nand = <&ubi_rootdisk>;
++		rootdisk-spim-nand = <&ubi_root>;
++		bootargs-append = " ubi.block=0,firmware root=/dev/fit0 rootwait";
+ 	};
+ 
+ 	fragment@1 {
+@@ -17,10 +18,10 @@
+ 			#address-cells = <1>;
+ 			#size-cells = <0>;
+ 
+-			spi_nand: spi_nand@1 {
++			flash@0 {
+ 				compatible = "spi-nand";
+-				reg = <1>;
+-				spi-max-frequency = <10000000>;
++				reg = <0>;
++				spi-max-frequency = <52000000>;
+ 				spi-tx-bus-width = <4>;
+ 				spi-rx-bus-width = <4>;
+ 
+@@ -31,32 +32,45 @@
+ 
+ 					partition@0 {
+ 						label = "BL2";
+-						reg = <0x00000 0x0100000>;
++						reg = <0x00000 0x0200000>;
+ 						read-only;
+ 					};
+ 
+-					partition@100000 {
+-						label = "u-boot-env";
+-						reg = <0x0100000 0x0080000>;
+-					};
+-
+-					factory: partition@180000 {
+-						label = "Factory";
+-						reg = <0x180000 0x0200000>;
+-					};
+-
+-					partition@380000 {
+-						label = "FIP";
+-						reg = <0x380000 0x0200000>;
+-					};
+-
+-					partition@580000 {
++					partition@200000 {
+ 						label = "ubi";
+-						reg = <0x580000 0x4000000>;
++						reg = <0x0200000 0x7e00000>;
+ 						compatible = "linux,ubi";
+ 
+ 						volumes {
+-							ubi_rootdisk: ubi-volume-fit {
++							ubi-volume-ubootenv {
++								volname = "ubootenv";
++								nvmem-layout {
++									compatible = "u-boot,env-redundant-bool";
++								};
++							};
++
++							ubi-volume-ubootenv2 {
++								volname = "ubootenv2";
++								nvmem-layout {
++									compatible = "u-boot,env-redundant-bool";
++								};
++							};
++
++							ubi_factory: ubi-volume-factory {
++								volname = "factory";
++
++								nvmem-layout {
++									compatible = "fixed-layout";
++									#address-cells = <1>;
++									#size-cells = <1>;
++
++									eeprom_wmac: eeprom@0 {
++										reg = <0x0 0x1000>;
++									};
++								};
++							};
++
++							ubi_root: ubi-volume-fit {
+ 								volname = "fit";
+ 							};
+ 						};
+@@ -69,7 +83,8 @@
+ 	fragment@2 {
+ 		target = <&wifi>;
+ 		__overlay__ {
+-			mediatek,mtd-eeprom = <&factory 0x0>;
++			nvmem-cell-names = "eeprom";
++			nvmem-cells = <&eeprom_wmac>;
+ 			status = "okay";
+ 		};
+ 	};

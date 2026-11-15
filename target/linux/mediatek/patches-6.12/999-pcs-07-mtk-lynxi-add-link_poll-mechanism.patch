@@ -1,0 +1,463 @@
+---
+[v2] net: pcs: mtk-lynxi: add link_poll mechanism
+
+Without this patch, the SGMII PCS cannot recover from a link-down
+state when the system encounters certain error situations.
+---
+v2: Fix the issue with mtk_pcs_lynxi_get_state() reporting an unknown speed.
+v1: Add a SGMII link_poll mechanism to recover from a link-down state.
+---
+
+From 7dfffc16b71099fd37e218af7e62e3adb56b0e41 Mon Sep 17 00:00:00 2001
+From: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+Date: Fri, 2 Jan 2026 09:44:08 +0800
+Subject: [PATCH] net: pcs: mtk-lynxi: add link_poll mechanism
+
+Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
+---
+ drivers/net/pcs/pcs-mtk-lynxi.c   | 217 +++++++++++++++++++-----------
+ include/linux/pcs/pcs-mtk-lynxi.h |  38 ++++++
+ 2 files changed, 174 insertions(+), 81 deletions(-)
+
+--- a/drivers/net/pcs/pcs-mtk-lynxi.c
++++ b/drivers/net/pcs/pcs-mtk-lynxi.c
+@@ -26,6 +26,7 @@
+ #define SGMSYS_PCS_CONTROL_1		0x0
+ #define SGMII_BMCR			GENMASK(15, 0)
+ #define SGMII_BMSR			GENMASK(31, 16)
++#define SGMII_LINK_STATUS		BIT(18)
+ #define SGMII_REF_CK_SEL		BIT(24)
+ 
+ #define SGMSYS_PCS_DEVICE_ID		0x4
+@@ -78,38 +79,6 @@
+ 
+ #define MTK_NETSYS_V3_AMA_RGC3		0x128
+ 
+-/* struct mtk_pcs_lynxi -  This structure holds each sgmii regmap andassociated
+- *                         data
+- * @regmap:                The register map pointing at the range used to setup
+- *                         SGMII modes
+- * @dev:                   Pointer to device owning the PCS
+- * @ana_rgc3:              The offset of register ANA_RGC3 relative to regmap
+- * @interface:             Currently configured interface mode
+- * @pcs:                   Phylink PCS structure
+- * @flags:                 Flags indicating hardware properties
+- * @rstc:                  Reset controller
+- * @sgmii_sel:             SGMII Register Clock
+- * @sgmii_rx:              SGMII RX Clock
+- * @sgmii_tx:              SGMII TX Clock
+- * @node:                  List node
+- */
+-struct mtk_pcs_lynxi {
+-	struct regmap		*regmap;
+-	struct device		*dev;
+-	u32			ana_rgc3;
+-	phy_interface_t		interface;
+-	struct			phylink_pcs pcs;
+-	u32			flags;
+-	unsigned int		neg_mode;
+-	__ETHTOOL_DECLARE_LINK_MODE_MASK(advertising);
+-	struct reset_control	*rstc;
+-	struct clk		*sgmii_sel;
+-	struct clk		*sgmii_rx;
+-	struct clk		*sgmii_tx;
+-	struct phy		*xfi_tphy;
+-	struct list_head	node;
+-};
+-
+ static LIST_HEAD(mtk_pcs_lynxi_instances);
+ static DEFINE_MUTEX(instance_mutex);
+ 
+@@ -118,7 +87,7 @@ static int mtk_pcs_lynxi_config(struct p
+ 				const unsigned long *advertising,
+ 				bool permit_pause_to_mac);
+ 
+-static struct mtk_pcs_lynxi *pcs_to_mtk_pcs_lynxi(struct phylink_pcs *pcs)
++struct mtk_pcs_lynxi *pcs_to_mtk_pcs_lynxi(struct phylink_pcs *pcs)
+ {
+ 	return container_of(pcs, struct mtk_pcs_lynxi, pcs);
+ }
+@@ -138,13 +107,70 @@ static unsigned int mtk_pcs_lynxi_inband
+ 	}
+ }
+ 
+-static void mtk_pcs_lynxi_get_state(struct phylink_pcs *pcs,
+-				    unsigned int neg_mode,
+-				    struct phylink_link_state *state)
++static int mtk_pcs_lynxi_link_status(struct mtk_pcs_lynxi *mpcs)
+ {
+-	struct mtk_pcs_lynxi *mpcs = pcs_to_mtk_pcs_lynxi(pcs);
++	unsigned int val;
++
++	mutex_lock(&mpcs->regmap_lock);
++	regmap_read(mpcs->regmap, SGMSYS_PCS_CONTROL_1, &val);
++	mutex_unlock(&mpcs->regmap_lock);
++
++	return FIELD_GET(SGMII_LINK_STATUS, val);
++}
++
++static void mtk_pcs_lynxi_store_mpcs_state(struct mtk_pcs_lynxi *mpcs,
++					   const struct phylink_link_state *state)
++{
++	mpcs->state.speed = state->speed;
++	mpcs->state.duplex = state->duplex;
++	mpcs->state.interface = state->interface;
++	mpcs->state.an_complete = state->an_complete;
++
++	/* Publish the link flag last, so that a concurrent
++	 * mtk_pcs_lynxi_load_mpcs_state() seeing the link as up also sees the
++	 * speed, duplex and an_complete that belong to it.
++	 */
++	smp_wmb();
++	mpcs->state.link = state->link;
++}
++
++static void mtk_pcs_lynxi_load_mpcs_state(struct mtk_pcs_lynxi *mpcs,
++					  struct phylink_link_state *state)
++{
++	/* When the interface of the mpcs is not initialized,
++	 * we should not report the states.
++	 */
++	if (mpcs->state.interface == PHY_INTERFACE_MODE_NA) {
++		state->link = false;
++		return;
++	}
++
++	state->link = mpcs->state.link;
++
++	/* Pair with the smp_wmb() in mtk_pcs_lynxi_store_mpcs_state(): once
++	 * the link flag has been read, the speed, duplex and an_complete that
++	 * belong to it are visible as well.
++	 */
++	smp_rmb();
++	state->speed = mpcs->state.speed;
++	state->duplex = mpcs->state.duplex;
++	state->interface = mpcs->state.interface;
++	state->an_complete = mpcs->state.an_complete;
++}
++
++static void mtk_pcs_lynxi_update_state(struct mtk_pcs_lynxi *mpcs)
++{
++	struct phylink_link_state state = mpcs->state;
+ 	unsigned int bm, adv;
+ 
++	/* An empty advertisement means mtk_pcs_lynxi_get_state() has not run
++	 * yet. Decoding now would report the link as up with speed 0.
++	 */
++	if (linkmode_empty(state.advertising))
++		return;
++
++	mutex_lock(&mpcs->regmap_lock);
++
+ 	/* Read the BMSR and LPA */
+ 	if (regmap_read(mpcs->regmap, SGMSYS_PCS_CONTROL_1, &bm) ||
+ 	    regmap_read(mpcs->regmap, SGMSYS_PCS_ADVERTISE, &adv)) {
+@@ -152,19 +178,33 @@ static void mtk_pcs_lynxi_get_state(stru
+ 		return;
+ 	}
+ 
+-	phylink_mii_c22_pcs_decode_state(state, neg_mode,
++	phylink_mii_c22_pcs_decode_state(&state, mpcs->neg_mode,
+ 					 FIELD_GET(SGMII_BMSR, bm),
+ 					 FIELD_GET(SGMII_LPA, adv));
+ 
+-	/* Continuously repeat re-configuration sequence until link comes up */
+-	if (!state->link) {
+-		mtk_pcs_lynxi_config(pcs, neg_mode,
+-				     state->interface, mpcs->advertising, false);
+-	}
++	state.interface = mpcs->interface;
++
++	mutex_unlock(&mpcs->regmap_lock);
++
++	mtk_pcs_lynxi_store_mpcs_state(mpcs, &state);
+ }
++
++static void mtk_pcs_lynxi_get_state(struct phylink_pcs *pcs,
++				    unsigned int neg_mode,
++				    struct phylink_link_state *state)
++{
++	struct mtk_pcs_lynxi *mpcs = pcs_to_mtk_pcs_lynxi(pcs);
++
++	/* Passing the advertising and lp_advertising parameters to
++	 * phylink_mii_c22_pcs_decode_state()in mtk_pcs_lynxi_update_state().
++	 */
++	linkmode_copy(mpcs->state.advertising, state->advertising);
++	linkmode_copy(mpcs->state.lp_advertising, state->lp_advertising);
++
++	mtk_pcs_lynxi_load_mpcs_state(mpcs, state);
+ }
+ 
+-static void mtk_sgmii_reset(struct mtk_pcs_lynxi *mpcs)
++static void mtk_pcs_lynxi_hw_reset(struct mtk_pcs_lynxi *mpcs)
+ {
+ 	if (!mpcs->rstc)
+ 		return;
+@@ -216,54 +256,60 @@ static int mtk_pcs_lynxi_config(struct p
+ 		trxbuf_thr = 0x2111;
+ 	}
+ 
+-	if (mpcs->interface != interface || mpcs->neg_mode != neg_mode) {
+-		link_timer = phylink_get_link_timer_ns(interface);
+-		if (link_timer < 0)
+-			return link_timer;
+-
+-		/* PHYA power down */
+-		regmap_set_bits(mpcs->regmap, SGMSYS_QPHY_PWR_STATE_CTRL,
+-				SGMII_PHYA_PWD);
+-
+-		/* Reset SGMII PCS state */
+-		if (mpcs->xfi_tphy)
+-			phy_reset(mpcs->xfi_tphy);
+-
+-		mtk_sgmii_reset(mpcs);
+-		regmap_set_bits(mpcs->regmap, SGMSYS_RESERVED_0,
+-				SGMII_SW_RESET);
+-
+-		/* Configure the interface polarity */
+-		pnswap_tx = (mpcs->flags & MTK_SGMII_FLAG_PN_SWAP_TX) ?
+-			    SGMII_PN_SWAP_TX : 0;
+-		pnswap_rx = (mpcs->flags & MTK_SGMII_FLAG_PN_SWAP_RX) ?
+-			    SGMII_PN_SWAP_RX : 0;
+-		regmap_update_bits(mpcs->regmap, SGMSYS_QPHY_WRAP_CTRL,
+-				   SGMII_PN_SWAP_MASK,
+-				   pnswap_tx | pnswap_rx);
+-
+-		if (interface == PHY_INTERFACE_MODE_2500BASEX)
+-			rgc3 = SGMII_PHY_SPEED_3_125G;
+-		else
+-			rgc3 = SGMII_PHY_SPEED_1_25G;
++	link_timer = phylink_get_link_timer_ns(interface);
++	if (link_timer < 0)
++		return link_timer;
+ 
+-		/* Configure the underlying interface speed */
+-		regmap_update_bits(mpcs->regmap, mpcs->ana_rgc3,
+-				   SGMII_PHY_SPEED_MASK, rgc3);
+-
+-		/* Setup the link timer */
+-		regmap_write(mpcs->regmap, SGMSYS_PCS_LINK_TIMER,
+-			     SGMII_LINK_TIMER_VAL(link_timer));
++	mutex_lock(&mpcs->regmap_lock);
+ 
++	if (mpcs->interface != interface || mpcs->neg_mode != neg_mode) {
+ 		mpcs->interface = interface;
+ 		mpcs->neg_mode = neg_mode;
+-		linkmode_copy(mpcs->advertising, advertising);
+ 		mode_changed = true;
+ 	}
+ 
++	/* PHYA power down */
++	regmap_set_bits(mpcs->regmap, SGMSYS_QPHY_PWR_STATE_CTRL,
++			SGMII_PHYA_PWD);
++
++	/* Reset SGMII PCS state */
++	if (mpcs->xfi_tphy)
++		phy_reset(mpcs->xfi_tphy);
++
++	mtk_pcs_lynxi_hw_reset(mpcs);
++	regmap_set_bits(mpcs->regmap, SGMSYS_RESERVED_0,
++			SGMII_SW_RESET);
++
++	/* Configure the interface polarity */
++	pnswap_tx = (mpcs->flags & MTK_SGMII_FLAG_PN_SWAP_TX) ?
++		    SGMII_PN_SWAP_TX : 0;
++	pnswap_rx = (mpcs->flags & MTK_SGMII_FLAG_PN_SWAP_RX) ?
++		    SGMII_PN_SWAP_RX : 0;
++	regmap_update_bits(mpcs->regmap, SGMSYS_QPHY_WRAP_CTRL,
++			   SGMII_PN_SWAP_MASK,
++			   pnswap_tx | pnswap_rx);
++
++	if (interface == PHY_INTERFACE_MODE_2500BASEX)
++		rgc3 = SGMII_PHY_SPEED_3_125G;
++	else
++		rgc3 = SGMII_PHY_SPEED_1_25G;
++
++	/* Configure the underlying interface speed */
++	regmap_update_bits(mpcs->regmap, mpcs->ana_rgc3,
++			   SGMII_PHY_SPEED_MASK, rgc3);
++
++	/* Setup the link timer */
++	regmap_write(mpcs->regmap, SGMSYS_PCS_LINK_TIMER,
++		     SGMII_LINK_TIMER_VAL(link_timer));
++
+ 	/* Update the advertisement, noting whether it has changed */
+ 	regmap_update_bits_check(mpcs->regmap, SGMSYS_PCS_ADVERTISE,
+ 				 SGMII_ADVERTISE, advertise, &changed);
++	/* Save the advertisement when the advertising pointer does not
++	 * come from link_poll.
++	 */
++	if (changed && advertising != mpcs->advertising)
++		linkmode_copy(mpcs->advertising, advertising);
+ 
+ 	/* Update the sgmsys mode register */
+ 	regmap_update_bits(mpcs->regmap, SGMSYS_SGMII_MODE,
+@@ -289,8 +335,9 @@ static int mtk_pcs_lynxi_config(struct p
+ 	regmap_write(mpcs->regmap, SGMSYS_QPHY_PWR_STATE_CTRL, 0);
+ 
+ 	/* Setup PMA/PMD */
+-	if (mode_changed)
+-		phy_set_mode_ext(mpcs->xfi_tphy, PHY_MODE_ETHERNET, interface);
++	phy_set_mode_ext(mpcs->xfi_tphy, PHY_MODE_ETHERNET, interface);
++
++	mutex_unlock(&mpcs->regmap_lock);
+ 
+ 	return changed || mode_changed;
+ }
+@@ -299,7 +346,9 @@ static void mtk_pcs_lynxi_restart_an(str
+ {
+ 	struct mtk_pcs_lynxi *mpcs = pcs_to_mtk_pcs_lynxi(pcs);
+ 
++	mutex_lock(&mpcs->regmap_lock);
+ 	regmap_set_bits(mpcs->regmap, SGMSYS_PCS_CONTROL_1, BMCR_ANRESTART);
++	mutex_unlock(&mpcs->regmap_lock);
+ }
+ 
+ static void mtk_pcs_lynxi_link_up(struct phylink_pcs *pcs,
+@@ -308,8 +357,20 @@ static void mtk_pcs_lynxi_link_up(struct
+ 				  int duplex)
+ {
+ 	struct mtk_pcs_lynxi *mpcs = pcs_to_mtk_pcs_lynxi(pcs);
++	unsigned long t_start = jiffies;
+ 	unsigned int sgm_mode;
+ 
++	do {
++		msleep(100);
++
++		if (mtk_pcs_lynxi_link_status(mpcs))
++			goto setup_force;
++
++	} while (time_before(jiffies, t_start + msecs_to_jiffies(10000)));
++
++	dev_warn(mpcs->dev, "wait link up timeout!\n");
++
++setup_force:
+ 	if (neg_mode != PHYLINK_PCS_NEG_INBAND_ENABLED) {
+ 		/* Force the speed and duplex setting */
+ 		if (speed == SPEED_10)
+@@ -322,12 +383,38 @@ static void mtk_pcs_lynxi_link_up(struct
+ 		if (duplex != DUPLEX_FULL)
+ 			sgm_mode |= SGMII_DUPLEX_HALF;
+ 
++		mutex_lock(&mpcs->regmap_lock);
+ 		regmap_update_bits(mpcs->regmap, SGMSYS_SGMII_MODE,
+ 				   SGMII_DUPLEX_HALF | SGMII_SPEED_MASK,
+ 				   sgm_mode);
++		mutex_unlock(&mpcs->regmap_lock);
+ 	}
+ }
+ 
++static void mtk_pcs_lynxi_link_poll(struct work_struct *work)
++{
++	struct mtk_pcs_lynxi *mpcs = container_of(work, struct mtk_pcs_lynxi,
++						  link_poll.work);
++
++	if ((mpcs->interface != PHY_INTERFACE_MODE_SGMII &&
++	     mpcs->interface != PHY_INTERFACE_MODE_1000BASEX &&
++	     mpcs->interface != PHY_INTERFACE_MODE_2500BASEX) ||
++	    (mpcs->poll == false))
++		goto exit;
++
++	if (mtk_pcs_lynxi_link_status(mpcs)) {
++		mtk_pcs_lynxi_update_state(mpcs);
++	} else {
++		mpcs->state.link = false;
++		mtk_pcs_lynxi_config(&mpcs->pcs, mpcs->neg_mode, mpcs->interface,
++				     mpcs->advertising, false);
++	}
++
++exit:
++	if (!delayed_work_pending(&mpcs->link_poll))
++		schedule_delayed_work(&mpcs->link_poll, msecs_to_jiffies(1000));
++}
++
+ static int mtk_pcs_lynxi_enable(struct phylink_pcs *pcs)
+ {
+ 	struct mtk_pcs_lynxi *mpcs = pcs_to_mtk_pcs_lynxi(pcs);
+@@ -340,6 +427,9 @@ static int mtk_pcs_lynxi_enable(struct p
+ 	if (mpcs->xfi_tphy)
+ 		phy_power_on(mpcs->xfi_tphy);
+ 
++	if (!delayed_work_pending(&mpcs->link_poll))
++		schedule_delayed_work(&mpcs->link_poll, msecs_to_jiffies(1000));
++
+ 	return 0;
+ }
+ 
+@@ -347,6 +437,10 @@ static void mtk_pcs_lynxi_disable(struct
+ {
+ 	struct mtk_pcs_lynxi *mpcs = pcs_to_mtk_pcs_lynxi(pcs);
+ 
++	cancel_delayed_work_sync(&mpcs->link_poll);
++
++	mpcs->state.link = false;
++
+ 	regmap_set_bits(mpcs->regmap, SGMSYS_QPHY_PWR_STATE_CTRL, SGMII_PHYA_PWD);
+ 
+ 	if (mpcs->sgmii_tx && mpcs->sgmii_rx) {
+@@ -408,6 +502,7 @@ static struct phylink_pcs *mtk_pcs_lynxi
+ 			return ERR_PTR(-ENOMEM);
+ 	};
+ 
++	mpcs->dev = dev;
+ 	mpcs->ana_rgc3 = ana_rgc3;
+ 	mpcs->regmap = regmap;
+ 	mpcs->flags = flags;
+@@ -415,6 +510,9 @@ static struct phylink_pcs *mtk_pcs_lynxi
+ 	mpcs->pcs.neg_mode = true;
+ 	mpcs->pcs.poll = true;
+ 	mpcs->interface = PHY_INTERFACE_MODE_NA;
++	mpcs->poll = true;
++	mutex_init(&mpcs->regmap_lock);
++	INIT_DELAYED_WORK(&mpcs->link_poll, mtk_pcs_lynxi_link_poll);
+ 
+ 	return &mpcs->pcs;
+ };
+--- a/include/linux/pcs/pcs-mtk-lynxi.h
++++ b/include/linux/pcs/pcs-mtk-lynxi.h
+@@ -5,6 +5,45 @@
+ #include <linux/phylink.h>
+ #include <linux/regmap.h>
+ 
++/* struct mtk_pcs_lynxi -  This structure holds each sgmii regmap andassociated
++ *                         data
++ * @regmap:                The register map pointing at the range used to setup
++ *                         SGMII modes
++ * @dev:                   Pointer to device owning the PCS
++ * @ana_rgc3:              The offset of register ANA_RGC3 relative to regmap
++ * @interface:             Currently configured interface mode
++ * @pcs:                   Phylink PCS structure
++ * @flags:                 Flags indicating hardware properties
++ * @rstc:                  Reset controller
++ * @sgmii_sel:             SGMII Register Clock
++ * @sgmii_rx:              SGMII RX Clock
++ * @sgmii_tx:              SGMII TX Clock
++ * @state:                 Link state cached by the link_poll worker.
++ * @node:                  List node
++ */
++struct mtk_pcs_lynxi {
++	struct regmap		*regmap;
++	struct device		*dev;
++	u32			ana_rgc3;
++	phy_interface_t		interface;
++	struct			phylink_pcs pcs;
++	u32			flags;
++	unsigned int		neg_mode;
++	__ETHTOOL_DECLARE_LINK_MODE_MASK(advertising);
++	struct reset_control	*rstc;
++	struct clk		*sgmii_sel;
++	struct clk		*sgmii_rx;
++	struct clk		*sgmii_tx;
++	struct phy		*xfi_tphy;
++	bool			poll;
++	struct delayed_work	link_poll;
++	struct phylink_link_state	state;
++	struct mutex		regmap_lock;
++	struct list_head	node;
++};
++
++struct mtk_pcs_lynxi *pcs_to_mtk_pcs_lynxi(struct phylink_pcs *pcs);
++
+ #define MTK_SGMII_FLAG_PN_SWAP_TX BIT(0)
+ #define MTK_SGMII_FLAG_PN_SWAP_RX BIT(1)
+ #define MTK_SGMII_FLAG_PHYA_TRX_CK BIT(2)

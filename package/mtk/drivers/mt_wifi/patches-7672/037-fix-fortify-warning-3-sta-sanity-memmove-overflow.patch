@@ -1,0 +1,18 @@
+--- a/mt_wifi/embedded/sta/sanity.c
++++ b/mt_wifi/embedded/sta/sanity.c
+@@ -374,7 +374,14 @@ BOOLEAN PeerAssocRspSanity(
+ 			ft_mic_cont.rsnxe_len = pEid->Len + 2;
+ #endif /* DOT11R_FT_SUPPORT */
+ 			/* Copy whole RSNXE context */
+-			NdisMoveMemory(&ie_list->rsnxe_ie_len, pEid, pEid->Len + 2);
++			/* check length overflow before memmove */
++			if ((pEid->Len + 2) <= sizeof(ie_list->rsnxe_ie)) {
++				NdisMoveMemory(ie_list->rsnxe_ie, pEid, pEid->Len + 2);
++			} else {
++				MTWF_DBG(NULL, DBG_CAT_CLIENT, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
++					"No enough buffer size for ie_list->rsnxe_ie!\n");
++			}
++
+ 			ie_list->rsnxe_ie_len = pEid->Len + 2;
+ 			break;
+ 

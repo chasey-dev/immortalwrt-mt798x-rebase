@@ -1,0 +1,74 @@
+---
+[v1] arm64: dts: mt7988: add i2c1 i2c2
+
+Add I2C1 and I2C2 controller device nodes for MT7988A RFB. Includes example I2C
+peripheral device nodes such as AT24C32 EEPROM, WM8960 audio codec, ZTS8032 and
+ZTS8232 barometric pressure and temperature sensors, DPS368 barometric pressure
+sensor, and RTQ6056 power monitor. Note that not all RFB boards have these
+peripheral devices, they are provided as reference examples for I2C device
+integration.
+---
+v1: Move openwrt-master files to openwrt-25.12 branch after OpenWrt official
+    25.12 branch release.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
+@@ -242,6 +242,57 @@
+ 	};
+ };
+
++&i2c1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c1_pins>;
++	status = "okay";
++
++	at24c32: at24c32@57 {
++		compatible = "atmel,24c32";
++		reg = <0x57>;
++		status = "disabled";
++	};
++
++	wm8960: wm8960@1a {
++		compatible = "wlf,wm8960";
++		reg = <0x1a>;
++	};
++
++	zts8032: zts8032@76 {
++		compatible = "zilltek,zts8032";
++		reg = <0x76>;
++		status = "disabled";
++	};
++
++	zts8232: zts8232@64 {
++		compatible = "zilltek,zts8232";
++		reg = <0x64>;
++		#address-cells=<1>;
++		#size-cells=<0>;
++		status = "disabled";
++	};
++
++	dps368: dps368@77 {
++		compatible = "infineon,dps310";
++		reg = <0x77>;
++		status = "disabled";
++	};
++
++	rtq6056: rtq6056@40 {
++		compatible = "richtek,rtq6056";
++		reg = <0x40>;
++		shunt-resistor-micro-ohms = <10000>;
++		#io-channel-cells = <1>;
++	};
++};
++
++&i2c2 {
++	pinctrl-names = "default";
++	/* pin-shared with 10G phys reset gpio pin */
++	pinctrl-0 = <&i2c2_1_pins>;
++	status = "disabled";
++};
++
+ &pcie0 {
+ 	status = "okay";
+ };

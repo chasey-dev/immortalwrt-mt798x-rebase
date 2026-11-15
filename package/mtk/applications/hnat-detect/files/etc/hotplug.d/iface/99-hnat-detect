@@ -1,0 +1,3 @@
+#!/bin/sh
+
+/usr/bin/ucode /usr/share/ucode/hnat/detect.uc

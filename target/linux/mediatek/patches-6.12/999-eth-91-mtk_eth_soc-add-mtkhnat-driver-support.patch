@@ -1,0 +1,211 @@
+From 096f1f857cdbc8412a4a00b834ab07d50d08dd2e Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Thu, 5 Feb 2026 10:23:31 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add mtkhnat driver support
+
+---
+ drivers/net/ethernet/mediatek/Kconfig       | 24 +++++++++++++
+ drivers/net/ethernet/mediatek/Makefile      |  1 +
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 68 +++++++++++++++++++++++++++++++
+ 3 files changed, 93 insertions(+)
+
+--- a/drivers/net/ethernet/mediatek/Kconfig
++++ b/drivers/net/ethernet/mediatek/Kconfig
+@@ -33,4 +33,28 @@ config NET_MEDIATEK_STAR_EMAC
+ 	  This driver supports the ethernet MAC IP first used on
+ 	  MediaTek MT85** SoCs.
+ 
++config MEDIATEK_NETSYS_V2
++	tristate "MediaTek Ethernet NETSYS V2 support"
++	depends on ARCH_MEDIATEK && NET_MEDIATEK_SOC
++	help
++	  This options enable MTK Ethernet NETSYS V2 support
++
++config MEDIATEK_NETSYS_V3
++	tristate "MediaTek Ethernet NETSYS V3 support"
++	depends on ARCH_MEDIATEK && NET_MEDIATEK_SOC
++	help
++	  This options enable MTK Ethernet NETSYS V3 support for
++	  XGMAC and USXGMII.
++
++	  If you have a network system belong to this class, say Y.
++	  If unsure, say N.
++
++config NET_MEDIATEK_HNAT
++	tristate "MediaTek HW NAT support"
++	depends on NET_MEDIATEK_SOC && NF_CONNTRACK && IP_NF_NAT
++	help
++	  This driver supports the hardward Network Address Translation
++	  in the MediaTek MT7988/MT7986/MT2701/MT7622/MT7629/MT7621 chipset
++	  family.
++
+ endif #NET_VENDOR_MEDIATEK
+--- a/drivers/net/ethernet/mediatek/Makefile
++++ b/drivers/net/ethernet/mediatek/Makefile
+@@ -11,3 +11,4 @@ mtk_eth-$(CONFIG_NET_MEDIATEK_SOC_WED) +
+ endif
+ obj-$(CONFIG_NET_MEDIATEK_SOC_WED) += mtk_wed_ops.o
+ obj-$(CONFIG_NET_MEDIATEK_STAR_EMAC) += mtk_star_emac.o
++obj-$(CONFIG_NET_MEDIATEK_HNAT) += mtk_hnat/
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -40,6 +40,10 @@
+ #include "mtk_eth_dbg.h"
+ #include "mtk_wed.h"
+ 
++#if defined(CONFIG_NET_MEDIATEK_HNAT) || defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
++#include "mtk_hnat/nf_hnat_mtk.h"
++#endif
++
+ static int mtk_msg_level = -1;
+ module_param_named(msg_level, mtk_msg_level, int, 0);
+ MODULE_PARM_DESC(msg_level, "Message level (-1=defaults,0=none,...,16=all)");
+@@ -2891,6 +2895,13 @@ static int mtk_poll_rx(struct napi_struc
+ 		if (!netdev)
+ 			netdev = eth->netdev[mac];
+ 		ppe_idx = eth->mac[mac]->ppe_idx;
++		/* NPU tunnel decap: CLS steers the packet to NPU, and NPU
++		 * forwards it to the PPE that matches the ingress GMAC
++		 * (source PSE port): GMAC1/2/3 -> PPE0/1/2.
++		 */
++		if (tops_crsn && eth->soc->caps == MT7988_CAPS &&
++		    mac < eth->soc->ppe_num)
++			ppe_idx = mac;
+ 
+ 		if (unlikely(test_bit(MTK_RESETTING, &eth->state)))
+ 			goto release_desc;
+@@ -2979,6 +2990,54 @@ static int mtk_poll_rx(struct napi_struc
+ 				cdrt = RX_DMA_GET_CDRT(trxd.rxd7);
+ 				mtk_crypto_set_dec_secpath(skb, cdrt);
+ 			}
++
++#if defined(CONFIG_NET_MEDIATEK_HNAT) || defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
++			if (mtk_is_netsys_v3_or_greater(eth))
++				*(u32 *)(skb->head) = trxd.rxd5;
++			else
++				*(u32 *)(skb->head) = trxd.rxd4;
++
++			skb_hnat_alg(skb) = 0;
++			skb_hnat_filled(skb) = 0;
++			skb_hnat_set_cdrt(skb, cdrt);
++			skb_hnat_magic_tag(skb) = HNAT_MAGIC_TAG;
++			skb_hnat_set_tops(skb, 0);
++			skb_hnat_set_is_decap(skb, 0);
++			skb_hnat_set_is_decrypt(skb, (skb_hnat_cdrt(skb) ? 1 : 0));
++			skb_hnat_set_is_pppoe(skb, 0);
++			skb_hnat_set_ppe_id(skb, ppe_idx);
++
++			if (skb_hnat_reason(skb) == HIT_BIND_FORCE_TO_CPU) {
++				trace_printk("[%s] reason=0x%x(force to CPU) from WAN to Ext\n",
++					     __func__, skb_hnat_reason(skb));
++				skb->pkt_type = PACKET_HOST;
++			}
++
++			/* With slow path rate limit enabled, packets take
++			 * PPE->NPU->QDMA->ADMA, where QDMA overwrites the PPE CPU
++			 * reason with 0x1E, so the NPU re-encodes the original one:
++			 * UN_HIT in TOPS_ENTRY, and any reason other than HIT_UNBIND/
++			 * HIT_UNBIND_RATE_REACH as entry 0x7FFF (no hash entry).
++			 * HIT_UNBIND and HIT_UNBIND_RATE_REACH are thus no longer
++			 * distinguishable, so binding cannot wait for the rate to be
++			 * reached. Keep-alive does not go through QDMA, but its reason
++			 * is set to MODEM_TO_CPU to avoid hanging the CDM.
++			 */
++			if (eth->soc->caps == MT7988_CAPS) {
++				if (skb_hnat_reason(skb) == PKT_FWD_WITHOUT_PPE) {
++					if (RX_DMA_GET_TOPS_ENTRY(trxd.rxd7) == TOPS_ENTRY_PPE_UN_HIT)
++						skb_hnat_reason(skb) = UN_HIT;
++					else if (skb_hnat_entry(skb) != 0x7FFF)
++						skb_hnat_reason(skb) = HIT_UNBIND_RATE_REACH;
++				} else if (skb_hnat_reason(skb) == MODEM_TO_CPU) {
++					skb_hnat_reason(skb) = HIT_BIND_KEEPALIVE_DUP_OLD_HDR;
++				}
++			}
++
++			trace_printk("[%s] rxd:(entry=%x,sport=%x,reason=%x,alg=%x\n",
++				     __func__, skb_hnat_entry(skb), skb_hnat_sport(skb),
++				     skb_hnat_reason(skb), skb_hnat_alg(skb));
++#endif
+ 		}
+ 
+ 		skb->dev = netdev;
+@@ -3021,8 +3080,10 @@ static int mtk_poll_rx(struct napi_struc
+ 				skb_dst_set_noref(skb, &eth->dsa_meta[port]->dst);
+ 		}
+ 
++#if !defined(CONFIG_NET_MEDIATEK_HNAT) && !defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
+ 		if (reason == MTK_PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED)
+ 			mtk_ppe_check_skb(eth->ppe[ppe_idx], skb, hash);
++#endif
+ 
+ 		if (eth->hwlro && eth->debugfs->hwlro_stats.ebl &&
+ 		    IS_HW_LRO_RING(ring->ring_no)) {
+@@ -6150,8 +6211,10 @@ static void mtk_pending_work(struct work
+ 		__set_bit(i, &restart);
+ 	}
+ 
++#if !defined(CONFIG_NET_MEDIATEK_HNAT) && !defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
+ 	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+ 		mtk_ppe_stop(eth->ppe[i]);
++#endif
+ 
+ 	usleep_range(15000, 16000);
+ 
+@@ -6160,8 +6223,10 @@ static void mtk_pending_work(struct work
+ 				     eth->dev->pins->default_state);
+ 	mtk_hw_init(eth, true);
+ 
++#if !defined(CONFIG_NET_MEDIATEK_HNAT) && !defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
+ 	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+ 		mtk_ppe_start(eth->ppe[i]);
++#endif
+ 
+ 	/* restart DMA and enable IRQs */
+ 	for (i = 0; i < MTK_MAX_DEVS; i++) {
+@@ -7582,6 +7647,7 @@ static int mtk_probe(struct platform_dev
+ 		};
+ 	}
+ 
++#if !defined(CONFIG_NET_MEDIATEK_HNAT) && !defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
+ 	if (eth->soc->offload_version) {
+ 		u8 ppe_num = eth->soc->ppe_num;
+ 
+@@ -7609,6 +7675,7 @@ static int mtk_probe(struct platform_dev
+ 		for (i = 0; i < ppe_num; i++)
+ 			mtk_ppe_start(eth->ppe[i]);
+ 	}
++#endif
+ 
+ 	mtk_eth_debugfs_init(eth);
+ 
+@@ -7670,7 +7737,9 @@ static int mtk_probe(struct platform_dev
+ 
+ err_unreg_netdev:
+ 	mtk_unreg_dev(eth);
++#if !defined(CONFIG_NET_MEDIATEK_HNAT) && !defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
+ err_deinit_ppe:
++#endif
+ 	/* A netdev opened while probe was still registering can have queued
+ 	 * the frame-engine reset worker, which takes rtnl and drives the
+ 	 * hardware; cancel it before anything below is torn down.
+@@ -7680,7 +7749,9 @@ err_deinit_ppe:
+ 		mtk_napi_del(eth);
+ 		free_netdev(eth->dummy_dev);
+ 	}
++#if !defined(CONFIG_NET_MEDIATEK_HNAT) && !defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
+ 	mtk_ppe_deinit(eth);
++#endif
+ 	mtk_release_all_muxes(eth);
+ 	mtk_mdio_cleanup(eth);
+ err_free_dev:
+@@ -7721,8 +7792,10 @@ static void mtk_remove(struct platform_d
+ 			mtk_usxgmii_pcs_put(mac->usxgmii_pcs);
+ 	}
+ 
++#if !defined(CONFIG_NET_MEDIATEK_HNAT) && !defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
+ 	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+ 		mtk_ppe_stop(eth->ppe[i]);
++#endif
+ 
+ 	mtk_wed_exit();
+ 	mtk_hw_deinit(eth);

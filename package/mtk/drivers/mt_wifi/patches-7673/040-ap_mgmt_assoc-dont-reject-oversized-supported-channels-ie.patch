@@ -1,0 +1,21 @@
+mtk: mt_wifi: don't reject assoc on oversized Supported Channels IE
+
+7.6.7.3 made PeerAssocReqCmmSanity() reject the whole assoc when the
+Supported Channels IE (EID 36) is longer than MAX_LEN_OF_SUPPORTED_CHL (64).
+Some clients (e.g. Intel AX210) send a 74-byte IE, so 5 GHz assoc always
+fails (#20, #56). Reject only odd-length IEs and clamp oversized ones, like
+7.6.7.2 did; the copy is already bounded, so it stays safe.
+
+Signed-off-by: SuperKali <hello@superkali.me>
+
+--- a/mt_wifi/embedded/fsm/ap_mgmt_assoc.c
++++ b/mt_wifi/embedded/fsm/ap_mgmt_assoc.c
+@@ -1434,7 +1434,7 @@
+ #endif /* DOT11_VHT_AC */
+ 
+ 		case IE_SUPP_CHANNELS:
+-			if (eid_ptr->Len > MAX_LEN_OF_SUPPORTED_CHL || (eid_ptr->Len % 2)) {
++			if (eid_ptr->Len % 2) {
+ 				MTWF_DBG(pAd, DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_INFO, "wrong IE_SUPP_CHANNELS, eid->Len = %d\n",
+ 						 eid_ptr->Len);
+ 				return FALSE;

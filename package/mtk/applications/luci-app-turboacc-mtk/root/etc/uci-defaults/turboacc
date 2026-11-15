@@ -1,0 +1,56 @@
+#!/bin/sh
+
+set_default() {
+	uci -q get "turboacc.config.$1" >/dev/null ||
+		uci -q set "turboacc.config.$1=$2"
+}
+
+[ -e /etc/config/turboacc ] || touch /etc/config/turboacc || exit 1
+
+uci -q get "turboacc.config" >/dev/null ||
+	uci -q set "turboacc.config=turboacc"
+
+# preserve existing settings, including an explicitly disabled engine.
+if ! uci -q get "turboacc.config.fastpath" >/dev/null; then
+	kernel_ver="$(uname -r)"
+
+	if [ -e "/lib/modules/$kernel_ver/mtkhnat.ko" ]; then
+		fastpath="mediatek_hnat"
+	elif [ -e "/lib/modules/$kernel_ver/fast-classifier.ko" ]; then
+		fastpath="fast_classifier"
+	elif [ -e "/lib/modules/$kernel_ver/shortcut-fe-cm.ko" ]; then
+		fastpath="shortcut_fe_cm"
+	else
+		fastpath="disabled"
+	fi
+
+	uci -q set "turboacc.config.fastpath=$fastpath"
+fi
+
+case "$(uci -q get "turboacc.config.fastpath")" in
+mediatek_hnat)
+	set_default fastpath_mh_bind_rate 30
+	set_default fastpath_mh_update_nfct 0
+	;;
+fast_classifier)
+	set_default fastpath_fc_br 1
+	if [ -d "/proc/sys/net/ipv6" ]; then
+		set_default fastpath_fc_ipv6 1
+	else
+		set_default fastpath_fc_ipv6 0
+	fi
+	;;
+esac
+
+set_default tcpcca cubic
+
+uci -q commit "turboacc"
+
+uci -q batch <<-EOF >"/dev/null"
+	delete ucitrack.@turboacc[-1]
+	add ucitrack turboacc
+	set ucitrack.@turboacc[-1].init=turboacc
+	commit ucitrack
+EOF
+
+exit 0

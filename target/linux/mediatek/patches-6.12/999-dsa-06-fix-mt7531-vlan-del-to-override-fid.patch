@@ -1,0 +1,31 @@
+---
+[v1] net: dsa: mt7530: fix VLAN deletion to override the FID
+
+Fix mt7530_hw_vlan_del() to explicitly set FID(FID_BRIDGED) when
+updating a VLAN entry that still has port members after deletion.
+---
+v1: fix VLAN deletion to override the FID
+---
+
+From e149e7a8be6ac45566db9334524d14d60963d873 Mon Sep 17 00:00:00 2001
+From: "neal.yen" <neal.yen@mediatek.com>
+Date: Wed, 14 Oct 2026 09:30:14 +0800
+Subject: [PATCH] net: dsa: fix VLAN deletion to override the FID
+
+
+diff --git a/drivers/net/dsa/mt7530.c b/drivers/net/dsa/mt7530.c
+index d127549..282f8fb 100644
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -1770,7 +1770,7 @@ mt7530_hw_vlan_del(struct mt7530_priv *priv,
+ 
+ 	if (new_members) {
+ 		val = IVL_MAC | VTAG_EN | PORT_MEM(new_members) |
+-		      VLAN_VALID;
++		      FID(FID_BRIDGED) | VLAN_VALID;
+ 		mt7530_write(priv, MT7530_VAWD1, val);
+ 	} else {
+ 		mt7530_write(priv, MT7530_VAWD1, 0);
+-- 
+2.45.2
+

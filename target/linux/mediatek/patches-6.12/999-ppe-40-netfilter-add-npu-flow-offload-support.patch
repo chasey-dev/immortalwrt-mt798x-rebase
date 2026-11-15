@@ -1,0 +1,109 @@
+---
+[v2] netfilter: Support tunnel hardware support
+
+Add FLOW_ACTION_NPU_ENCAP to enable NPU hardware offload in netfilter flow table.
+Extend flow_offload_tuple with npu_entry and the "dst" field to support tunnel
+over IPSec NPU offload.
+
+---
+v1: Add tunnel hardware offload support
+v2: Add tunnel over IPSec hardware offload
+---
+
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -711,6 +711,15 @@ nf_flow_rule_route_common(struct net *ne
+ 		return -1;
+ 
+ 	tuple = &flow->tuplehash[dir].tuple;
++	if (tuple->npu.npu_entry) {
++		struct flow_action_entry *entry;
++
++		entry = flow_action_entry_next(flow_rule);
++		entry->id = FLOW_ACTION_NPU_ENCAP;
++		entry->npu.npu_entry = tuple->npu.npu_entry;
++		if (tuple->npu.dst)
++			entry->npu.dst = tuple->npu.dst;
++	}
+ 
+ 	for (i = 0; i < tuple->encap_num; i++) {
+ 		struct flow_action_entry *entry;
+--- a/include/net/flow_offload.h
++++ b/include/net/flow_offload.h
+@@ -186,6 +186,7 @@ enum flow_action_id {
+ 	FLOW_ACTION_VLAN_POP_ETH,
+ 	FLOW_ACTION_CONTINUE,
+ 	FLOW_ACTION_IPSEC_PUSH,
++	FLOW_ACTION_NPU_ENCAP,
+ 	NUM_FLOW_ACTIONS,
+ };
+ 
+@@ -332,6 +333,10 @@ struct flow_action_entry {
+ 		struct {
+ 			struct xfrm_state xs;
+ 		} ipsec;
++		struct {				/* FLOW_ACTION_NPU_ENCAP */
++			u32 npu_entry;
++			struct dst_entry *dst;
++		} npu;
+ 	};
+ 	struct flow_action_cookie *user_cookie; /* user defined action cookie */
+ };
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -13,6 +13,8 @@
+ #include <linux/if_pppox.h>
+ #include <linux/ppp_defs.h>
+ 
++extern int (*mtk_flow_tnl_offload)(const struct net_device_path *path, u32 *entry);
++
+ struct nf_flowtable;
+ struct nf_flow_rule;
+ struct flow_offload;
+@@ -156,6 +158,10 @@ struct flow_offload_tuple {
+ 			u32		iifidx;
+ 		} tc;
+ 	};
++	struct {
++		u32				npu_entry;
++		struct dst_entry		*dst;
++	} npu;
+ };
+ 
+ struct flow_offload_tuple_rhash {
+@@ -218,6 +224,10 @@ struct nf_flow_route {
+ 			u8			h_dest[ETH_ALEN];
+ 		} out;
+ 		enum flow_offload_xmit_type	xmit_type;
++		struct {
++			u32			npu_entry;
++			struct dst_entry 	*dst;
++		} npu;
+ 	} tuple[FLOW_OFFLOAD_DIR_MAX];
+ };
+ 
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -140,6 +140,9 @@ static int flow_offload_fill_route(struc
+ 		break;
+ 	}
+ 	flow_tuple->xmit_type = route->tuple[dir].xmit_type;
++	flow_tuple->npu.npu_entry = route->tuple[dir].npu.npu_entry;
++	flow_tuple->npu.dst = route->tuple[dir].npu.dst;
++	route->tuple[dir].npu.dst = NULL;
+ 
+ 	return 0;
+ }
+@@ -203,6 +206,12 @@ static void flow_offload_route_release(s
+ {
+ 	nft_flow_dst_release(flow, FLOW_OFFLOAD_DIR_ORIGINAL);
+ 	nft_flow_dst_release(flow, FLOW_OFFLOAD_DIR_REPLY);
++
++	dst_release(flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].tuple.npu.dst);
++	dst_release(flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].tuple.npu.dst);
++
++	flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].tuple.npu.dst = NULL;
++	flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].tuple.npu.dst = NULL;
+ }
+ 
+ void flow_offload_free(struct flow_offload *flow)

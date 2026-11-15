@@ -1,0 +1,252 @@
+---
+[v2] netfilter: nft_flow_offload: add ttl learning flow
+
+Without this patch, the TTL/hop limit values are not learned and stored
+during flow offload, so the PPE cannot preserve the original TTL for
+hardware-offloaded flows.
+---
+v2: Fix missing nf_conntrack_ttl.h header include in nf_conntrack_netlink.c.
+v1: Add TTL/hop limit learning to nft_flow_offload via nf_conn_ttl extension.
+---
+
+From 3b0e2ff78898042dd7fe47e0db505400333b8b48 Mon Sep 17 00:00:00 2001
+From: "chak-kei.lam" <chak-kei.lam@mediatek.com>
+Date: Thu, 12 Mar 2026 14:54:23 +0800
+Subject: [PATCH] netfilter: nft_flow_offload: add ttl learning flow
+
+---
+ include/net/netfilter/nf_conntrack_extend.h |  1 +
+ include/net/netfilter/nf_conntrack_ttl.h    | 41 +++++++++++++++++++++
+ include/net/netfilter/nf_flow_table.h       |  1 +
+ net/netfilter/nf_conntrack_core.c           |  2 +
+ net/netfilter/nf_conntrack_extend.c         |  3 ++
+ net/netfilter/nf_conntrack_netlink.c        | 2 ++
+ net/netfilter/nf_flow_table_offload.c       |  2 +
+ net/netfilter/nft_flow_offload.c            | 36 +++++++++++++++++-
+ 8 files changed, 85 insertions(+), 2 deletions(-)
+
+--- a/include/net/netfilter/nf_conntrack_extend.h
++++ b/include/net/netfilter/nf_conntrack_extend.h
+@@ -14,6 +14,7 @@ enum nf_ct_ext_id {
+ 	NF_CT_EXT_SEQADJ,
+ 	NF_CT_EXT_ACCT,
+ 	NF_CT_EXT_QOS,
++	NF_CT_EXT_TTL,
+ #ifdef CONFIG_NF_CONNTRACK_EVENTS
+ 	NF_CT_EXT_ECACHE,
+ #endif
+--- /dev/null
++++ b/include/net/netfilter/nf_conntrack_ttl.h
+@@ -0,0 +1,44 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ */
++
++#ifndef _NF_CONNTRACK_TTL_H
++#define _NF_CONNTRACK_TTL_H
++#include <net/net_namespace.h>
++#include <linux/netfilter/nf_conntrack_common.h>
++#include <linux/netfilter/nf_conntrack_tuple_common.h>
++#include <net/netfilter/nf_conntrack.h>
++#include <net/netfilter/nf_conntrack_extend.h>
++
++struct nf_conn_ttl {
++	u8	ttl[IP_CT_DIR_MAX];
++};
++
++static inline
++struct nf_conn_ttl *nf_conn_ttl_find(const struct nf_conn *ct)
++{
++	return nf_ct_ext_find(ct, NF_CT_EXT_TTL);
++}
++
++static inline
++struct nf_conn_ttl *nf_ct_ttl_ext_add(struct nf_conn *ct, gfp_t gfp)
++{
++#if IS_ENABLED(CONFIG_NF_CONNTRACK)
++	struct nf_conn_ttl *ttl;
++
++	ttl = nf_ct_ext_add(ct, NF_CT_EXT_TTL, gfp);
++	if (!ttl) {
++		pr_debug("failed to add ttl extension area");
++		return NULL;
++	}
++
++	memset(ttl, 0, sizeof(struct nf_conn_ttl));
++
++	return ttl;
++#else
++	return NULL;
++#endif
++}
++
++#endif /* _NF_CONNTRACK_TTL_H */
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -139,6 +139,7 @@ struct flow_offload_tuple {
+ 					encap_num:2,
+ 					in_vlan_ingress:2;
+ 	u8				tos;
++	u8				ttl;
+ 	u16				mtu;
+ 	union {
+ 		struct {
+--- a/net/netfilter/nf_conntrack_core.c
++++ b/net/netfilter/nf_conntrack_core.c
+@@ -42,6 +42,7 @@
+ #include <net/netfilter/nf_conntrack_extend.h>
+ #include <net/netfilter/nf_conntrack_acct.h>
+ #include <net/netfilter/nf_conntrack_qos.h>
++#include <net/netfilter/nf_conntrack_ttl.h>
+ #include <net/netfilter/nf_conntrack_ecache.h>
+ #include <net/netfilter/nf_conntrack_zones.h>
+ #include <net/netfilter/nf_conntrack_timestamp.h>
+@@ -1798,6 +1799,7 @@ init_conntrack(struct net *net, struct n
+ 
+ 	nf_ct_acct_ext_add(ct, GFP_ATOMIC);
+ 	nf_ct_qos_ext_add(ct, GFP_ATOMIC);
++	nf_ct_ttl_ext_add(ct, GFP_ATOMIC);
+ 	nf_ct_tstamp_ext_add(ct, GFP_ATOMIC);
+ 	nf_ct_labels_ext_add(ct);
+ 
+--- a/net/netfilter/nf_conntrack_extend.c
++++ b/net/netfilter/nf_conntrack_extend.c
+@@ -24,6 +24,7 @@
+ #include <net/netfilter/nf_conntrack_synproxy.h>
+ #include <net/netfilter/nf_conntrack_act_ct.h>
+ #include <net/netfilter/nf_conntrack_qos.h>
++#include <net/netfilter/nf_conntrack_ttl.h>
+ #include <net/netfilter/nf_nat.h>
+ 
+ #define NF_CT_EXT_PREALLOC	128u /* conntrack events are on by default */
+@@ -38,6 +39,7 @@ static const u8 nf_ct_ext_type_len[NF_CT
+ 	[NF_CT_EXT_SEQADJ] = sizeof(struct nf_conn_seqadj),
+ 	[NF_CT_EXT_ACCT] = sizeof(struct nf_conn_acct),
+ 	[NF_CT_EXT_QOS] = sizeof(struct nf_conn_qos),
++	[NF_CT_EXT_TTL] = sizeof(struct nf_conn_ttl),
+ #ifdef CONFIG_NF_CONNTRACK_EVENTS
+ 	[NF_CT_EXT_ECACHE] = sizeof(struct nf_conntrack_ecache),
+ #endif
+@@ -70,6 +72,7 @@ static __always_inline unsigned int tota
+ #endif
+ 		+ sizeof(struct nf_conn_seqadj)
+ 		+ sizeof(struct nf_conn_acct)
++		+ sizeof(struct nf_conn_ttl)
+ #ifdef CONFIG_NF_CONNTRACK_EVENTS
+ 		+ sizeof(struct nf_conntrack_ecache)
+ #endif
+--- a/net/netfilter/nf_conntrack_netlink.c
++++ b/net/netfilter/nf_conntrack_netlink.c
+@@ -43,6 +43,7 @@
+ #include <net/netfilter/nf_conntrack_tuple.h>
+ #include <net/netfilter/nf_conntrack_acct.h>
+ #include <net/netfilter/nf_conntrack_qos.h>
++#include <net/netfilter/nf_conntrack_ttl.h>
+ #include <net/netfilter/nf_conntrack_zones.h>
+ #include <net/netfilter/nf_conntrack_timestamp.h>
+ #include <net/netfilter/nf_conntrack_labels.h>
+@@ -2307,6 +2308,7 @@ ctnetlink_create_conntrack(struct net *net,
+ 
+ 	nf_ct_acct_ext_add(ct, GFP_ATOMIC);
+ 	nf_ct_qos_ext_add(ct, GFP_ATOMIC);
++	nf_ct_ttl_ext_add(ct, GFP_ATOMIC);
+ 	nf_ct_tstamp_ext_add(ct, GFP_ATOMIC);
+ 	nf_ct_ecache_ext_add(ct, 0, 0, GFP_ATOMIC);
+ 	nf_ct_labels_ext_add(ct);
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -185,6 +185,8 @@ static int nf_flow_rule_match(struct nf_
+ 
+ 	key->ip.tos = tuple->tos;
+ 	mask->ip.tos = 0xff;
++	key->ip.ttl = tuple->ttl;
++	mask->ip.ttl = 0xff;
+ 
+ 	match->dissector.used_keys |= BIT_ULL(FLOW_DISSECTOR_KEY_META) |
+ 				      BIT_ULL(FLOW_DISSECTOR_KEY_CONTROL) |
+--- a/net/netfilter/nft_flow_offload.c
++++ b/net/netfilter/nft_flow_offload.c
+@@ -13,6 +13,7 @@
+ #include <net/netfilter/nf_tables.h>
+ #include <net/netfilter/nf_tables_core.h>
+ #include <net/netfilter/nf_conntrack_qos.h>
++#include <net/netfilter/nf_conntrack_ttl.h>
+ #include <net/netfilter/nf_conntrack_core.h>
+ #include <net/netfilter/nf_conntrack_extend.h>
+ #include <net/netfilter/nf_flow_table.h>
+@@ -35,6 +36,19 @@ nft_flow_offload_dscp_init(struct flow_o
+ 	}
+ }
+ 
++static void
++nft_flow_offload_ttl_init(struct flow_offload *flow, const struct nf_conn *ct,
++			  enum ip_conntrack_dir dir)
++{
++	struct nf_conn_ttl *ttl_ext;
++
++	ttl_ext = nf_conn_ttl_find(ct);
++	if (ttl_ext) {
++		flow->tuplehash[dir].tuple.ttl = ttl_ext->ttl[dir];
++		flow->tuplehash[!dir].tuple.ttl = ttl_ext->ttl[!dir];
++	}
++}
++
+ static enum flow_offload_xmit_type nft_xmit_type(struct dst_entry *dst)
+ {
+ 	if (dst_xfrm(dst))
+@@ -544,11 +558,13 @@ static void nft_flow_offload_eval(const
+ 	enum ip_conntrack_dir dir;
+ 	struct nf_conn *ct;
+ 	struct nf_conn_qos *qos;
++	struct nf_conn_ttl *ttl_ext;
+ 	struct ipv6hdr *ip6h;
+ 	struct iphdr *iph;
+ 	u32 offset = 0;
+ 	u32 thoff = nft_thoff(pkt);
+ 	u8 tos = 0;
++	u8 ttl = 0;
+ 	int ret;
+ 
+ 	if (nft_flow_offload_skip(pkt->skb, nft_pf(pkt)))
+@@ -558,6 +574,23 @@ static void nft_flow_offload_eval(const
+ 	if (!ct)
+ 		goto out;
+ 
++	dir = CTINFO2DIR(ctinfo);
++
++	ttl_ext = nf_conn_ttl_find(ct);
++	if (ttl_ext) {
++		switch (nft_pf(pkt)) {
++		case NFPROTO_IPV4:
++			iph = (struct iphdr *)(skb_network_header(pkt->skb) + offset);
++			ttl = iph->ttl;
++			break;
++		case NFPROTO_IPV6:
++			ip6h = (struct ipv6hdr *)(skb_network_header(pkt->skb) + offset);
++			ttl = ip6h->hop_limit;
++			break;
++		}
++		ttl_ext->ttl[dir] = ttl;
++	}
++
+ 	switch (ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple.dst.protonum) {
+ 	case IPPROTO_TCP:
+ 		if (ct->proto.tcp.state != TCP_CONNTRACK_ESTABLISHED)
+@@ -600,8 +633,6 @@ static void nft_flow_offload_eval(const
+ 	if (!nf_ct_is_confirmed(ct))
+ 		goto out;
+ 
+-	dir = CTINFO2DIR(ctinfo);
+-
+ 	qos = nf_conn_qos_find(ct);
+ 	if (qos) {
+ 		struct net *net = nf_ct_net(ct);
+@@ -645,6 +676,7 @@ static void nft_flow_offload_eval(const
+ 		flow_offload_ct_tcp(ct);
+ 
+ 	nft_flow_offload_dscp_init(flow, ct, dir);
++	nft_flow_offload_ttl_init(flow, ct, dir);
+ 
+ 	__set_bit(NF_FLOW_HW_BIDIRECTIONAL, &flow->flags);
+ 	ret = flow_offload_add(flowtable, flow);

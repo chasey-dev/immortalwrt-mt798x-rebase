@@ -1,0 +1,69 @@
+---
+[v1] net: ethernet: mtk_eth_soc: drop the dynamic PPE MTU update
+
+Drop the dynamic PPE MTU update tied to netdev MTU changes.
+ 
+The HW offload path is designed around the default 1.5K MTU
+setting, and altering it at runtime is outside the expected
+system configuration. Keeping the PPE at its default avoids
+unexpected behavior on offloaded flows.
+---
+v1: Drop the dynamic PPE MTU update.
+---
+
+From 90844a3eab52a1040de13e7f39a65ae24e7f3fed Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Fri, 29 May 2026 13:59:05 +0800
+Subject: [PATCH] net: ethernet: mtk_eth_soc: drop the dynamic
+PPE MTU update
+
+Drop the dynamic PPE MTU update tied to netdev MTU changes.
+ 
+The HW offload path is designed around the default 1.5K MTU
+setting, and altering it at runtime is outside the expected
+system configuration. Keeping the PPE at its default avoids
+unexpected behavior on offloaded flows.
+---
+ mtk_eth_soc.c | 11 ++---------
+ 1 file changed, 2 insertions(+), 9 deletions(-)
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -4653,7 +4653,7 @@ static int mtk_open(struct net_device *d
+ 	struct mtk_mac *mac = netdev_priv(dev);
+ 	struct mtk_eth *eth = mac->hw;
+ 	struct mtk_mac *target_mac;
+-	int i, err, ppe_num, mtu;
++	int i, err, ppe_num;
+ 
+ 	ppe_num = eth->soc->ppe_num;
+ 
+@@ -4695,10 +4695,6 @@ static int mtk_open(struct net_device *d
+ 			mtk_gdm_config(eth, target_mac->id, gdm_config);
+ 		}
+ 
+-		mtu = mtk_max_gmac_mtu(eth);
+-		for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+-			mtk_ppe_update_mtu(eth->ppe[i], mtu);
+-
+ 		if (MTK_HAS_CAPS(eth->soc->caps, MTK_HWTSTAMP))
+ 			mtk_ptp_clock_init(eth);
+ 
+@@ -5769,7 +5765,6 @@ static int mtk_change_mtu(struct net_dev
+ 	struct mtk_eth *eth = mac->hw;
+ 	u32 length, rx_buf_len;
+ 	u32 old_mtu, max_mtu;
+-	int i;
+ 
+ 	old_mtu = dev->mtu;
+ 	WRITE_ONCE(dev->mtu, new_mtu);
+@@ -5784,9 +5779,6 @@ static int mtk_change_mtu(struct net_dev
+ 		return -EINVAL;
+ 	}
+ 
+-	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
+-		mtk_ppe_update_mtu(eth->ppe[i], max_mtu);
+-
+ 	rx_buf_len = eth->rx_buf_len;
+ 
+ 	if (length <= MTK_MAX_RX_LENGTH)

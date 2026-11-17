@@ -1,0 +1,224 @@
+--- a/mt_wifi/include/os/rt_linux.h
++++ b/mt_wifi/include/os/rt_linux.h
+@@ -1214,6 +1214,10 @@
+ 
+ int wl_proc_init(void);
+ int wl_proc_exit(void);
++struct _RTMP_ADAPTER;
++
++int mt_wifi_temp_proc_init(struct _RTMP_ADAPTER *pAd);
++void mt_wifi_temp_proc_exit(void);
+ 
+ #if defined(CONFIG_RA_CLASSIFIER) || defined(CONFIG_RA_CLASSIFIER_MODULE)
+ extern volatile unsigned long classifier_cur_cycle;
+--- a/mt_wifi/os/linux/rbus_main_dev.c
++++ b/mt_wifi/os/linux/rbus_main_dev.c
+@@ -132,6 +132,7 @@
+ 	/* due to we didn't have any hook point when do module remove, we use this static as our hook point. */
+ 	rt2880_dev = net_dev;
+ 	wl_proc_init();
++	mt_wifi_temp_proc_init(pAd);
+ 	MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_INFO, "%s: at CSR addr 0x%lx, IRQ %ld.\n", net_dev->name, (ULONG)csr_addr, (long int)net_dev->irq);
+ 	MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_INFO, "<=== rt2880_probe\n");
+ #if defined(CONFIG_RA_CLASSIFIER) && (!defined(CONFIG_RA_CLASSIFIER_MODULE))
+@@ -179,6 +180,7 @@
+ 		ra_classifier_release_func();
+ 
+ #endif
++	mt_wifi_temp_proc_exit();
+ 	wl_proc_exit();
+  #ifndef MULTI_INF_SUPPORT
+ 	os_module_exit();
+--- a/mt_wifi/os/linux/wbsys_main_dev.c
++++ b/mt_wifi/os/linux/wbsys_main_dev.c
+@@ -130,6 +130,7 @@
+ 
+ 
+ 	wl_proc_init();
++	mt_wifi_temp_proc_init(pAd);
+ 	MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_INFO, "%s: at CSR addr 0x%lx, IRQ %ld.\n",
+ 			 net_dev->name, (ULONG)base_addr, (long int)net_dev->irq);
+ 	MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_INFO, "<=== wifi probe\n");
+@@ -180,6 +181,7 @@
+ 		ra_classifier_release_func();
+ 
+ #endif
++	mt_wifi_temp_proc_exit();
+ 	wl_proc_exit();
+ 	return 0;
+ }
+--- a/mt_wifi/os/linux/rbus_prop_dev.c
++++ b/mt_wifi/os/linux/rbus_prop_dev.c
+@@ -172,6 +172,7 @@
+ 		MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_ERROR, "failed to call RtmpOSNetDevAttach(), rv=%d!\n", rv);
+ 		goto err_out_free_netdev;
+ 	}
++	mt_wifi_temp_proc_init(pAd);
+ 	MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_INFO, "%s: at CSR addr 0x%lx, IRQ %ld.\n", net_dev->name, (ULONG)csr_addr, (long int)net_dev->irq);
+ 	MTWF_DBG(pAd, DBG_CAT_HIF, CATHIF_PCI, DBG_LVL_INFO, "<=== %s()\n", __func__);
+ #if defined(CONFIG_RA_CLASSIFIER) && (!defined(CONFIG_RA_CLASSIFIER_MODULE))
+@@ -251,6 +252,7 @@
+ 		ra_classifier_release_func();
+ 
+ #endif
++	mt_wifi_temp_proc_exit();
+ }
+ 
+ /*
+--- a/mt_wifi/os/linux/rt_proc.c
++++ b/mt_wifi/os/linux/rt_proc.c
+@@ -29,6 +29,7 @@
+ #include <linux/types.h>
+ #include <linux/proc_fs.h>
+ #include <linux/sched.h>
++#include <net/net_namespace.h>
+ #include <asm/uaccess.h>
+ 
+ #include "rt_config.h"
+@@ -601,7 +602,146 @@
+ 	return 0;
+ }
+ #endif /* VIDEO_TURBINE_SUPPORT  && CONFIG_PROC_FS */
++
++#ifdef CONFIG_PROC_FS
++/*
++ * Expose the per-band chip temperature through procfs.
++ *
++ * The driver already queries it for its thermal protection logic
++ * (MtCmdGetThermalSensorResult), but the vendor module is licensed as
++ * "Proprietary" and the hwmon/thermal registration helpers are
++ * EXPORT_SYMBOL_GPL, so modpost rejects a hwmon device.  Provide one
++ * read-only file per band instead:
++ *
++ *   /proc/net/mt_wifi/temp0
++ *   /proc/net/mt_wifi/temp1
++ *
++ * The value is millidegrees Celsius, the same unit as hwmon temp1_input,
++ * so userspace can divide by 1000.  It is read on demand and only while
++ * the radio is started; otherwise the read returns -ENODATA instead of
++ * blocking on a MCU command that cannot be answered.
++ */
++struct mt_wifi_temp_ctx {
++	RTMP_ADAPTER *ad;
++	UINT8 band;
++};
++
++static struct proc_dir_entry *mt_wifi_temp_dir;
++static struct mt_wifi_temp_ctx mt_wifi_temp_ctx[DBDC_BAND_NUM];
++
++/* PDE_DATA() was renamed to pde_data() in Linux 6.10 */
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
++#define pde_data(inode) PDE_DATA(inode)
++#endif
++
++static ssize_t mt_wifi_temp_read(struct file *file, char __user *ubuf,
++				 size_t count, loff_t *ppos)
++{
++	struct mt_wifi_temp_ctx *ctx = pde_data(file_inode(file));
++	UINT32 temperature = 0;
++	char buf[16];
++	size_t left;
++	int len;
++
++	if (!ctx || !ctx->ad)
++		return -ENODEV;
++
++	if (!RTMP_TEST_FLAG(ctx->ad, fRTMP_ADAPTER_START_UP))
++		return -ENODATA;
++
++	/*
++	 * Same hardware-control command as "iwpriv <if> stat": the wait
++	 * keeps the response buffer valid and serialises against the other
++	 * MCU commands.
++	 */
++	RTMP_GET_TEMPERATURE(ctx->ad, ctx->band, &temperature);
++	if (!temperature)
++		return -ENODATA;
++
++	/* millidegrees Celsius, same unit as hwmon temp1_input */
++	len = snprintf(buf, sizeof(buf), "%u\n", temperature * 1000);
++	if (len <= 0 || len >= (int)sizeof(buf))
++		return -EINVAL;
++
++	if (*ppos >= len)
++		return 0;
++
++	left = (size_t)(len - *ppos);
++	if (left > count)
++		left = count;
++
++	if (copy_to_user(ubuf, buf + *ppos, left))
++		return -EFAULT;
+ 
++	*ppos += left;
++
++	return (ssize_t)left;
++}
++
++static const struct proc_ops mt_wifi_temp_proc_ops = {
++	.proc_read = mt_wifi_temp_read,
++};
++
++int mt_wifi_temp_proc_init(struct _RTMP_ADAPTER *pAd)
++{
++	int band;
++
++	if (!pAd)
++		return -EINVAL;
++
++	/* only the first adapter is exposed; the mt798x targets use one */
++	if (mt_wifi_temp_ctx[0].ad)
++		return 0;
++
++	if (!mt_wifi_temp_dir) {
++		mt_wifi_temp_dir = proc_mkdir("mt_wifi", init_net.proc_net);
++		if (!mt_wifi_temp_dir)
++			return -ENOMEM;
++	}
++
++	for (band = 0; band < DBDC_BAND_NUM; band++) {
++		char name[8];
++
++		mt_wifi_temp_ctx[band].ad = pAd;
++		mt_wifi_temp_ctx[band].band = band;
++		snprintf(name, sizeof(name), "temp%d", band);
++		proc_create_data(name, 0444, mt_wifi_temp_dir,
++				 &mt_wifi_temp_proc_ops,
++				 &mt_wifi_temp_ctx[band]);
++	}
++
++	return 0;
++}
++
++void mt_wifi_temp_proc_exit(void)
++{
++	int band;
++
++	if (!mt_wifi_temp_dir)
++		return;
++
++	remove_proc_entry("temp0", mt_wifi_temp_dir);
++	remove_proc_entry("temp1", mt_wifi_temp_dir);
++	remove_proc_entry("mt_wifi", init_net.proc_net);
++	mt_wifi_temp_dir = NULL;
++
++	for (band = 0; band < DBDC_BAND_NUM; band++) {
++		mt_wifi_temp_ctx[band].ad = NULL;
++		mt_wifi_temp_ctx[band].band = 0;
++	}
++}
++#else /* CONFIG_PROC_FS */
++int mt_wifi_temp_proc_init(struct _RTMP_ADAPTER *pAd)
++{
++	return 0;
++}
++
++void mt_wifi_temp_proc_exit(void)
++{
++}
++#endif /* CONFIG_PROC_FS */
++
++
+ #ifdef CFG_SUPPORT_CSI
+ static struct proc_dir_entry *csi_proc_dir;
+ static INT8 csi_if_num;	/*csi proc interface counter*/

@@ -9,9 +9,34 @@ get_mtwifi_temp() {
 	local flag
 	local ifname
 	local temp
+	local mdeg
+	local want=0
+	local got=0
 	local mtwifi_vifs="ra0 rax0 rai0 ray0 rae0 raz0"
 	local result=""
 
+	# mt_wifi exposes the per-band chip temperature through
+	# /proc/net/mt_wifi/tempN in millidegrees Celsius.  It is the same
+	# MCU query as "iwpriv <if> stat", but without formatting and
+	# parsing the whole stat block on every refresh.  Only use it when
+	# every file could be read; otherwise fall back to iwpriv below.
+	for temp in /proc/net/mt_wifi/temp*; do
+		[ -e "$temp" ] || continue
+		want=$((want + 1))
+		mdeg="$(cat "$temp" 2>/dev/null)" || continue
+		case "$mdeg" in
+		''|*[!0-9]*) continue ;;
+		esac
+		mdeg=$(( (mdeg + 500) / 1000 ))
+		got=$((got + 1))
+		[ -z "$result" ] && result="${mdeg}°C" || result="${result}/${mdeg}°C"
+	done
+	if [ "$want" -gt 0 ] && [ "$got" -eq "$want" ]; then
+		echo "$result"
+		return
+	fi
+
+	result=""
 	for ifname in $mtwifi_vifs; do
 		if [ -f "/sys/class/net/${ifname}/flags" ]; then
 			flag="$(cat /sys/class/net/${ifname}/flags)"

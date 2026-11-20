@@ -110,6 +110,10 @@ platform_do_upgrade() {
 	local board=$(board_name)
 
 	case "$board" in
+	ruijie,rg-be72-pro-mod)
+		CI_UBIPART="ubi"
+		nand_do_upgrade "$1"
+		;;
 	abt,asr3000|\
 	acer,predator-w6x-ubootmod|\
 	aigo,ags21|\

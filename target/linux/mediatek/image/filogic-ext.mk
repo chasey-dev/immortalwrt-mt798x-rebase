@@ -343,3 +343,18 @@ define Device/zhao_7981r128-mtkuboot
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 endef
 TARGET_DEVICES += zhao_7981r128-mtkuboot
+
+define Device/ruijie_rg-be72-pro-mod
+  DEVICE_VENDOR := Ruijie
+  DEVICE_MODEL := RG-BE72 Pro
+  DEVICE_VARIANT := U-Boot mod (GSW)
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_DTS := mt7988d-ruijie-rg-be72-pro-mod
+  SUPPORTED_DEVICES := ruijie,rg-be72-pro-mod
+  KERNEL_IN_UBI := 1
+  KERNEL_INITRAMFS_SUFFIX := -recovery.itb
+  DEVICE_PACKAGES := -fitblk kmod-usb3 automount swconfig kmod-rtl837x_gsw \
+    kmod-mt798x-2p5g-phy mt7988-wo-firmware
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += ruijie_rg-be72-pro-mod

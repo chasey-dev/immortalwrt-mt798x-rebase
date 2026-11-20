@@ -8,6 +8,10 @@ mediatek_setup_interfaces()
 	local board="$1"
 
 	case $board in
+	ruijie,rg-be72-pro-mod)
+		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 eth2.2 eth1" eth2.1
+		ucidef_add_switch "switch0" "0@eth2" "1:wan" "2:lan" "3:lan" "4:lan"
+		;;
 	abt,asr3000|\
 	buffalo,wsr-6000ax8|\
 	cmcc,rax3000m|\
@@ -381,6 +385,21 @@ mediatek_setup_macs()
 		lan_mac=$(mtd_get_mac_ascii factory lanMac)
 		wan_mac=$(macaddr_add "$lan_mac" 1)
 		label_mac=$wan_mac
+		;;
+	ruijie,rg-be72-pro-mod)
+		label_mac=$(mtd_get_mac_ascii product_info ethaddr)
+		if [ -n "$label_mac" ]; then
+			lan_mac=$label_mac
+			wan_mac=$(macaddr_add "$label_mac" 1)
+			local radio1=$(l1dat if2dat ra0 2>/dev/null)
+			local radio2=$(l1dat if2dat rai0 2>/dev/null)
+			if [ -f "$radio1" ] && ! grep -qE '^MacAddress(_Default)?=' "$radio1"; then
+				echo "MacAddress_Default=$(macaddr_add "$label_mac" 2)" >> "$radio1"
+			fi
+			if [ -f "$radio2" ] && ! grep -qE '^MacAddress(_Default)?=' "$radio2"; then
+				echo "MacAddress_Default=$(macaddr_add "$label_mac" 3)" >> "$radio2"
+			fi
+		fi
 		;;
 	ruijie,rg-x30e-pro|\
 	ruijie,rg-x60-pro)

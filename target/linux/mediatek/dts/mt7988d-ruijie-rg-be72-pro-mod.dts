@@ -1,0 +1,15 @@
+
+/dts-v1/;
+#include "mt7988d-ruijie-rg-be72-pro-base.dtsi"
+
+/ {
+	model = "Ruijie BE72 PRO(Uboot Mod)";
+	compatible = "ruijie,rg-be72-pro-mod", "mediatek,mt7988d";
+};
+
+&partitions {
+	partition@780000 {
+		label = "ubi";
+		reg = <0x780000 0xE880000>;
+	};
+};

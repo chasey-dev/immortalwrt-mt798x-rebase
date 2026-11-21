@@ -5,6 +5,13 @@
 IEEE_PATH="/sys/class/ieee80211"
 THERMAL_PATH="/sys/class/thermal"
 
+parse_mtwifi_temp() {
+	awk '$1 == "CurrentTemperature" && $2 == "=" && $3 ~ /^-?[0-9]+$/ {
+		printf "%d°C", $3
+		exit
+	}'
+}
+
 get_mtwifi_temp() {
 	local flag
 	local ifname
@@ -16,8 +23,12 @@ get_mtwifi_temp() {
 		if [ -f "/sys/class/net/${ifname}/flags" ]; then
 			flag="$(cat /sys/class/net/${ifname}/flags)"
 			if [ "$((flag & 0x1))" -eq "1" ]; then
-				temp="$(mwctl ${ifname} stat | awk '/CurrentTemperature/ {printf("%d°C", $3)}')"
-				[ -z "$result" ] && result="${temp}" || result="${result}/${temp}"
+				temp="$(mwctl "$ifname" stat 2>/dev/null | parse_mtwifi_temp)"
+				if [ -z "$temp" ]; then
+					temp="$(iwpriv "$ifname" stat 2>/dev/null | parse_mtwifi_temp)"
+				fi
+				[ -n "$temp" ] || continue
+				result="${result:+$result/}$temp"
 			fi
 		fi
 	done

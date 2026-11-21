@@ -1,0 +1,48 @@
+--- a/mt_wifi7/mt_wifi/common/cmm_info.c
++++ b/mt_wifi7/mt_wifi/common/cmm_info.c
+@@ -40,5 +40,7 @@
+ 
+ #define MCAST_WCID_TO_REMOVE 0 /* Pat: TODO */
++#ifndef MIN
+ #define MIN(a, b)					((a) < (b) ? (a) : (b))
++#endif
+ INT UNII4BandSupportRegions[] = {25, 26};
+ INT MCSMappingRateTable[] = {
+--- a/mt_wifi7/mt_wifi/common/cmm_mat_iparp.c
++++ b/mt_wifi7/mt_wifi/common/cmm_mat_iparp.c
+@@ -677,29 +677,10 @@
+ static inline void IPintToIPstr(int ipint, char Ipstr[20], ULONG BufLen)
+ {
+-	int temp = 0;
+-	int ret;
+-	temp = ipint & 0x000FF;
+-	ret = snprintf(Ipstr, BufLen, "%d.", temp);
+-	if (os_snprintf_error(BufLen, ret)) {
+-		MTWF_PRINT("%s: snprintf error!\n", __func__);
+-		return;
+-	}
+-	temp = (ipint >> 8) & 0x000FF;
+-	ret = snprintf(Ipstr, BufLen, "%s%d.", Ipstr, temp);
+-	if (os_snprintf_error(BufLen, ret)) {
+-		MTWF_PRINT("%s: snprintf error!\n", __func__);
+-		return;
+-	}
+-	temp = (ipint >> 16) & 0x000FF;
+-	ret = snprintf(Ipstr, BufLen, "%s%d.", Ipstr, temp);
+-	if (os_snprintf_error(BufLen, ret)) {
+-		MTWF_PRINT("%s: snprintf error!\n", __func__);
+-		return;
+-	}
+-	temp = (ipint >> 24) & 0x000FF;
+-	ret = snprintf(Ipstr, BufLen, "%s%d", Ipstr, temp);
+-	if (os_snprintf_error(BufLen, ret)) {
++	int ret = snprintf(Ipstr, BufLen, "%u.%u.%u.%u", (unsigned int)ipint & 0xff,
++			   ((unsigned int)ipint >> 8) & 0xff,
++			   ((unsigned int)ipint >> 16) & 0xff,
++			   (unsigned int)ipint >> 24);
++
++	if (os_snprintf_error(BufLen, ret))
+ 		MTWF_PRINT("%s: snprintf error!\n", __func__);
+-		return;
+-	}
+ }

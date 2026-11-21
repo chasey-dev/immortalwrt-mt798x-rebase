@@ -1,0 +1,42 @@
+{
+  "MT7992_EEPROM.bin": {
+    "sha256": "5a9e3283e9135b728a215cc09760b328dd9cfb5968b7fa8b46f35eef6060ff4e",
+    "source": "package/mtk/drivers/mt_hwifi/src/bin/mt7992/rebb/MT7992_EEPROM.bin"
+  },
+  "MT7992_MT7975_MT7977_EEPROM_BE7200_2i5e_sky_nonlinear.bin": {
+    "sha256": "e7dedb96147eee8c7eab325cf2dd8992fe4974e1fb7d2494144d095c43cc51c6",
+    "source": "package/mtk/drivers/mt_hwifi/src/bin/mt7992/rebb/MT7992_MT7975_MT7977_EEPROM_BE7200_2i5e_sky_nonlinear.bin"
+  },
+  "MT7992_MT7975_MT7979_EEPROM_BE7200_iPAiLNA.bin": {
+    "sha256": "e460f4daf364d5a5432ed31a90d7808f7139ca1c4daa5bd49d9735dd2478b018",
+    "source": "package/mtk/drivers/mt_hwifi/src/bin/mt7992/rebb/MT7992_MT7975_MT7979_EEPROM_BE7200_iPAiLNA.bin"
+  },
+  "MT7992_MT7976_MT7977_EEPROM_BE7200_ePAeLNA_midFEM.bin": {
+    "sha256": "996af9ab600568a818dcd260a1e6a0355db68e4979f8ca628385fac225d9147e",
+    "source": "package/mtk/drivers/mt_hwifi/src/bin/mt7992/rebb/MT7992_MT7976_MT7977_EEPROM_BE7200_ePAeLNA_midFEM.bin"
+  },
+  "MT7992_MT7978_MT7979_EEPROM_BE6500_iPAiLNA.bin": {
+    "sha256": "e08f38e1bab2e538da4c2173090be9854ddcb89e111d58c00640feb484afafbe",
+    "source": "package/mtk/drivers/mt_hwifi/src/bin/mt7992/rebb/MT7992_MT7978_MT7979_EEPROM_BE6500_iPAiLNA.bin"
+  },
+  "WIFI_MT7992_PATCH_MCU_1_1_hdr.bin": {
+    "sha256": "126b54dbb7718f93a78a7fbd1a7d20329c7196d6ed3715d332bad12d1141ecbf",
+    "source": "package/mtk/drivers/mt_hwifi/src/bin/mt7992/rebb/WIFI_MT7992_PATCH_MCU_1_1_hdr.bin"
+  },
+  "WIFI_MT7992_PHY_RAM_CODE_1_1.bin": {
+    "sha256": "fccef3e2f5ac6f69f490dc8827bb7a864fcfa05f4b5e2caa48faac3abb8eab02",
+    "source": "package/mtk/drivers/mt_hwifi/src/bin/mt7992/rebb/WIFI_MT7992_PHY_RAM_CODE_1_1.bin"
+  },
+  "WIFI_MT7992_WACPU_RAM_CODE_1_1.bin": {
+    "sha256": "67eb5c16c2d085dabb09f2bc743d6c2c264b2b7d805fa118acf916dcf597ec16",
+    "source": "package/mtk/drivers/mt_hwifi/src/bin/mt7992/rebb/WIFI_MT7992_WACPU_RAM_CODE_1_1.bin"
+  },
+  "WIFI_RAM_CODE_MT7992_1_1.bin": {
+    "sha256": "f64a4ef1de69e94f17eddb117679d16fa8411a4ab7e60e82ae88fea6264b44f2",
+    "source": "package/mtk/drivers/mt_hwifi/src/bin/mt7992/rebb/WIFI_RAM_CODE_MT7992_idx_1_1.bin"
+  },
+  "WIFI_RAM_CODE_MT7992_1_1_TESTMODE.bin": {
+    "sha256": "649073d5869f47e7321506d55ef21563e7772803cdc85d5b0e88c54592952610",
+    "source": "package/mtk/drivers/mt_hwifi/src/bin/mt7992/rebb/WIFI_RAM_CODE_MT7992_1_1_TESTMODE.bin"
+  }
+}

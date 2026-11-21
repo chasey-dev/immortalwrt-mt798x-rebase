@@ -1,0 +1,1 @@
+{  "metadata_version": "1.1", "compat_version": "1.0",   "supported_devices":["ruijie,rg-be72-pro-mod"], "version": { "dist": "ImmortalWrt", "version": "25.12-SNAPSHOT", "revision": "r0-dca9468", "target": "mediatek/filogic", "board": "ruijie_rg-be72-pro-mod" } }

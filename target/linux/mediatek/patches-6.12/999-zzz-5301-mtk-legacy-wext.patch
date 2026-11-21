@@ -1,0 +1,15 @@
+--- a/net/wireless/Kconfig
++++ b/net/wireless/Kconfig
+@@ -1,4 +1,12 @@
+ # SPDX-License-Identifier: GPL-2.0-only
++config MTK_LEGACY_WEXT
++	bool "Legacy Wireless Extensions for MediaTek vendor drivers"
++	select WIRELESS_EXT
++	select WEXT_PRIV
++	select WEXT_SPY
++	help
++	  Enable the Wireless Extensions ioctl interface for legacy MTWiFi.
++
+ config WIRELESS_EXT
+ 	bool
+ 

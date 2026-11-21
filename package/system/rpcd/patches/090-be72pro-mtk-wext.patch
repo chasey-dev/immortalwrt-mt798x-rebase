@@ -1,0 +1,12 @@
+--- a/iwinfo.c
++++ b/iwinfo.c
+@@ -847,7 +847,8 @@
+ 	const char *backends[] = {
+ 		"nl80211",
+ 		"madwifi",
+-		"wl"
++		"wl",
++		"mtk"
+ 	};
+ 
+ 	blobmsg_parse(rpc_uci_policy, __RPC_U_MAX, tb,

@@ -5,6 +5,21 @@
 / {
 	model = "Ruijie BE72 PRO(Uboot Mod)";
 	compatible = "ruijie,rg-be72-pro-mod", "mediatek,mt7988d";
+	reserved-memory {
+		ramoops@42ff0000 {
+			compatible = "ramoops";
+			reg = <0 0x42ff0000 0 0x10000>;
+			no-map;
+			record-size = <0x1000>;
+		};
+	};
+};
+
+/* Keep WP/HOLD muxed as data lines for quad SPI NAND. */
+&spi0_flash_pins {
+	mux {
+		groups = "spi0", "spi0_wp_hold";
+	};
 };
 
 &partitions {

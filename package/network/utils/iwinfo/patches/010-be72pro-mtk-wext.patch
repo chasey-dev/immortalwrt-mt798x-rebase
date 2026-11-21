@@ -1,0 +1,81 @@
+--- a/Makefile
++++ b/Makefile
+@@ -32,6 +32,11 @@
+ 	IWINFO_LIB_OBJ += iwinfo_madwifi.o
+ endif
+ 
++ifneq ($(filter mtk,$(IWINFO_BACKENDS)),)
++	IWINFO_CFLAGS  += -DUSE_MTK
++	IWINFO_LIB_OBJ += iwinfo_mtk.o iwinfo_mtk_rate.o
++endif
++
+ ifneq ($(filter nl80211,$(IWINFO_BACKENDS)),)
+ 	IWINFO_CFLAGS      += -DUSE_NL80211
+ 	IWINFO_CLI_LDFLAGS += -lnl-tiny
+--- a/include/iwinfo.h
++++ b/include/iwinfo.h
+@@ -436,6 +436,7 @@
+ extern const struct iwinfo_ops wext_ops;
+ extern const struct iwinfo_ops madwifi_ops;
+ extern const struct iwinfo_ops nl80211_ops;
++extern const struct iwinfo_ops mtk_ops;
+ extern const struct iwinfo_ops wl_ops;
+ 
+ #include "iwinfo/utils.h"
+--- a/iwinfo_lib.c
++++ b/iwinfo_lib.c
+@@ -406,6 +406,9 @@
+ #ifdef USE_WL
+ 	&wl_ops,
+ #endif
++#ifdef USE_MTK
++	&mtk_ops,
++#endif
+ #ifdef USE_WEXT
+ 	&wext_ops,
+ #endif
+--- a/api/wext.h
++++ b/api/wext.h
+@@ -677,7 +677,7 @@
+  */
+ struct	iw_param
+ {
+-  int32_t		value;		/* The value of the parameter itself */
++  uint64_t	value;		/* The value of the parameter itself */
+   uint8_t		fixed;		/* Hardware should not use auto select */
+   uint8_t		disabled;	/* Disable the feature */
+   uint16_t		flags;		/* Various specifc flags (if any) */
+@@ -987,6 +987,7 @@
+ 	/* Old Frequency (backward compat - moved lower ) */
+ 	uint16_t		old_num_channels;
+ 	uint8_t		old_num_frequency;
++  uint8_t		scan_capa;
+ 
+ 	/* Wireless event capability bitmasks */
+ 	uint32_t		event_capa[6];
+@@ -1013,7 +1014,7 @@
+ 
+ 	/* Rates */
+ 	uint8_t		num_bitrates;	/* Number of entries in the list */
+-	int32_t		bitrate[IW_MAX_BITRATES];	/* list, in bps */
++	uint64_t	bitrate[IW_MAX_BITRATES];	/* list, in bps */
+ 
+ 	/* RTS threshold */
+ 	int32_t		min_rts;	/* Minimal RTS threshold */
+@@ -1066,16 +1067,6 @@
+ 
+ 	uint32_t		enc_capa;	/* IW_ENC_CAPA_* bit field */
+ 
+-	/* More power management stuff */
+-	int32_t		min_pms;	/* Minimal PM saving */
+-	int32_t		max_pms;	/* Maximal PM saving */
+-	uint16_t		pms_flags;	/* How to decode max/min PM saving */
+-
+-	/* All available modulations for driver (hw may support less) */
+-	int32_t		modul_capa;	/* IW_MODUL_* bit field */
+-
+-	/* More bitrate stuff */
+-	uint32_t		bitrate_capa;	/* Types of bitrates supported */
+ };
+ 
+ /*

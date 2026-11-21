@@ -1,0 +1,20 @@
+--- a/mt_wifi7/mt_wifi/include/rtmp_def.h
++++ b/mt_wifi7/mt_wifi/include/rtmp_def.h
+@@ -2600,5 +2600,7 @@
+ #endif
+ 
++#ifndef MAC_ADDR_STR_LEN
+ #define MAC_ADDR_STR_LEN 17  /* in format of xx:xx:xx:xx:xx:xx*/
++#endif
+ 
+ #endif /* __RTMP_DEF_H__ */
+--- a/mt_hwifi/mt_wifi/include/rtmp_def.h
++++ b/mt_hwifi/mt_wifi/include/rtmp_def.h
+@@ -2600,5 +2600,7 @@
+ #endif
+ 
++#ifndef MAC_ADDR_STR_LEN
+ #define MAC_ADDR_STR_LEN 17  /* in format of xx:xx:xx:xx:xx:xx*/
++#endif
+ 
+ #endif /* __RTMP_DEF_H__ */

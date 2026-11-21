@@ -1,0 +1,45 @@
+--- a/lib/netifd/wireless/mtwifi.sh
++++ b/lib/netifd/wireless/mtwifi.sh
+@@ -29,6 +29,7 @@
+ import * as netifd from 'mtwifi.netifd';
+ import * as cfg from 'mtwifi.config';
+ import * as driver from 'mtwifi.driver';
++import * as legacy_driver from 'mtwifi.legacy';
+ import { log, with_lock } from 'mtwifi.utils';
+ 
+ import * as hostapd from 'wifi.hostapd';
+@@ -510,7 +511,9 @@
+         return;
+     }
+ 
+-    if (!phy) {
++    let legacy = !phy && fs.access("/sys/module/mt_wifi_cmn") &&
++        cur_dev.main_ifname in ["ra0", "rai0"];
++    if (!phy && !legacy) {
+         netifd.setup_failed("PHY_NOT_FOUND");
+         l1.close();
+         return;
+@@ -544,6 +547,8 @@
+      */
+     for (let idx, iface_data in data.interfaces) {
+         let config = iface_data.config;
++        if (legacy && config.disabled)
++            continue;
+         let mode = config.mode;
+ 
+         if (mode == "ap") {
+@@ -585,6 +590,14 @@
+     }
+ 
+     data.interfaces = active_interfaces;
++
++    if (legacy) {
++        let error = legacy_driver.setup(data, cur_dev);
++        if (error)
++            netifd.setup_failed(error);
++        l1.close();
++        return;
++    }
+ 
+     /*****          Set vifs in netifd        *******/
+ 
